@@ -1,3 +1,5 @@
+"""Main entry point for the dotfiles-setup CLI."""
+
 from __future__ import annotations
 
 import argparse
@@ -7,6 +9,9 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import ClassVar
+
+from dotfiles_setup.audit import DevEnvironmentAuditor, ToolManager
+from dotfiles_setup.docker import DevContainerManager
 
 # Configure logging to stderr so stdout remains clean for command output
 logging.basicConfig(
@@ -34,69 +39,20 @@ class EnvironmentValidator:
         current_arch = platform.machine()
 
         if current_os not in cls.SUPPORTED_OS:
-            raise SystemExit(f"Unsupported OS: {current_os}")
+            msg = f"Unsupported OS: {current_os}"
+            raise SystemExit(msg)
 
         if current_arch not in cls.SUPPORTED_ARCH:
-            raise SystemExit(f"Unsupported Architecture: {current_arch}")
+            msg = f"Unsupported Architecture: {current_arch}"
+            raise SystemExit(msg)
 
 
-class ToolManager:
-    """Manages tool installation and version querying."""
+def setup_parser() -> argparse.ArgumentParser:
+    """Set up the CLI argument parser.
 
-    @staticmethod
-    def run_command(cmd: list[str], capture: bool = True) -> subprocess.CompletedProcess[str]:
-        """Run a shell command and return the result.
-
-        Args:
-            cmd: The command and its arguments.
-            capture: Whether to capture stdout/stderr.
-
-        Returns:
-            The completed process object.
-
-        Raises:
-            SystemExit: If the command fails.
-        """
-        try:
-            return subprocess.run(
-                cmd,
-                check=True,
-                capture_output=capture,
-                text=True
-            )
-        except subprocess.CalledProcessError as e:
-            if capture:
-                logger.error("Error executing command %s: %s\n%s", " ".join(cmd), e.stdout or "", e.stderr or "")
-            else:
-                logger.error("Error executing command %s", " ".join(cmd))
-            raise SystemExit(e.returncode) from e
-        except FileNotFoundError:
-            logger.error("Command not found: %s", cmd[0])
-            raise SystemExit(1) from None
-
-    def query_latest(self, tool: str) -> str:
-        """Query the latest stable version of a tool using mise.
-
-        Args:
-            tool: The tool name.
-
-        Returns:
-            The latest version string.
-        """
-        result = self.run_command(["mise", "latest", tool])
-        return result.stdout.strip()
-
-    def install(self) -> None:
-        """Execute mise install and pixi install."""
-        logger.info("Installing tools with mise...")
-        self.run_command(["mise", "install"], capture=False)
-
-        logger.info("Installing tools with pixi...")
-        self.run_command(["pixi", "install"], capture=False)
-
-
-def main() -> None:
-    """Main entry point for the dotfiles-setup CLI."""
+    Returns:
+        The configured argument parser.
+    """
     parser = argparse.ArgumentParser(
         description="Dotfiles setup orchestration library"
     )
@@ -121,9 +77,21 @@ def main() -> None:
         help="Validate the current environment"
     )
 
+    # audit command
+    subparsers.add_parser(
+        "audit",
+        help="Audit the development environment"
+    )
+
     # docker subcommands
-    docker_parser = subparsers.add_parser("docker", help="Manage devcontainer for validation")
-    docker_subparsers = docker_parser.add_subparsers(dest="docker_command", help="Docker commands")
+    docker_parser = subparsers.add_parser(
+        "docker",
+        help="Manage devcontainer for validation"
+    )
+    docker_subparsers = docker_parser.add_subparsers(
+        dest="docker_command",
+        help="Docker commands"
+    )
     docker_subparsers.add_parser("build", help="Build local AMD64 image")
     docker_subparsers.add_parser("up", help="Start the devcontainer")
     docker_subparsers.add_parser("test", help="Run tests inside the container")
@@ -135,26 +103,44 @@ def main() -> None:
         help="Show the version of the library"
     )
 
+    return parser
+
+
+def handle_docker(args: argparse.Namespace, project_root: Path) -> None:
+    """Handle docker subcommands.
+
+    Args:
+        args: The parsed arguments.
+        project_root: The project root path.
+    """
+    docker_manager = DevContainerManager(project_root)
+    if args.docker_command == "build":
+        docker_manager.build()
+    elif args.docker_command == "up":
+        docker_manager.run()
+    elif args.docker_command == "test":
+        docker_manager.test()
+    elif args.docker_command == "down":
+        docker_manager.stop()
+
+
+def main() -> None:
+    """Main entry point for the dotfiles-setup CLI."""
+    parser = setup_parser()
     args = parser.parse_args()
 
     manager = ToolManager()
     project_root = Path(__file__).parent.parent.parent.parent
-    docker_manager = None # Lazy load
 
     if args.command == "validate":
         EnvironmentValidator.validate()
         logger.info("Environment is valid.")
+    elif args.command == "audit":
+        auditor = DevEnvironmentAuditor()
+        if not auditor.run_all():
+            raise SystemExit(1)
     elif args.command == "docker":
-        from dotfiles_setup.docker import DevContainerManager
-        docker_manager = DevContainerManager(project_root)
-        if args.docker_command == "build":
-            docker_manager.build()
-        elif args.docker_command == "up":
-            docker_manager.run()
-        elif args.docker_command == "test":
-            docker_manager.test()
-        elif args.docker_command == "down":
-            docker_manager.stop()
+        handle_docker(args, project_root)
     elif args.command == "version":
         sys.stdout.write("0.1.0\n")
     elif args.command == "query-latest":
