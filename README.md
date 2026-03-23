@@ -20,8 +20,10 @@ curl -fsSL https://raw.githubusercontent.com/sortakool/dotfiles/main/install.sh 
 ## ✨ Features
 
 -   **Strictly AMD64**: Forced x86_64 architecture for container consistency.
+-   **Dynamic Identity**: Container user, UID, and GID automatically match the host Mac user.
+-   **Secure SSH Sync**: Native SSH agent forwarding and config synchronization (no keys copied).
 -   **Zero-Bash**: Logic is encapsulated in a typed, linted Python library.
--   **Mise-Managed**: Every runtime (Python, Node, Rust, etc.) is managed declaratively.
+-   **Environment Auditor**: Built-in health checks for identity, toolchains, and SSH connectivity.
 -   **CI/CD**: Weekly builds on GitHub Actions verify reproducibility from a bare image.
 
 ## 📦 Tool Management
@@ -31,12 +33,14 @@ All tools are configured in:
 -   `~/pixi.toml` (System Environments)
 -   `~/pyproject.toml` (Python Quality)
 
-## 🧪 Local Testing
+## 🧪 Local Testing & Audit
 
-To test the container lifecycle locally:
+To manage the container lifecycle and verify health:
 ```bash
 cd python
-uv run dotfiles-setup docker build
-uv run dotfiles-setup docker up
-uv run dotfiles-setup docker test
+uv run dotfiles-setup docker build  # Build host-aligned image
+uv run dotfiles-setup docker up     # Start container with SSH sync
+uv run dotfiles-setup audit         # Run full-stack environment audit
+uv run dotfiles-setup docker test   # Run functional verification suite
 ```
+
