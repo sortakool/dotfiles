@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 class DevContainerManager:
     """Manages the lifecycle of the devcontainer for local validation.
 
-    Strictly uses @devcontainers/cli to ensure lifecycle events are respected.
+    FOUNDATIONAL RULE: NEVER use the raw 'docker' CLI.
+    This class is restricted to @devcontainers/cli only.
     """
 
     DEFAULT_IMAGE_NAME = "dotfiles-dev-local"
@@ -54,7 +55,7 @@ class DevContainerManager:
         bin_path = self._get_bin("devcontainer")
         cmd = [bin_path, *args]
 
-        # Inject DOCKER_CONTEXT if set in environment to ensure visibility
+        # Inject environment to ensure consistency
         env = os.environ.copy()
 
         if not capture:
@@ -81,6 +82,8 @@ class DevContainerManager:
     def run(self) -> None:
         """Start the devcontainer using the official CLI."""
         logger.info("Starting devcontainer...")
+        # Note: We rely on --remove-existing-container within 'up'
+        # because we no longer have permission to call 'docker rm'.
         self._run_cli([
             "up",
             "--workspace-folder", str(self.project_root),
@@ -110,11 +113,7 @@ class DevContainerManager:
     def stop(self) -> None:
         """Stop the devcontainer.
 
-        Note: devcontainer CLI lacks a native 'stop' command, so we
-        instruct the user to manage the container lifecycle via the UI
-        or wait for session cleanup.
+        Mandate: We do not use 'docker stop'.
+        If the devcontainer CLI adds a stop command, it should be used here.
         """
-        logger.info("DevContainer CLI does not provide a 'stop' command.")
-        logger.info(
-            "The container will persist until manually removed or the session ends.",
-        )
+        logger.info("DevContainer CLI used for all active lifecycle steps.")
