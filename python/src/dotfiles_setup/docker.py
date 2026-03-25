@@ -51,7 +51,8 @@ class DevContainerManager:
         cmd = [
             devcontainer_bin, "build",
             "--workspace-folder", str(self.project_root),
-            "--image-name", self.image_name
+            "--image-name", self.image_name,
+            "--platform", "linux/amd64"
         ]
 
         # Capture build output and scan for warnings/errors
@@ -99,7 +100,8 @@ class DevContainerManager:
         cmd = [
             devcontainer_bin, "up",
             "--workspace-folder", str(self.project_root),
-            "--remove-existing-container"
+            "--remove-existing-container",
+            "--platform", "linux/amd64"
         ]
         subprocess.run(cmd, check=True)
 
