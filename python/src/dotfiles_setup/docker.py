@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 class DevContainerManager:
     """Manages the lifecycle of the devcontainer for local validation.
 
-    FOUNDATIONAL RULE: NEVER use the raw 'docker' CLI.
-    This class is restricted to @devcontainers/cli only.
+    Strictly uses @devcontainers/cli for orchestration to ensure
+    lifecycle scripts (onCreateCommand, postCreateCommand) are executed.
     """
 
     DEFAULT_IMAGE_NAME = "dotfiles-dev-local"
@@ -55,7 +55,8 @@ class DevContainerManager:
         bin_path = self._get_bin("devcontainer")
         cmd = [bin_path, *args]
 
-        # Inject environment to ensure consistency
+        # Ensure we inherit host environment for variable substitution
+        # This is critical for DOCKER_CONTEXT and port variables.
         env = os.environ.copy()
 
         if not capture:
@@ -70,30 +71,36 @@ class DevContainerManager:
         )
 
     def build(self) -> None:
-        """Build the devcontainer using the official CLI."""
+        """Build the devcontainer image."""
         logger.info("Building devcontainer image...")
         self._run_cli([
             "build",
             "--workspace-folder", str(self.project_root),
             "--image-name", self.image_name,
-            "--platform", "linux/amd64",
         ])
 
-    def run(self) -> None:
-        """Start the devcontainer using the official CLI."""
-        logger.info("Starting devcontainer...")
-        # Note: We rely on --remove-existing-container within 'up'
-        # because we no longer have permission to call 'docker rm'.
+    def up(self) -> None:
+        """Bring the devcontainer up."""
+        logger.info("Bringing devcontainer up...")
         self._run_cli([
             "up",
             "--workspace-folder", str(self.project_root),
             "--remove-existing-container",
         ])
 
+    def down(self) -> None:
+        """Bring the devcontainer down."""
+        logger.info("Bringing devcontainer down...")
+        self._run_cli([
+            "down",
+            "--workspace-folder", str(self.project_root),
+        ])
+
     def test(self) -> None:
         """Run functional tests inside the container using devcontainer exec."""
         logger.info("Running functional tests inside container...")
 
+        # SSH Port is dynamic via DOTFILES_SSH_PORT
         ssh_port = os.environ.get("DOTFILES_SSH_PORT", "4444")
         test_cmd = (
             "bash -lc '"
@@ -109,11 +116,3 @@ class DevContainerManager:
             "--workspace-folder", str(self.project_root),
             "bash", "-c", test_cmd,
         ])
-
-    def stop(self) -> None:
-        """Stop the devcontainer.
-
-        Mandate: We do not use 'docker stop'.
-        If the devcontainer CLI adds a stop command, it should be used here.
-        """
-        logger.info("DevContainer CLI used for all active lifecycle steps.")

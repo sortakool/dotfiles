@@ -136,17 +136,22 @@ class ToolManager:
         logger.info("Mise config template updated successfully.")
 
     def install(self) -> None:
-        """Execute mise install and pixi install."""
+        """Execute toolchain installation.
+
+        Uses mise for general tools, bun for Node/NPM, and uv/pixi for Python.
+        """
         # Enforce Mise strictness
         os.environ["MISE_STRICT"] = "1"
 
-        logger.info("Installing node with mise (prerequisite)...")
-        self.run_command(["mise", "install", "node"], capture=False)
+        logger.info("Installing runtimes with mise (Node/Bun prerequisite)...")
+        # Ensure bun is available for NPM installs via mise config
+        self.run_command(["mise", "install", "node", "bun"], capture=False)
 
         logger.info("Installing tools with mise...")
-        self.run_command(["mise", "install"], capture=False)
+        self.run_command(["mise", "install", "-y"], capture=False)
 
-        logger.info("Installing tools with pixi...")
+        logger.info("Installing Python tools with uv/pixi...")
+        self.run_command(["uv", "tool", "install", "ruff"], capture=False)
         self.run_command(["pixi", "install"], capture=False)
 
 
@@ -382,13 +387,14 @@ class DevEnvironmentAuditor:
             else:
                 logger.error("SSH connectivity: failed (exit code %s)", e.code)  # noqa: TRY400
 
-        # Round-trip check to localhost:2222
+        # Round-trip check to localhost (configurable port)
+        ssh_port = os.environ.get("DOTFILES_SSH_PORT", "4444")
         try:
             ToolManager.run_command(
                 [
                     "ssh",
                     "-p",
-                    "2222",
+                    ssh_port,
                     "-o",
                     "BatchMode=yes",
                     "-o",
@@ -399,10 +405,10 @@ class DevEnvironmentAuditor:
                 quiet=True,
             )
             results["round_trip"] = True
-            logger.info("SSH round-trip: ok")
+            logger.info("SSH round-trip (port %s): ok", ssh_port)
         except SystemExit:
             results["round_trip"] = False
-            logger.error("SSH round-trip: failed")  # noqa: TRY400
+            logger.error("SSH round-trip (port %s): failed", ssh_port)  # noqa: TRY400
 
         return results
 
