@@ -128,15 +128,21 @@ jobs:
             type=sha,prefix=
             type=ref,event=pr
 
+      - name: Write GitHub token for build secret
+        run: echo "${{ secrets.GITHUB_TOKEN }}" > /tmp/github_token
+
       - name: Build and push
         id: bake
         uses: docker/bake-action@82490499d2e5613fcead7e128237ef0b0ea210f7 # v7
         with:
           targets: ${{ github.event.inputs.target || 'dev' }}
           push: ${{ github.event_name != 'pull_request' }}
+          files: |
+            docker-bake.hcl
+            ${{ steps.meta.outputs.bake-file-tags }}
+            ${{ steps.meta.outputs.bake-file-labels }}
           set: |
-            dev.tags=${{ steps.meta.outputs.tags }}
-            dev.labels=${{ steps.meta.outputs.labels }}
+            *.secrets=id=github_token,src=/tmp/github_token
 
       - name: Build performance summary
         if: always()
