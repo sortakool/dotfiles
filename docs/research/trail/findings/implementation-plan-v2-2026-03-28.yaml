@@ -1,0 +1,201 @@
+title: "Implementation Plan v2: 31 Repo Gaps + Integration Fixes"
+date: 2026-03-28
+type: implementation-plan
+
+# ============================================================
+# PHASE 1: Foundation — chezmoi/mise/hk integration (1 session)
+# ============================================================
+phase_1:
+  title: "Fix integration surface between chezmoi, mise, and hk"
+  items:
+    - id: INT-01
+      title: "Create .chezmoi.toml.tmpl with scriptEnv, container detection, interactive prompts"
+      effort: medium
+      source: [Drewtopia, integration-research]
+      details: |
+        - Add promptBoolOnce for dev_computer, ephemeral, personal
+        - Add container detection (REMOTE_CONTAINERS, CODESPACES, DEVCONTAINER)
+        - Add scriptEnv with MISE_BIN and PATH
+        - Add chezmoi git autoCommit + commitMessageTemplate
+        - Add diff.pager = "delta" (if delta installed)
+
+    - id: INT-02
+      title: "Replace glob with types in hk.pkl + add profiles + batch mode"
+      effort: small
+      source: [integration-research]
+      details: |
+        - types = List("python") instead of glob patterns
+        - profiles = List("ci") on slow steps (test, zizmor)
+        - batch = true on ruff, taplo, shellcheck, shfmt
+        - check_first = true on fix-heavy steps
+
+    - id: INT-03
+      title: "Add mise [tasks] section to config.toml.tmpl"
+      effort: small
+      source: [jkp, integration-research]
+      details: |
+        - lint: hk run pre-commit --all
+        - test: cd python && uv run pytest tests/ -x -q
+        - check: depends = ["lint", "test"]
+        - outdated: mise outdated
+        - fmt: hk fix
+
+    - id: INT-04
+      title: "Add mise settings: trusted_config_paths, lockfile, status"
+      effort: small
+      source: [integration-research]
+      details: |
+        - trusted_config_paths = ["~/.local/share/chezmoi"]
+        - lockfile = true
+        - status.show_tools = true
+        - status.missing_tools = "always"
+
+    - id: INT-05
+      title: "Run hk install --mise in chezmoi run_after script"
+      effort: small
+      source: [integration-research]
+
+    - id: INT-06
+      title: "Create .chezmoiignore with OS-conditional exclusions"
+      effort: small
+      source: [jkp, Drewtopia, shunk031]
+
+    - id: INT-07
+      title: "Create .chezmoiexternal.toml for external binary/repo downloads"
+      effort: medium
+      source: [jkp, shunk031]
+
+# ============================================================
+# PHASE 2: AI CLI Management — Claude/Codex/Gemini configs (1 session)
+# ============================================================
+phase_2:
+  title: "Chezmoi-managed AI CLI configurations"
+  items:
+    - id: AI-01
+      title: "Create dot_claude/ directory structure in chezmoi"
+      effort: large
+      source: [shunk031, Drewtopia, jkp]
+      details: |
+        - dot_claude/settings.json.tmpl (permissions, hooks, plugins, statusLine)
+        - dot_claude/hooks/ (pre_tool_use safety, post_tool_use formatting)
+        - dot_claude/rules/ (zero-skip-policy, python, shell)
+        - dot_claude/commands/ (custom slash commands)
+        - dot_claude/skills/ (project-specific skills)
+
+    - id: AI-02
+      title: "Claude pre_tool_use safety hooks"
+      effort: medium
+      source: [jkp, Drewtopia]
+      details: |
+        - Block --no-verify on git commit
+        - Block push to main/master
+        - Block .env file access
+        - Block git hook manipulation
+        - Log all tool calls
+
+    - id: AI-03
+      title: "Claude PostToolUse auto-formatting hooks"
+      effort: small
+      source: [shunk031]
+      details: |
+        - Auto ruff format/check on .py edit
+        - Auto taplo format on .toml edit
+
+    - id: AI-04
+      title: "uv enforcement hook (block pip/python direct execution)"
+      effort: small
+      source: [shunk031]
+
+    - id: AI-05
+      title: "Claude permissions template with allow/deny lists"
+      effort: small
+      source: [Drewtopia, shunk031]
+
+    - id: AI-06
+      title: "Codex and Gemini CLI config templates"
+      effort: small
+      source: [shunk031, HolyClaude]
+
+# ============================================================
+# PHASE 3: Chezmoi Data Model & Platform Support (1 session)
+# ============================================================
+phase_3:
+  title: "Rich data model and platform-specific configs"
+  items:
+    - id: PLAT-01
+      title: "Rich chezmoi data model (dev_computer, ephemeral, work, personal)"
+      effort: medium
+      source: [Drewtopia]
+
+    - id: PLAT-02
+      title: "Platform-specific chezmoi scripts (common/darwin/linux)"
+      effort: medium
+      source: [Drewtopia, shunk031]
+
+    - id: PLAT-03
+      title: "Homebrew/Brewfile management via chezmoi"
+      effort: medium
+      source: [jkp]
+
+    - id: PLAT-04
+      title: "Reusable chezmoi template functions"
+      effort: small
+      source: [Drewtopia]
+
+    - id: PLAT-05
+      title: "Container detection in templates"
+      effort: small
+      source: [Drewtopia]
+      note: "Partially covered by INT-01"
+
+# ============================================================
+# PHASE 4: DevOps & Automation (1 session)
+# ============================================================
+phase_4:
+  title: "CI/CD, drift detection, and automation"
+  items:
+    - id: OPS-01
+      title: "Chezmoi drift detection tooling"
+      effort: medium
+      source: [mikewaters]
+      details: |
+        - chezmoi-drift audit skill or script
+        - Structured report: path, status, direction, risk
+        - CI step for drift check
+
+    - id: OPS-02
+      title: "CodeAct analysis protocol"
+      effort: small
+      source: [mikewaters]
+
+    - id: OPS-03
+      title: "Build variants (full/slim) in docker-bake.hcl"
+      effort: medium
+      source: [HolyClaude]
+
+    - id: OPS-04
+      title: "Container healthcheck"
+      effort: small
+      source: [HolyClaude]
+
+    - id: OPS-05
+      title: "Debug tools in container (strace, htop)"
+      effort: small
+      source: [HolyClaude]
+
+    - id: OPS-06
+      title: "Bubblewrap sandbox setup for Codex"
+      effort: small
+      source: [HolyClaude]
+
+# ============================================================
+# DEFERRED (existing GitHub issues + low priority)
+# ============================================================
+deferred:
+  - "GAP-10: s6-overlay (sortakool/dotfiles#3)"
+  - "GAP-12: Claude skills as dotfiles (sortakool/dotfiles#4) — superseded by AI-01"
+  - "GAP-14: Multi-arch (sortakool/dotfiles#5)"
+  - "GAP-16: pixi environments (sortakool/dotfiles#6)"
+  - "REPO-25: Private dotfiles split repo"
+  - "REPO-26: Plugin/extensibility architecture"
+  - "REPO-27: Age encryption for secrets"

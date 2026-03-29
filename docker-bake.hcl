@@ -27,7 +27,7 @@ variable "APT_SNAPSHOT" {
 }
 
 variable "MISE_VERSION" {
-  default = "2026.3.10"
+  default = "2026.3.17"
 }
 
 variable "DEVCONTAINER_USERNAME" {

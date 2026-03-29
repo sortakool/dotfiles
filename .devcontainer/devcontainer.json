@@ -7,7 +7,7 @@
     "args": {
       "BASE_IMAGE": "ubuntu:25.10",
       "APT_SNAPSHOT": "20260328T000000Z",
-      "MISE_VERSION": "2026.3.10",
+      "MISE_VERSION": "2026.3.17",
       "USERNAME": "${localEnv:USER}",
       "USER_UID": "1000",
       "USER_GID": "1000"

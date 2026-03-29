@@ -1,0 +1,137 @@
+title: "Deep Dive Gap Analysis v2: Tool Versions, Repo Comparison, Integration Surface"
+date: 2026-03-28
+type: deep-discovery
+supersedes: gap-analysis-discovery-2026-03-28.yaml
+
+# ============================================================
+# TOOL VERSION AUDIT — 20 items outdated
+# ============================================================
+version_audit:
+  critical_outdated:
+    - tool: "actions/checkout"
+      pinned: "v4"
+      latest: "v6.0.2"
+      delta: "2 major versions"
+    - tool: "docker/setup-buildx-action"
+      pinned: "v3"
+      latest: "v4.0.0"
+    - tool: "docker/login-action"
+      pinned: "v3"
+      latest: "v4.0.0"
+    - tool: "docker/metadata-action"
+      pinned: "v5"
+      latest: "v6.0.0"
+    - tool: "docker/bake-action"
+      pinned: "v5"
+      latest: "v7.0.0"
+    - tool: "astral-sh/setup-uv"
+      pinned: "v5"
+      latest: "v7.6.0"
+    - tool: "jdx/mise-action"
+      pinned: "v2"
+      latest: "v4.0.1"
+    - tool: "ubuntu base image"
+      pinned: "25.10"
+      latest: "26.04 LTS"
+
+  moderate_outdated:
+    - { tool: typos, pinned: "1.32.0", latest: "1.44.0", delta: "12 minor" }
+    - { tool: hadolint, pinned: "2.12.0", latest: "2.14.0", delta: "2 minor" }
+    - { tool: shfmt, pinned: "3.11.0", latest: "3.13.0", delta: "2 minor" }
+    - { tool: taplo, pinned: "0.9.3", latest: "0.10.0", delta: "1 minor" }
+    - { tool: actionlint, pinned: "1.7.7", latest: "1.7.11", delta: "4 patch" }
+    - { tool: shellcheck, pinned: "0.10.0", latest: "0.11.0" }
+    - { tool: yamllint, pinned: "1.37.0", latest: "1.38.0" }
+    - { tool: jq, pinned: "1.7.1", latest: "1.8.1" }
+    - { tool: MISE_VERSION, pinned: "2026.3.10", latest: "2026.3.17" }
+
+  missing_renovate_coverage:
+    - "github-actions manager NOT in enabledManagers"
+    - "hk.pkl amends URL not tracked by any regex manager"
+    - "Dockerfile MISE_VERSION not tracked"
+    - "devcontainer feature versions not pinned to digest"
+    - "npm-scoped mise tools may not match regex"
+
+# ============================================================
+# REPO COMPARISON — 31 NEW GAPS IDENTIFIED
+# ============================================================
+new_gaps_from_repos:
+  high_priority_core:
+    - id: REPO-01
+      title: "No .chezmoiignore with OS-conditional exclusions"
+      source: [jkp, Drewtopia, shunk031]
+    - id: REPO-02
+      title: "No .chezmoiexternal.toml for external binary/repo downloads"
+      source: [jkp, shunk031]
+    - id: REPO-03
+      title: "No rich chezmoi data model (dev_computer, ephemeral, personal, work)"
+      source: [Drewtopia]
+    - id: REPO-04
+      title: "No platform-specific chezmoi scripts (common/darwin/linux)"
+      source: [Drewtopia, shunk031]
+    - id: REPO-05
+      title: "No .chezmoi.toml.tmpl with interactive prompts and container detection"
+      source: [Drewtopia]
+
+  high_priority_ai:
+    - id: REPO-06
+      title: "No chezmoi-managed dot_claude/ directory (settings, hooks, rules, commands, skills)"
+      source: [shunk031, Drewtopia, jkp]
+    - id: REPO-07
+      title: "No Claude pre_tool_use safety hooks (block --no-verify, push to main, .env access)"
+      source: [jkp, Drewtopia]
+    - id: REPO-08
+      title: "No Claude PostToolUse auto-formatting hooks"
+      source: [shunk031]
+    - id: REPO-09
+      title: "No uv enforcement hook blocking pip/python direct execution"
+      source: [shunk031]
+    - id: REPO-10
+      title: "No Claude permissions template with allow/deny lists"
+      source: [Drewtopia, shunk031]
+
+  medium_priority:
+    - id: REPO-11
+      title: "No mise tasks defined at all"
+      source: [jkp, integration-research]
+    - id: REPO-12
+      title: "No mise config.local.toml split for machine-specific tools"
+      source: [jkp]
+    - id: REPO-13
+      title: "No chezmoi-drift detection tooling"
+      source: [mikewaters]
+    - id: REPO-14
+      title: "No Homebrew/Brewfile management"
+      source: [jkp]
+    - id: REPO-15
+      title: "No reusable chezmoi template functions"
+      source: [Drewtopia]
+
+# ============================================================
+# HK + MISE + CHEZMOI INTEGRATION GAPS
+# ============================================================
+integration_gaps:
+  hk:
+    - "Not using `types` field (should replace glob for file matching)"
+    - "Not using `profiles` for CI vs local separation"
+    - "Not using `batch` for single-invocation efficiency"
+    - "Not using `check_first` to skip fix when check passes"
+    - "Not using `report` for machine-readable lint reports"
+    - "hk install --mise not run (hooks don't use mise x shim)"
+    - "No hk step tests defined"
+
+  mise:
+    - "Zero [tasks] defined"
+    - "No trusted_config_paths (manual mise trust needed)"
+    - "No lockfile = true for reproducibility"
+    - "No status.show_tools / status.missing_tools"
+    - "No mise outdated in CI"
+    - "No env_cache for faster shell startup"
+
+  chezmoi:
+    - "No .chezmoi.toml.tmpl (no scriptEnv, no container detection)"
+    - "No .chezmoiignore"
+    - "No .chezmoiexternal.toml"
+    - "install.sh uses chezmoi@latest (not pinned)"
+    - "No container-awareness in templates"
+    - "Thin .chezmoidata.yaml (platforms only, no user identity)"

@@ -48,9 +48,25 @@
       "depNameTemplate": "ubuntu",
       "datasourceTemplate": "docker",
       "versioningTemplate": "regex:^(?<major>\\d{4})(?<minor>\\d{2})(?<patch>\\d{2})T"
+    },
+    {
+      "fileMatch": ["\\.devcontainer/Dockerfile$", "docker-bake\\.hcl$", "\\.devcontainer/devcontainer\\.json$"],
+      "matchStrings": [
+        "MISE_VERSION[\"=: ]+(?<currentValue>[\\d.]+)"
+      ],
+      "depNameTemplate": "jdx/mise",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "fileMatch": ["hk\\.pkl$"],
+      "matchStrings": [
+        "download/v(?<currentValue>[\\d.]+)/hk@"
+      ],
+      "depNameTemplate": "jdx/hk",
+      "datasourceTemplate": "github-releases"
     }
   ],
-  "enabledManagers": ["npm", "cargo", "go", "pipx", "mise", "dockerfile", "docker-compose", "devcontainer"],
+  "enabledManagers": ["npm", "cargo", "go", "pipx", "mise", "dockerfile", "docker-compose", "devcontainer", "github-actions"],
   "vulnerabilityAlerts": {
     "enabled": true
   }
