@@ -1,0 +1,29 @@
+{
+  "runtime": "colima",
+  "timestamp": "2026-03-29T18:31:04Z",
+  "system": {
+    "docker_version": "29.2.1",
+    "docker_context": "colima",
+    "platform": "arm64",
+    "os_version": "26.4",
+    "total_ram_gb": 96
+  },
+  "benchmarks": {
+    "cold_build_seconds": 702.64,
+    "warm_build_seconds": 4.85,
+    "image_size": "1.33GB",
+    "container_startup_seconds": 31.33,
+    "fs_write_100mb_seconds": 0.37,
+    "fs_read_100mb_seconds": 0.41,
+    "bind_mount_write_50mb_seconds": 0.33,
+    "compute_gcc_seconds": 1.36,
+    "idle_memory": "3.516MiB / 15.58GiB"
+  },
+  "validation": {
+    "amd64_correct": true,
+    "uname_arch": "x86_64",
+    "tools_missing": 0,
+    "tools_pass": true,
+    "hk_validate": "PASS"
+  }
+}

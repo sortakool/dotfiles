@@ -1,9 +1,15 @@
-variable "REGISTRY" {
-  default = "ghcr.io/ray-manaloto"
+variable "DEFAULT_REGISTRY" {
+  default = "ghcr.io/sortakool"
 }
 
 variable "IMAGE" {
   default = "dotfiles-devcontainer"
+}
+
+# Full image reference used for tags and cache refs
+# In CI, metadata-action overrides tags; this controls cache and local builds
+variable "IMAGE_REF" {
+  default = "${DEFAULT_REGISTRY}/${IMAGE}"
 }
 
 variable "TAG" {
@@ -19,7 +25,7 @@ variable "BASE_IMAGE" {
 }
 
 variable "CPP_BASE_IMAGE" {
-  default = "ghcr.io/ray-manaloto/cpp-devcontainer:dev"
+  default = "${DEFAULT_REGISTRY}/cpp-devcontainer:dev"
 }
 
 variable "APT_SNAPSHOT" {
@@ -49,17 +55,16 @@ target "dev" {
     APT_SNAPSHOT = APT_SNAPSHOT
   }
   tags = [
-    "${REGISTRY}/${IMAGE}:${TAG}",
-    "${IMAGE}:${TAG}",
+    "${IMAGE_REF}:${TAG}",
   ]
   # Registry cache: shared across CI runs and local dev
   # GHA cache: faster for same-repo CI (set ACTIONS_CACHE_URL to enable)
   cache-from = [
-    "type=registry,ref=${REGISTRY}/${IMAGE}:buildcache",
+    "type=registry,ref=${IMAGE_REF}:buildcache",
     "type=gha,scope=dotfiles-dev",
   ]
   cache-to = [
-    "type=registry,ref=${REGISTRY}/${IMAGE}:buildcache,mode=max",
+    "type=registry,ref=${IMAGE_REF}:buildcache,mode=max",
     "type=gha,scope=dotfiles-dev,mode=max",
   ]
   attest = [
@@ -77,15 +82,14 @@ target "cpp" {
     APT_SNAPSHOT = APT_SNAPSHOT
   }
   tags = [
-    "${REGISTRY}/${IMAGE}:cpp-${TAG}",
-    "${IMAGE}:cpp-${TAG}",
+    "${IMAGE_REF}:cpp-${TAG}",
   ]
   cache-from = [
-    "type=registry,ref=${REGISTRY}/${IMAGE}:cpp-buildcache",
+    "type=registry,ref=${IMAGE_REF}:cpp-buildcache",
     "type=gha,scope=dotfiles-cpp",
   ]
   cache-to = [
-    "type=registry,ref=${REGISTRY}/${IMAGE}:cpp-buildcache,mode=max",
+    "type=registry,ref=${IMAGE_REF}:cpp-buildcache,mode=max",
     "type=gha,scope=dotfiles-cpp,mode=max",
   ]
   attest = [
@@ -98,11 +102,13 @@ target "cpp" {
 target "dev-load" {
   inherits = ["dev"]
   output   = ["type=docker"]
+  tags     = ["${IMAGE_REF}:${TAG}", "${IMAGE}:${TAG}"]
 }
 
 target "cpp-load" {
   inherits = ["cpp"]
   output   = ["type=docker"]
+  tags     = ["${IMAGE_REF}:cpp-${TAG}", "${IMAGE}:cpp-${TAG}"]
 }
 
 group "default" {

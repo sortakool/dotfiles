@@ -98,7 +98,7 @@ echo "Idle memory: ${MEM_USAGE}"
 
 # F7: Tool validation (mise tools installed)
 echo "--- F7: Tool Validation ---"
-TOOLS_CHECK="$(docker run --rm --platform linux/amd64 dotfiles-devcontainer:dev bash -lc 'mise ls 2>&1 | grep -c "(missing)" || echo 0' 2>/dev/null)"
+TOOLS_CHECK="$(docker run --rm --platform linux/amd64 dotfiles-devcontainer:dev bash -lc 'mise ls 2>&1 | grep -c "(missing)" || echo 0' 2>/dev/null | tail -1)"
 echo "Missing tools: ${TOOLS_CHECK}"
 TOOLS_PASS="false"
 if [ "$TOOLS_CHECK" = "0" ]; then
@@ -110,7 +110,7 @@ fi
 
 # F8: hk validate
 echo "--- F8: hk Validate ---"
-HK_RESULT="$(docker run --rm --platform linux/amd64 dotfiles-devcontainer:dev bash -lc 'cd ~/.local/share/chezmoi && hk validate 2>&1' 2>/dev/null && echo 'PASS' || echo 'FAIL')"
+HK_RESULT="$(docker run --rm --platform linux/amd64 dotfiles-devcontainer:dev bash -lc 'cd ~/.local/share/chezmoi && hk validate >/dev/null 2>&1' && echo 'PASS' || echo 'FAIL')"
 echo "hk validate: ${HK_RESULT}"
 
 # F9: Bind mount performance

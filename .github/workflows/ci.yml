@@ -24,7 +24,7 @@ on:
         default: 'dev'
 
 env:
-  REGISTRY: ghcr.io
+  CONTAINER_REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}-devcontainer
 
 permissions:
@@ -113,7 +113,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ${{ env.CONTAINER_REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -121,7 +121,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=dev,enable=${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
@@ -152,7 +152,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-          if docker images "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" --format '{{.Size}}' 2>/dev/null | head -1 | read size; then
+          if docker images "${{ env.CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}" --format '{{.Size}}' 2>/dev/null | head -1 | read size; then
             echo "| Image size | $size |" >> $GITHUB_STEP_SUMMARY
           fi
           echo "| Cache sources | registry + gha |" >> $GITHUB_STEP_SUMMARY
@@ -173,11 +173,11 @@ jobs:
         run: echo "tag=$(echo '${{ github.sha }}' | head -c 7)" >> "$GITHUB_OUTPUT"
 
       - name: Pull published image
-        run: docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.smoke-tag.outputs.tag }}
+        run: docker pull ${{ env.CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.smoke-tag.outputs.tag }}
 
       - name: Validate tools installed
         run: |
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.smoke-tag.outputs.tag }} bash -lc '
+          docker run --rm ${{ env.CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.smoke-tag.outputs.tag }} bash -lc '
             set -euo pipefail
             echo "=== hk validate ==="
             cd ~/.local/share/chezmoi && hk validate

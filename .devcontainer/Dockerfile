@@ -104,7 +104,7 @@ RUN --mount=type=cache,target=/home/$USERNAME/.cache/mise,uid=1000,gid=1000 \
     --mount=type=cache,target=/home/$USERNAME/.cache/uv,uid=1000,gid=1000 \
     --mount=type=cache,target=/home/$USERNAME/.cache/chezmoi,uid=1000,gid=1000 \
     --mount=type=cache,target=/home/$USERNAME/.pkl,uid=1000,gid=1000 \
-    --mount=type=secret,id=github_token \
+    --mount=type=secret,id=github_token,uid=1000,gid=1000 \
     if [ -f /run/secrets/github_token ]; then \
       export GITHUB_TOKEN="$(cat /run/secrets/github_token)"; \
       export MISE_GITHUB_TOKEN="$GITHUB_TOKEN"; \
