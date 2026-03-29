@@ -1,0 +1,3 @@
+ignored:
+  - DL3008  # Pin versions in apt-get — we use APT snapshots instead
+  - DL3013  # Pin versions in pip install

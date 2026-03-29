@@ -2,7 +2,8 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended",
-    ":dependencyDashboard"
+    ":dependencyDashboard",
+    "docker:pinDigests"
   ],
   "mise": {
     "enabled": true
@@ -11,8 +12,19 @@
     {
       "matchPackageNames": ["bats-core"],
       "groupName": "bats-core"
+    },
+    {
+      "matchManagers": ["devcontainer"],
+      "pinDigests": false
+    },
+    {
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
     }
   ],
+  "ignoreDeps": ["CC", "CXX"],
   "regexManagers": [
     {
       "fileMatch": ["(^|/)mise\\.toml$", "(^|/)config\\.toml\\.tmpl$"],
@@ -20,7 +32,26 @@
         "(?<packageName>[\\w-]+)\\s*=\\s*\"(?<currentValue>[^\"]+)\""
       ],
       "datasourceTemplate": "asdf-registry"
+    },
+    {
+      "fileMatch": ["docker-bake\\.hcl$", "\\.devcontainer/devcontainer\\.json$"],
+      "matchStrings": [
+        "\"(?<depName>[\\w.-]+/[\\w.-]+):(?<currentValue>[\\w.-]+)\""
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "fileMatch": ["docker-bake\\.hcl$"],
+      "matchStrings": [
+        "APT_SNAPSHOT.*?\"(?<currentValue>\\d{8}T\\d{6}Z)\""
+      ],
+      "depNameTemplate": "ubuntu",
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "regex:^(?<major>\\d{4})(?<minor>\\d{2})(?<patch>\\d{2})T"
     }
   ],
-  "enabledManagers": ["npm", "cargo", "go", "pipx", "mise"]
+  "enabledManagers": ["npm", "cargo", "go", "pipx", "mise", "dockerfile", "docker-compose", "devcontainer"],
+  "vulnerabilityAlerts": {
+    "enabled": true
+  }
 }

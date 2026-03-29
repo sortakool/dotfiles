@@ -1,0 +1,211 @@
+title: Dotfiles/Devcontainer/Mise/Chezmoi Repository Comparison
+date: 2026-03-28
+sources:
+  - https://github.com/jkp/dotfiles
+  - https://github.com/Drewtopia/dotfiles
+  - https://github.com/jameswlane/devex
+  - https://github.com/mikewaters/maintainer-agent
+  - https://github.com/shunk031/dotfiles
+  - https://github.com/CoderLuii/HolyClaude
+
+repos:
+
+  jkp-dotfiles:
+    url: https://github.com/jkp/dotfiles
+    tools:
+      - chezmoi (dotfile management)
+      - mise (tool versioning + task runner)
+      - hk (git hooks via Pkl config)
+      - fish shell (default shell)
+      - homebrew (macOS package management via Brewfile.core / Brewfile.personal)
+      - gitleaks (secret scanning)
+      - age (encryption for secrets)
+    devcontainer_strategy: none (uses Docker only for testing bootstrap in ubuntu:latest)
+    ci_cd: none visible (local mise tasks for verify/doctor/test)
+    version_management: mise manages gitleaks, hk, pkl; homebrew for system tools
+    ai_integrations:
+      - CLAUDE.md with detailed agent workflow instructions
+      - dot_claude directory managed by chezmoi
+    notable_patterns:
+      - "Bootstrap-first architecture: single bootstrap.sh installs mise+chezmoi, then delegates to mise tasks"
+      - "hk.pkl for git hooks (gitleaks + docker test on pre-commit)"
+      - "Two-tier Brewfile: core vs personal packages"
+      - "chezmoi-check custom fish function for drift detection"
+      - "Excellent CLAUDE.md with chezmoi status codes, sync workflows, and agent-specific editing guidance"
+      - "mise task dependencies chain: bootstrap -> [brew-core, mise-tools, fish-default]"
+      - "Docker test runs full bootstrap in ubuntu:latest container for verification"
+      - "Minimal doc philosophy: if discoverable via mise tasks or chezmoi managed, dont document it"
+
+  drewtopia-dotfiles:
+    url: https://github.com/Drewtopia/dotfiles
+    tools:
+      - chezmoi (with .chezmoiroot, templates, externals)
+      - mise (installed via chezmoi script)
+      - 1Password CLI (secret management)
+      - jj/Jujutsu (preferred VCS over git)
+      - kanata (keyboard remapping)
+    devcontainer_strategy: none visible
+    ci_cd: none visible
+    version_management: mise for runtimes; chezmoi externals for cue, nvim
+    ai_integrations:
+      - dot_claude/CLAUDE.md.tmpl (templated per-machine Claude config)
+      - dot_claude/settings.json.tmpl (templated Claude settings)
+      - dot_claude/mcp.json.tmpl (MCP server config as chezmoi template)
+      - VS Code mcp.json.tmpl for both macOS and Windows
+    notable_patterns:
+      - "Cross-platform: macOS (brew), Linux (apt), Windows (scoop/PowerShell)"
+      - "Templated Claude Code config: CLAUDE.md.tmpl generates per-machine identity/settings"
+      - "Global CLAUDE.md with strict security gatekeeper rules (never commit secrets)"
+      - "New project scaffolding standards baked into CLAUDE.md"
+      - "chezmoi externals for platform-specific binary downloads (cue, nvim appimage)"
+      - "Nerd fonts managed via chezmoiexternal with refreshPeriod"
+      - "1Password for secrets instead of age encryption"
+      - "install-claude-code.sh.tmpl as chezmoi run script for both platforms"
+      - "MCP config templated and managed by chezmoi - centralized AI tool config"
+
+  jameswlane-devex:
+    url: https://github.com/jameswlane/devex
+    tools:
+      - mise (tool management: go, pnpm, node, lefthook, golangci-lint, etc.)
+      - Go/Cobra/Viper (enterprise CLI framework)
+      - pnpm + turbo (monorepo management)
+      - lefthook (git hooks)
+      - biome (linting/formatting)
+      - goreleaser (release management)
+      - semantic-release
+      - act (local GitHub Actions runner)
+    devcontainer_strategy: none visible (CLI installs to target systems directly)
+    ci_cd:
+      - GitHub Actions (cli-ci.yml, plugins-ci.yml, sdk-ci.yml)
+      - golangci-lint, govulncheck for security
+      - semantic-release for automated versioning
+    version_management: mise.toml pins go 1.24.9, pnpm 10.17, node 22; goreleaser for releases
+    ai_integrations:
+      - CLAUDE.md with detailed Go/Cobra architecture patterns
+      - AI_USAGE.md documenting AI tool usage
+    notable_patterns:
+      - "Plugin architecture: 36 plugins for package managers (apt, dnf, brew, etc.) + desktop environments"
+      - "Enterprise Go patterns: Cobra+Viper, 12-Factor App, context propagation"
+      - "Monorepo: apps/cli + apps/web + apps/docs + packages/plugins + packages/shared"
+      - "6-day sprint methodology documented"
+      - "Cross-platform: Linux, macOS, Windows native support"
+      - "Smart detection: auto-detects platform, distro, desktop environment"
+      - "YAML-based config with hierarchical overrides matching Viper precedence"
+
+  mikewaters-maintainer-agent:
+    url: https://github.com/mikewaters/maintainer-agent
+    tools:
+      - uv (Python package management)
+      - chezmoi (target of the skills being built)
+      - Claude Code skills framework
+      - Repomix (documentation packaging)
+    devcontainer_strategy: none
+    ci_cd: none visible
+    version_management: not applicable (skill development repo)
+    ai_integrations:
+      - "Chezmoi Drift" Claude skill for analyzing chezmoi state
+      - skill-creator skill (forked from Anthropic)
+      - Autonomously self-improving CLAUDE.md
+      - CodeAct pattern: always write scripts before manual analysis
+    notable_patterns:
+      - "Claude skills for chezmoi maintenance - agents that analyze dotfile drift"
+      - "Repomix for packaging chezmoi docs into AI-consumable format"
+      - "Autonomously self-improving: skills update themselves based on learnings"
+      - "CodeAct anti-pattern enforcement: never analyze manually when a script could do it"
+      - "Script placement discipline: every skill has its own scripts/ directory"
+      - "Technique capture protocol: when discovering patterns, immediately update skill-creator"
+      - "uvx for isolated Python script execution in skills"
+      - "Focus on making maintenance tasks deterministic via code, not human judgment"
+
+  shunk031-dotfiles:
+    url: https://github.com/shunk031/dotfiles
+    tools:
+      - chezmoi (with .chezmoiroot under home/)
+      - mise (runtime management)
+      - sheldon (zsh plugin manager, Rust-based)
+      - starship (prompt, Rust-based)
+      - zsh + tmux
+      - homebrew (macOS)
+      - Docker (testing)
+      - Makefile (task runner)
+    devcontainer_strategy: Dockerfile for testing (not development); tests on Docker containers
+    ci_cd:
+      - GitHub Actions (remote.yaml for snippet install, test.yaml for unit tests, macos.yaml, ubuntu.yaml)
+      - codecov for coverage
+    version_management: chezmoi externals; sheldon/starship/mise pinned via badges
+    ai_integrations:
+      - dot_claude/ with settings.json, hooks (enforce-uv.sh), rules, commands, skills
+      - dot_claude/skills/convert-to-transformers (ML-specific Claude skill)
+      - dot_claude/skills/high-impact-journal-publishing (research Claude skill)
+      - dot_claude/rules/ for python, latex, gpu, ask-user-question
+      - dot_claude-mem/settings.json (claude-mem integration)
+      - dot_config/claude/ with symlinked rules and skills
+      - Claude Code + OpenAI Codex badges in README
+    notable_patterns:
+      - "Rust-based CLI toolchain: sheldon, starship, mise, bat, fd, rg"
+      - "Dual Claude config: dot_claude/ (user) + dot_config/claude/ (system) both managed"
+      - "Domain-specific Claude skills managed as dotfiles (ML model conversion, journal publishing)"
+      - "chezmoi scripts with numbered ordering: run_once_before_01, run_once_after_01, etc."
+      - "claude-mem integration for persistent cross-session memory"
+      - "enforce-uv.sh hook ensuring uv is used for Python"
+      - "Chezmoi templates partition installs by OS: macos/, ubuntu/, common/"
+      - "watchexec-based auto-apply during development"
+      - "Comprehensive test suite with bats for install scripts"
+      - "Multi-platform: macOS client, Ubuntu desktop client, Ubuntu server"
+
+  coderluii-holyclaude:
+    url: https://github.com/CoderLuii/HolyClaude
+    tools:
+      - Docker + docker-compose (primary delivery mechanism)
+      - s6-overlay v3 (process supervision, PID 1)
+      - CloudCLI (web UI for Claude Code)
+      - Xvfb (virtual display for headless Chromium)
+      - Chromium + Playwright (browser automation)
+      - Node.js 22 LTS ecosystem (typescript, tsx, pnpm, vite, esbuild, eslint, prettier)
+      - Python 3 ecosystem (requests, httpx, beautifulsoup4, pandas, numpy, playwright)
+      - 7 AI CLIs (Claude Code, Gemini, Codex, Cursor, TaskMaster AI, Junie, OpenCode)
+      - GitHub CLI, Azure CLI, PostgreSQL/Redis/SQLite clients
+    devcontainer_strategy: "All-in-one Docker container (not devcontainer spec). node:22-bookworm-slim base. Two variants: full (~2GB) and slim."
+    ci_cd: GitHub Actions implied (release tags)
+    version_management: Docker image tags (latest, slim); s6-overlay version pinned
+    ai_integrations:
+      - "Claude Code CLI (primary, installed via official installer)"
+      - "Gemini CLI"
+      - "OpenAI Codex CLI"
+      - "Cursor CLI"
+      - "TaskMaster AI"
+      - "Junie (JetBrains AI)"
+      - "OpenCode"
+      - "Ollama support for local models"
+      - "CloudCLI web UI with plugins (project stats, web terminal)"
+    notable_patterns:
+      - "Batteries-included: 50+ dev tools, 7 AI CLIs, headless browser, all in one container"
+      - "s6-overlay for process supervision instead of supervisord (purpose-built for Docker)"
+      - "Solves Docker-specific pain points: shm_size 2g, Chromium sandbox, UID/GID remapping"
+      - "runuser instead of su for process execution"
+      - "Bootstrap runs once (sentinel file .holyclaude-bootstrapped prevents re-run)"
+      - "Bind mounts for persistence: ./data/claude and ./workspace"
+      - "Multi-arch: AMD64 + ARM64"
+      - "Two image variants: full (pandoc, ffmpeg, libvips, Azure CLI) vs slim"
+      - "bubblewrap setuid for Codex CLI sandbox on restricted kernels"
+      - "Web-first: browser at localhost:3001 is the primary interface"
+      - "NOT a devcontainer: standalone Docker container with its own web UI"
+      - "Security: SYS_ADMIN + SYS_PTRACE capabilities, seccomp=unconfined for Chromium"
+
+comparison_with_mde:
+  similarities:
+    - "jkp/dotfiles: closest match - chezmoi+mise+hk, fish shell, bootstrap-first, CLAUDE.md agent guidance"
+    - "shunk031/dotfiles: Claude skills/rules/hooks as managed dotfiles, multi-platform chezmoi"
+    - "Drewtopia/dotfiles: templated Claude config, cross-platform, 1Password secrets"
+  differences:
+    - "MDE uses Python (src/mde/) as automation language; jkp uses mise tasks + shell"
+    - "MDE uses devcontainer spec; HolyClaude uses plain Docker with s6-overlay"
+    - "MDE uses age encryption; Drewtopia uses 1Password; jkp uses age"
+    - "HolyClaude is container-first with web UI; MDE is local-first with devcontainer support"
+  borrowable_ideas:
+    - "From jkp: chezmoi-check drift detection function, Docker-based bootstrap testing, hk.pkl for hooks"
+    - "From Drewtopia: templated CLAUDE.md per machine, MCP config as chezmoi template"
+    - "From shunk031: Claude skills as managed dotfiles, enforce-uv hook, bats test suite for installs"
+    - "From mikewaters: chezmoi drift analysis as Claude skill, CodeAct pattern enforcement"
+    - "From devex: plugin architecture for package managers, smart platform detection"
+    - "From HolyClaude: s6-overlay for devcontainer process supervision, shm_size tuning, Xvfb for headless browser"

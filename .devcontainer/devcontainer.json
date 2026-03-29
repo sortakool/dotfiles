@@ -5,9 +5,12 @@
     "dockerfile": "Dockerfile",
     "context": "..",
     "args": {
+      "BASE_IMAGE": "ubuntu:25.10",
+      "APT_SNAPSHOT": "20260328T000000Z",
+      "MISE_VERSION": "2026.3.10",
       "USERNAME": "${localEnv:USER}",
-      "USER_UID": "${localEnv:UID}",
-      "USER_GID": "${localEnv:GID}"
+      "USER_UID": "1000",
+      "USER_GID": "1000"
     },
     "options": [
       "--platform",
@@ -19,13 +22,13 @@
     "linux/amd64"
   ],
   "containerEnv": {
-    "FORCE_PLATFORM": "linux-64"
+    "FORCE_PLATFORM": "linux-64",
+    "MISE_STRICT": "1"
   },
   "forwardAgent": true,
+  "initializeCommand": "mkdir -p ~/.ssh ~/.claude ~/.codex ~/.gemini ~/.config/gcloud && touch ~/.ssh/config ~/.ssh/known_hosts ~/.ssh/authorized_keys",
   "mounts": [
-    "source=${localEnv:HOME}/.ssh/config,target=/home/${localEnv:USER}/.ssh/config,type=bind,readonly",
-    "source=${localEnv:HOME}/.ssh/known_hosts,target=/home/${localEnv:USER}/.ssh/known_hosts,type=bind,readonly",
-    "source=${localEnv:HOME}/.ssh/authorized_keys,target=/home/${localEnv:USER}/.ssh/authorized_keys,type=bind,readonly",
+    "source=${localEnv:HOME}/.ssh,target=/home/${localEnv:USER}/.ssh,type=bind,readonly",
     "source=${localEnv:HOME}/.claude,target=/home/${localEnv:USER}/.claude,type=bind,readonly",
     "source=${localEnv:HOME}/.codex,target=/home/${localEnv:USER}/.codex,type=bind,readonly",
     "source=${localEnv:HOME}/.gemini,target=/home/${localEnv:USER}/.gemini,type=bind,readonly",
@@ -36,7 +39,8 @@
       "user": "${localEnv:USER}",
       "port": "4444",
       "startNow": true
-    }
+    },
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
   },
   "appPort": [
     "4444:4444"
@@ -57,7 +61,8 @@
   },
   "onCreateCommand": "sudo chown -R ${localEnv:USER}:${localEnv:USER} /home/${localEnv:USER}/.config /home/${localEnv:USER}/.cache /home/${localEnv:USER}/.local || true",
   "postCreateCommand": "bash install.sh --local",
-  "postStartCommand": "cd /workspaces/dotfiles/python && uv run dotfiles-setup ensure-ssh",
+  "updateContentCommand": "bash -lc 'mise install -y'",
+  "postStartCommand": "bash -lc 'cd /workspaces/dotfiles/python && uv run dotfiles-setup ensure-ssh'",
   "remoteUser": "${localEnv:USER}",
   "containerUser": "${localEnv:USER}"
 }

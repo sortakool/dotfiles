@@ -1,0 +1,644 @@
+title: "hk Git Hooks Tool - Complete Builtins & Configuration Research"
+date: 2026-03-28
+sources:
+  - https://hk.jdx.dev/builtins.html
+  - https://hk.jdx.dev/mise_integration.html
+  - https://hk.jdx.dev/pkl_introduction.html
+  - https://hk.jdx.dev/logging.html
+  - https://hk.jdx.dev/cli/validate.html
+  - https://hk.jdx.dev/getting_started.html
+  - https://hk.jdx.dev/configuration.html
+confidence: high
+status: complete
+
+project_file_types:
+  - Python (ruff/ty/pytest) at python/src/**/*.py
+  - Dockerfile at .devcontainer/Dockerfile
+  - TOML at python/pyproject.toml
+  - YAML at .github/workflows/ci.yml, .hadolint.yaml, home/.chezmoidata.yaml
+  - JSON at .devcontainer/devcontainer.json, renovate.json, .claude/settings.json
+  - Pkl at hk.pkl
+  - Shell at install.sh
+  - Markdown at README.md
+
+# ============================================================================
+# BUILTIN LINTER ASSESSMENT FOR DOTFILES PROJECT
+# ============================================================================
+# Rating: ENABLE = directly relevant, SKIP = not applicable
+# ============================================================================
+
+builtins_assessment:
+
+  # --- PYTHON ---
+  - name: ruff
+    checks: "Python linter (Rust-based), force-exclude mode, check/fix"
+    glob: "**/*.py"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Already in use. Core Python linter for the project."
+
+  - name: ruff-format
+    checks: "Ruff formatter, quiet mode, diff/fix"
+    glob: "**/*.py"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Already in use. Core Python formatter."
+
+  - name: ty
+    checks: "Python type checker"
+    glob: "**/*.py"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Already in use. Type checking for Python source."
+
+  - name: mypy
+    checks: "Python type checker, file-based"
+    glob: "**/*.py"
+    relevant: false
+    recommendation: SKIP
+    reason: "Project uses ty instead of mypy."
+
+  - name: black
+    checks: "Python code formatter, check with diff"
+    glob: "**/*.py"
+    relevant: false
+    recommendation: SKIP
+    reason: "Project uses ruff-format instead of black."
+
+  - name: isort
+    checks: "Python import sorter, check-only mode"
+    glob: "**/*.py"
+    relevant: false
+    recommendation: SKIP
+    reason: "Ruff handles import sorting via isort rules."
+
+  - name: flake8
+    checks: "Python style/logic checker"
+    glob: "**/*.py"
+    relevant: false
+    recommendation: SKIP
+    reason: "Project uses ruff which supersedes flake8."
+
+  - name: pylint
+    checks: "Python code analyzer"
+    glob: "**/*.py"
+    relevant: false
+    recommendation: SKIP
+    reason: "Project uses ruff which covers pylint rules."
+
+  - name: python-check-ast
+    checks: "Python AST validator (syntax check)"
+    glob: "**/*.py"
+    relevant: false
+    recommendation: SKIP
+    reason: "Ruff already catches syntax errors."
+
+  - name: python-debug-statements
+    checks: "Detects leftover debug statements (pdb, breakpoint)"
+    glob: "**/*.py"
+    relevant: true
+    recommendation: SKIP
+    reason: "Ruff T20 rule handles this already."
+
+  # --- DOCKERFILE ---
+  - name: hadolint
+    checks: "Dockerfile linter, file-based"
+    glob: "**/Dockerfile"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Already in use. Lints .devcontainer/Dockerfile."
+
+  # --- TOML ---
+  - name: taplo
+    checks: "TOML linter, file-based"
+    glob: "**/*.toml"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Validates pyproject.toml and any mise.toml. Catches syntax errors."
+
+  - name: taplo-format
+    checks: "TOML formatter, diff/write modes"
+    glob: "**/*.toml"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Auto-formats TOML files for consistency."
+
+  - name: tombi
+    checks: "TOML linter, quiet mode"
+    glob: "**/*.toml"
+    relevant: false
+    recommendation: SKIP
+    reason: "Taplo is more established; no need for two TOML linters."
+
+  - name: tombi-format
+    checks: "TOML formatter, diff/write modes"
+    glob: "**/*.toml"
+    relevant: false
+    recommendation: SKIP
+    reason: "Taplo-format covers this."
+
+  # --- YAML ---
+  - name: yamllint
+    checks: "YAML linter, strict mode"
+    glob: "**/*.yml, **/*.yaml"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Validates CI workflows, hadolint config, chezmoi data."
+
+  - name: yamlfmt
+    checks: "YAML formatter, lint/format modes"
+    glob: "**/*.yml, **/*.yaml"
+    relevant: false
+    recommendation: SKIP
+    reason: "yamllint for validation is sufficient; YAML formatting is opinionated and may conflict with CI workflow expectations."
+
+  # --- JSON ---
+  - name: jq
+    checks: "JSON processor/formatter, sorted output, check/fix"
+    glob: "**/*.json"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Validates devcontainer.json, renovate.json. No extra dependency if jq installed."
+
+  - name: prettier
+    checks: "Multi-language formatter, check mode, 25+ file type globs"
+    glob: "**/*.json, **/*.md, **/*.yaml, etc."
+    relevant: true
+    recommendation: SKIP
+    reason: "Heavy Node.js dependency. Project prefers lightweight tooling. Use jq for JSON, yamllint for YAML."
+
+  - name: biome
+    checks: "JS/TS/JSON formatter & linter"
+    glob: "**/*.json, **/*.js, **/*.ts"
+    relevant: false
+    recommendation: SKIP
+    reason: "No JS/TS in project. overkill for JSON-only."
+
+  # --- PKL ---
+  - name: pkl
+    checks: "Pkl configuration validator, eval mode"
+    glob: "**/*.pkl"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Validates hk.pkl itself for syntax/type correctness."
+
+  - name: pkl-format
+    checks: "Pkl code formatter, diff/write modes"
+    glob: "**/*.pkl"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Formats hk.pkl consistently."
+
+  # --- SHELL ---
+  - name: shellcheck
+    checks: "Shell script linter, file-based"
+    glob: "**/*.sh"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Lints install.sh for common shell pitfalls."
+
+  - name: shfmt
+    checks: "Shell script formatter, apply-ignore, diff/fix modes"
+    glob: "**/*.sh"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Formats install.sh for consistency."
+
+  # --- MARKDOWN ---
+  - name: markdown-lint
+    checks: "Markdown style checker, check/fix, multiple globs"
+    glob: "**/*.md"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Lints README.md and docs for style consistency."
+
+  - name: rumdl
+    checks: "Markdown linter, diff/fix modes"
+    glob: "**/*.md"
+    relevant: false
+    recommendation: SKIP
+    reason: "markdown-lint (markdownlint) is more established."
+
+  - name: vale
+    checks: "Prose linter, sync then check"
+    glob: "**/*.md"
+    relevant: false
+    recommendation: SKIP
+    reason: "Overkill for a dotfiles project. markdownlint is sufficient."
+
+  # --- GITHUB ACTIONS / CI ---
+  - name: actionlint
+    checks: "GitHub Actions workflow validation"
+    glob: ".github/workflows/*.yml"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Validates CI workflow syntax and expression correctness."
+
+  - name: zizmor
+    checks: "GitHub Actions security checker, no-progress, check/fix"
+    glob: ".github/workflows/*.yml"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Security scanning for CI workflows (injection, permissions)."
+
+  - name: ghalint-workflow
+    checks: "GitHub workflow validator, workspace check"
+    glob: ".github/workflows/*.yml"
+    relevant: false
+    recommendation: SKIP
+    reason: "actionlint + zizmor covers this well enough."
+
+  - name: ghalint-action
+    checks: "GitHub Action file validator"
+    glob: ".github/actions/**/*.yml"
+    relevant: false
+    recommendation: SKIP
+    reason: "No custom actions in project."
+
+  - name: pinact
+    checks: "GitHub Actions version pinner, verify flag"
+    glob: ".github/workflows/*.yml"
+    relevant: true
+    recommendation: SKIP
+    reason: "Renovate already manages action version pinning."
+
+  - name: pinact-update
+    checks: "GitHub Actions pinner with update capability"
+    glob: ".github/workflows/*.yml"
+    relevant: false
+    recommendation: SKIP
+    reason: "Renovate handles this."
+
+  # --- SECURITY / UTILITY ---
+  - name: detect-private-key
+    checks: "Secret/private key detection in committed files"
+    glob: "all files"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Prevents accidental key commits. Zero config, high value."
+
+  - name: check-added-large-files
+    checks: "Prevents large file commits"
+    glob: "all files"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Dotfiles repo should stay small. Catches accidental binary commits."
+
+  - name: check-merge-conflict
+    checks: "Merge conflict marker detection"
+    glob: "all files"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Prevents committing unresolved merge conflicts."
+
+  - name: check-case-conflict
+    checks: "Filename case conflict detection"
+    glob: "all files"
+    relevant: true
+    recommendation: ENABLE
+    reason: "macOS is case-insensitive; catches cross-platform issues."
+
+  - name: check-symlinks
+    checks: "Broken symlink detection"
+    glob: "all files"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Dotfiles repos often use symlinks. Catches broken ones."
+
+  - name: check-executables-have-shebangs
+    checks: "Script shebang verification"
+    glob: "executable files"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Ensures install.sh and any scripts have proper shebangs."
+
+  - name: trailing-whitespace
+    checks: "Trailing whitespace remover, diff/fix utility modes"
+    glob: "all files"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Clean whitespace across all text files."
+
+  - name: newlines
+    checks: "End-of-file newline fixer, diff/fix utility"
+    glob: "all files"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Ensures files end with newline (POSIX compliance)."
+
+  - name: mixed-line-ending
+    checks: "Line ending normalizer, diff/fix"
+    glob: "all files"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Normalizes line endings across macOS/Linux."
+
+  - name: byte-order-marker
+    checks: "BOM character detection/fix"
+    glob: "all files"
+    relevant: false
+    recommendation: SKIP
+    reason: "BOM issues are rare in modern tooling."
+
+  - name: fix-smart-quotes
+    checks: "Smart quote conversion to ASCII"
+    glob: "all files"
+    relevant: false
+    recommendation: SKIP
+    reason: "Not typically an issue in config/code files."
+
+  - name: no-commit-to-branch
+    checks: "Branch protection (prevent commits to main)"
+    glob: "N/A (branch-level check)"
+    relevant: true
+    recommendation: SKIP
+    reason: "Personal dotfiles repo; committing to main is the normal workflow."
+
+  - name: check-conventional-commit
+    checks: "Commit message format validation"
+    glob: "N/A (commit message)"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Recent commits use conventional format (feat:, chore:, docs:). Enforces consistency."
+
+  - name: typos
+    checks: "Typo detector, force-exclude, diff/fix modes"
+    glob: "all files"
+    relevant: true
+    recommendation: ENABLE
+    reason: "Catches typos in docs, comments, config. Low noise, high value."
+
+  - name: editorconfig-checker
+    checks: "EditorConfig compliance validation"
+    glob: "all files"
+    relevant: false
+    recommendation: SKIP
+    reason: "No .editorconfig in project."
+
+  - name: lychee
+    checks: "Link checker, no-progress flag"
+    glob: "**/*.md"
+    relevant: false
+    recommendation: SKIP
+    reason: "Network-dependent, slow. Not suitable for pre-commit."
+
+  # --- LANGUAGE-SPECIFIC (NOT IN PROJECT) ---
+  - name: cargo-check
+    checks: "Rust compiler validation"
+    relevant: false
+    recommendation: SKIP
+    reason: "No Rust source code in project."
+
+  - name: cargo-clippy
+    checks: "Rust linter"
+    relevant: false
+    recommendation: SKIP
+    reason: "No Rust source code."
+
+  - name: cargo-fmt
+    checks: "Rust formatter"
+    relevant: false
+    recommendation: SKIP
+    reason: "No Rust source code."
+
+  - name: rustfmt
+    checks: "Rust formatter"
+    relevant: false
+    recommendation: SKIP
+    reason: "No Rust source code."
+
+  - name: eslint
+    checks: "JavaScript/TypeScript linter"
+    relevant: false
+    recommendation: SKIP
+    reason: "No JS/TS in project."
+
+  - name: tsc
+    checks: "TypeScript compiler"
+    relevant: false
+    recommendation: SKIP
+    reason: "No TypeScript in project."
+
+  - name: go-fmt
+    checks: "Go formatter"
+    relevant: false
+    recommendation: SKIP
+    reason: "No Go source code."
+
+  - name: golangci-lint
+    checks: "Go comprehensive linter"
+    relevant: false
+    recommendation: SKIP
+    reason: "No Go source code."
+
+  # (All other Go, Ruby, Elixir, Swift, Kotlin, PHP, Lua, Nix,
+  #  C/C++, Terraform, HCL, SQL, CSS tools are SKIP - not in project)
+
+# ============================================================================
+# MISE INTEGRATION
+# ============================================================================
+
+mise_integration:
+  overview: |
+    hk integrates with mise-en-place for tool management. Enable with HK_MISE=1.
+
+  init_with_mise: |
+    `hk init --mise` generates a mise.toml with hk installed and a pre-commit task.
+    Allows `mise run pre-commit` as alternative to `hk run pre-commit`.
+
+  install_with_mise: |
+    `hk install --mise` makes hooks execute via `mise x`, which:
+    - Sets up the mise environment
+    - Adds tools to PATH
+    - Works for devs who haven't activated mise in their shell
+
+  tool_management: |
+    Use `mise use` to define tool versions in mise.toml:
+      mise use hk
+      mise use jq
+      mise use taplo
+      mise use shellcheck
+      mise use shfmt
+      mise use actionlint
+    All tool deps documented in a single committed file.
+
+  task_management: |
+    Use mise tasks within hk steps. In hk.pkl, a step's check command
+    can be `mise run <task>` to leverage mise's dependency management,
+    option parsing, and parallel execution.
+
+  env_vars: |
+    Define [env] section in mise.toml for hook-specific environment variables.
+    Example: PRETTIER_CONFIG = ".prettierrc.json"
+    mise provides environment variable functionality beyond basic definitions.
+
+# ============================================================================
+# HK_PKL_BACKEND=pklr
+# ============================================================================
+
+pkl_backend:
+  how_to_set: |
+    Set environment variable: HK_PKL_BACKEND=pklr
+
+    Methods:
+    1. In mise.toml [env] section: HK_PKL_BACKEND = "pklr"
+    2. Shell export: export HK_PKL_BACKEND=pklr
+    3. Per-command: HK_PKL_BACKEND=pklr hk check
+    4. In CI: env: HK_PKL_BACKEND: pklr
+
+  what_it_does: |
+    Uses hk's built-in Rust pkl evaluator instead of requiring
+    a separate pkl CLI installation. Status: experimental.
+    Eliminates pkl CLI as a dependency.
+
+  default: "pkl CLI (install via `mise use -g pkl`)"
+
+# ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
+
+logging:
+  levels:
+    - "error: Only error messages"
+    - "warn: Warnings and errors (DEFAULT)"
+    - "info: Informational + warnings + errors"
+    - "debug: File operations, step execution details"
+    - "trace: All internal operations"
+
+  cli_flags:
+    - "-v / --verbose: DEBUG level"
+    - "-vv: TRACE level"
+    - "-q / --quiet: Suppress non-error output"
+    - "--silent: Suppress all output, exit code only"
+
+  env_vars:
+    HK_LOG: "Control verbosity (debug, trace, info, warn, error)"
+    HK_LOG_FILE: "Custom log file path (default: ~/.local/state/hk/hk.log)"
+    HK_LOG_FILE_LEVEL: "Separate log level for file output"
+
+  ensure_no_warnings_suppressed: |
+    By default, log level is 'warn' which shows warnings.
+    To ensure NO warnings are suppressed:
+    1. Do NOT set hide_warnings in hk.pkl
+    2. Do NOT set HK_HIDE_WARNINGS env var
+    3. Optionally set HK_LOG=info for more visibility
+    4. For CI, use HK_LOG=debug to capture everything
+
+# ============================================================================
+# VALIDATE IN CI
+# ============================================================================
+
+validate_in_ci:
+  command: "hk validate"
+  purpose: "Validates the hk.pkl config file for correctness (syntax + types)"
+
+  ci_usage: |
+    Add as a CI step to catch config errors before hooks run:
+
+    # In .github/workflows/ci.yml:
+    - name: Validate hk config
+      run: hk validate
+
+    # Or with full linting:
+    - name: Lint (hk)
+      run: |
+        hk validate
+        hk check --all
+
+  when_to_run: |
+    - On every PR that modifies hk.pkl
+    - As part of CI lint stage
+    - After upgrading hk version (amends URL changes)
+
+# ============================================================================
+# CONFIGURATION REFERENCE SUMMARY
+# ============================================================================
+
+configuration:
+  file_search_order:
+    - "hk.local.pkl (local overrides, gitignored)"
+    - ".config/hk.local.pkl"
+    - "hk.pkl (standard, committed)"
+    - ".config/hk.pkl"
+    - "Walks up to / checking each directory"
+    - "Override with HK_FILE env var"
+
+  precedence_lowest_to_highest:
+    - "Built-in defaults"
+    - "User config (~/.config/hk/config.pkl)"
+    - "Project config (hk.pkl)"
+    - "Git config"
+    - "Environment variables (HK_*)"
+    - "CLI flags"
+
+  global_settings:
+    default_branch: "String, auto-detects if unset"
+    env: "Mapping of env vars for linters"
+    exclude: "String/List/Regex, global exclude patterns"
+    fail_fast: "Boolean, default true, abort after first failure"
+    hide_warnings: "List of warning tags to suppress"
+    jobs: "UInt, default 0 (auto-detect CPU cores)"
+    profiles: "List, prefix with ! to disable"
+    skip_hooks: "List of hook names to skip"
+    skip_steps: "List of step names to skip"
+    walk_ignore: "Boolean, default true, respect .gitignore"
+
+  hook_settings:
+    fix: "Boolean, run fix commands"
+    stage: "Boolean, default true, auto-stage fixed files"
+    stash: "StashMethod: git, patch-file, none, or boolean"
+    env: "Mapping, hook-specific env vars"
+    fail_on_fix: "Boolean, fail if fix modifies files"
+    report: "String/Script, runs after hook with HK_REPORT_JSON"
+
+  step_settings:
+    file_matching:
+      glob: "String/List/Regex"
+      types: "List (python, javascript, shell, json, yaml, etc.)"
+      allow_symlinks: "Boolean, default false"
+      exclude: "String/List/Regex"
+    commands:
+      check: "Read-only validation command"
+      fix: "Modification/auto-fix command"
+      check_list_files: "Optimize fix by listing files needing fixes"
+      check_diff: "Show diff instead of check result"
+    execution:
+      batch: "Boolean, run on file batches for parallelization"
+      check_first: "Boolean, run check before fix"
+      stomp: "Boolean, write lock instead of read lock"
+      exclusive: "Boolean, wait for previous steps"
+      depends: "String/List, steps that must finish first"
+      workspace_indicator: "String, run per workspace (e.g. Cargo.toml)"
+      prefix: "String, command prefix (e.g. npm run)"
+      dir: "String, working directory"
+      profiles: "List, enable for matching profiles only"
+    template_vars:
+      - "{{files}}: file list to process"
+      - "{{workspace}}: workspace directory"
+      - "{{workspace_indicator}}: matched indicator file"
+      - "{{workspace_files}}: files relative to workspace"
+
+  special_hooks:
+    - "pre-commit: before commits"
+    - "pre-push: before pushes"
+    - "fix: hk fix command"
+    - "check: hk check command"
+    - "commit-msg: validate commit messages"
+    - "prepare-commit-msg: modify commit messages"
+
+  key_env_vars:
+    HK_FILE: "Override config file path"
+    HK_JOBS: "Parallel processes"
+    HK_FIX: "Run fix commands"
+    HK_CHECK: "Run only checks"
+    HK_SKIP_STEPS: "Skip specific steps"
+    HK_SKIP_HOOKS: "Skip entire hooks"
+    HK_PROFILE: "Enable profiles"
+    HK_EXCLUDE: "Exclude patterns"
+    HK_STASH: "Stash strategy"
+    HK_HIDE_WARNINGS: "Hide warning tags"
+    HK_LOG_LEVEL: "Verbosity"
+    HK_CACHE_DIR: "Cache directory"
+    HK_STATE_DIR: "State files directory"
+    HK_PKL_BACKEND: "pklr for built-in evaluator"
+    HK_MISE: "1 to enable mise integration"

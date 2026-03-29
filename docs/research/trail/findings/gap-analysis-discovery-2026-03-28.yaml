@@ -1,0 +1,303 @@
+title: "Gap Analysis Discovery Synthesis: Dotfiles + C++ Devcontainer"
+date: 2026-03-28
+type: discovery-synthesis
+scope: full-system
+provenance:
+  agents: [dotfiles-explorer, cpp-playground-explorer, repo-comparison, p2996-research, devcontainer-best-practices]
+  providers: [claude, codex, gemini]
+
+# ============================================================
+# CURRENT STATE SUMMARY
+# ============================================================
+
+current_state:
+  dotfiles_repo:
+    architecture: "4-stage bootstrap: install.sh -> mise -> chezmoi -> python (dotfiles-setup)"
+    docker_base: "ubuntu:25.10"
+    tools_managed_by_mise:
+      languages: [python-3.14.3, node-25.8.2, rust-1.94.0, go-1.26.1, zig-0.15.2, bun-1.3.11]
+      package_managers: [uv-0.11.0, pixi-0.66.0]
+      cli_tools: [fzf-0.70.0, ripgrep-15.1.0, fd-10.4.2, bat-0.26.1]
+      ai_clis: [gemini-cli-0.35.0, codex-0.116.0]
+      infra: [chezmoi-2.70.0]
+    ci_cd: "GitHub Actions (weekly schedule + push/PR), Renovate with regex managers"
+    testing: "pytest + BATS integration tests"
+    ai_config: "AGENTS.md.tmpl + CLAUDE.md.tmpl + CODEX.md.tmpl + GEMINI.md.tmpl as chezmoi templates"
+    devcontainer: "Single Dockerfile, single devcontainer.json, SSH forwarding, AI config bind mounts"
+
+  cpp_playground_repo:
+    architecture: "Multi-stage Docker (5 stages: base, clang, gcc, final, devcontainer)"
+    docker_base: "ubuntu:25.10 with APT snapshot pinning (20260322T000000Z)"
+    compilers:
+      llvm_stable: "22.1.1 (pre-built binaries)"
+      gcc_reflection: "forge.sourceware.org/marek/gcc commit 95f5ec0, -freflection"
+      clang_p2996: "bloomberg/clang-p2996 commit a527082, -freflection -freflection-latest"
+    build_system: "CMake 3.28 + Ninja + CMakePresets.json (7 presets)"
+    tools_managed_by_mise: [chezmoi, claude-code, codex, gemini-cli, gh, hk, just, node, pkl, pixi, uv, watchexec]
+    tools_managed_by_pixi: [cmake, ninja, pkg-config, python-3.12, include-what-you-use, gcc-15.2.0]
+    ci_cd: "3 workflows: devcontainer-build-hosted, tooling-validate, latest-kernel-ci"
+    docker_bake: "docker-bake.hcl with 7 targets, registry caching, SBOM/provenance attestations"
+    caching: "ccache + sccache + vcpkg-cache (Docker volumes)"
+
+# ============================================================
+# GAP ANALYSIS — DOTFILES vs REFERENCE REPOS
+# ============================================================
+
+gaps:
+  critical:
+    - id: GAP-01
+      title: "No C++ compiler toolchain in dotfiles devcontainer"
+      current: "dotfiles Dockerfile only installs build-essential (system GCC)"
+      target: "Multi-stage build with GCC-reflection + clang-p2996 + LLVM stable"
+      reference: "cpp-playground already has this; needs to be composable/reusable"
+      effort: large
+      priority: P0
+
+    - id: GAP-02
+      title: "APT snapshot pinning missing in dotfiles Dockerfile"
+      current: "Uses ubuntu:25.10 without snapshot pinning"
+      target: "Pin APT sources to dated snapshots for reproducible builds"
+      reference: "cpp-playground uses 20260322T000000Z snapshot"
+      effort: small
+      priority: P0
+
+    - id: GAP-03
+      title: "No docker-bake.hcl for dotfiles devcontainer"
+      current: "Simple docker build, no buildx bake orchestration"
+      target: "docker-bake.hcl with targets, groups, registry caching, SBOM attestations"
+      reference: "cpp-playground has comprehensive docker-bake.hcl"
+      effort: medium
+      priority: P1
+
+    - id: GAP-04
+      title: "No supply chain security (SBOM, signing, provenance)"
+      current: "No cosign, no SBOM generation, no provenance attestations"
+      target: "Cosign signing, Trivy SBOM, SLSA provenance on all published images"
+      reference: "cpp-playground has SBOM+provenance in bake config; HolyClaude has none"
+      effort: medium
+      priority: P1
+
+  high:
+    - id: GAP-05
+      title: "Mise system install pattern not used in Docker"
+      current: "mise install goes to ~/.local/share/mise/installs (hidden by volume mounts)"
+      target: "Use mise install --system to /usr/local/share/mise/installs during build"
+      reference: "Mise Docker cookbook documents this gotcha"
+      effort: small
+      priority: P1
+
+    - id: GAP-06
+      title: "No BuildKit cache mounts in dotfiles Dockerfile"
+      current: "Standard apt-get without cache mount optimization"
+      target: "RUN --mount=type=cache for apt, pip, mise, cargo caches"
+      reference: "Docker best practices 2026; cpp-playground uses ccache mount"
+      effort: small
+      priority: P1
+
+    - id: GAP-07
+      title: "Claude Code not installed via official devcontainer feature"
+      current: "Installed via curl script in ai-setup command"
+      target: "Use ghcr.io/anthropics/devcontainer-features/claude-code:1"
+      reference: "Anthropic publishes official devcontainer feature"
+      effort: small
+      priority: P1
+
+    - id: GAP-08
+      title: "No hk.pkl in dotfiles devcontainer workflow"
+      current: "hk not configured for the dotfiles project itself"
+      target: "hk.pkl with gitleaks, ruff, mypy pre-commit hooks"
+      reference: "jkp/dotfiles has excellent hk.pkl pattern; cpp-playground uses hk"
+      effort: small
+      priority: P1
+
+    - id: GAP-09
+      title: "No contract-preflight CI job"
+      current: "CI validates build+test only"
+      target: "Preflight job validating Dockerfile contracts, stage names, bootstrap boundaries"
+      reference: "cpp-playground devcontainer-build-hosted.yml has contract-preflight"
+      effort: medium
+      priority: P2
+
+  medium:
+    - id: GAP-10
+      title: "No s6-overlay or process supervisor in devcontainer"
+      current: "No PID 1 supervisor"
+      target: "s6-overlay v3 for process supervision (sshd, etc.)"
+      reference: "HolyClaude uses s6-overlay v3 with auto-restart and graceful shutdown"
+      effort: medium
+      priority: P2
+
+    - id: GAP-11
+      title: "No chezmoi drift detection"
+      current: "No automated drift checking"
+      target: "chezmoi-check function or Claude skill for drift analysis"
+      reference: "jkp/dotfiles has chezmoi-check; mikewaters/maintainer-agent has drift skill"
+      effort: small
+      priority: P2
+
+    - id: GAP-12
+      title: "No Claude skills as managed dotfiles"
+      current: "Claude skills not tracked in chezmoi"
+      target: "dot_claude/skills/ and dot_claude/hooks/ managed by chezmoi"
+      reference: "shunk031/dotfiles manages Claude skills/rules/hooks as dotfiles"
+      effort: medium
+      priority: P2
+
+    - id: GAP-13
+      title: "Renovate missing digest pinning for Docker images"
+      current: "Renovate tracks mise/npm/cargo/go versions"
+      target: "Add docker:pinDigests + devcontainer pinDigests:false exception"
+      reference: "Renovate best practices 2026; known VSCode gotcha"
+      effort: small
+      priority: P2
+
+    - id: GAP-14
+      title: "No multi-arch support"
+      current: "AMD64 only (linux/amd64)"
+      target: "AMD64 + ARM64 support"
+      reference: "HolyClaude supports both; cpp-playground is AMD64-only due to compiler builds"
+      effort: large
+      priority: P3
+      note: "P2996 compilers only build for x86_64 currently"
+
+    - id: GAP-15
+      title: "No just/task runner in dotfiles"
+      current: "mise tasks for some operations, Python CLI for others"
+      target: "Unified task runner (just or mise tasks) for all operations"
+      reference: "cpp-playground uses just-1.47.1"
+      effort: small
+      priority: P3
+
+  low:
+    - id: GAP-16
+      title: "No pixi environments for conda-based tool isolation"
+      current: "pixi.toml exists but minimal (only Python linting tools)"
+      target: "Pixi environments for toolchain isolation like cpp-playground"
+      reference: "cpp-playground has 5 pixi environments for compiler isolation"
+      effort: medium
+      priority: P3
+
+    - id: GAP-17
+      title: "No watchexec for file watching"
+      current: "No file watcher"
+      target: "watchexec for auto-rebuild/auto-test on file changes"
+      reference: "cpp-playground pins watchexec-2.5.0"
+      effort: small
+      priority: P3
+
+# ============================================================
+# GAP ANALYSIS — vs OFFICIAL DOCUMENTATION / BEST PRACTICES
+# ============================================================
+
+vs_official_docs:
+  devcontainer_spec:
+    aligned:
+      - "lifecycle hooks (postCreateCommand, postStartCommand)"
+      - "SSH forwarding via features"
+      - "VSCode extensions in devcontainer.json"
+    gaps:
+      - "Not using parallel execution syntax for lifecycle hooks (object form)"
+      - "Not using official Claude Code devcontainer feature"
+      - "No updateContentCommand for incremental rebuilds"
+
+  mise_docs:
+    aligned:
+      - "config.toml.tmpl with all tools pinned"
+      - "MISE_STRICT=1 enforcement"
+      - "Renovate regex managers for mise version tracking"
+    gaps:
+      - "Not using --system install in Docker (volume mount collision)"
+      - "Not using mise tasks for build orchestration"
+
+  chezmoi_docs:
+    aligned:
+      - ".chezmoiroot pointing to home/"
+      - "Template-driven configs (.tmpl files)"
+      - "Lifecycle scripts (run_before, run_once_after)"
+    gaps:
+      - "Not using chezmoi docker command for container bootstrapping"
+      - "No chezmoi diff/verify in CI"
+
+  docker_best_practices:
+    aligned:
+      - "Non-root user with dynamic UID/GID"
+      - "Minimal base image"
+      - "Build-essential in separate stage"
+    gaps:
+      - "No BuildKit cache mounts"
+      - "No SBOM/provenance attestations"
+      - "No hadolint linting in CI"
+      - "No APT snapshot pinning"
+      - "No multi-stage separation (single stage currently)"
+
+  renovate_docs:
+    aligned:
+      - "config:recommended preset"
+      - "Regex managers for mise.toml"
+    gaps:
+      - "No docker:pinDigests preset"
+      - "No pinDigests:false exception for devcontainer manager"
+      - "No automerge for minor/patch/digest updates"
+      - "No security vulnerability alerts enabled"
+
+# ============================================================
+# COMPARATIVE ANALYSIS vs HOLYCLAUDE
+# ============================================================
+
+vs_holyclaude:
+  holyclaude_advantages:
+    - "7 AI CLIs pre-installed (Claude, Gemini, Codex, Cursor, TaskMaster, Junie, OpenCode)"
+    - "s6-overlay v3 as PID 1 (proper process supervision)"
+    - "Headless Chromium + Xvfb for browser automation"
+    - "Web UI (CloudCLI on port 3001)"
+    - "Multi-arch (AMD64 + ARM64)"
+    - "bubblewrap setuid for Codex sandbox"
+    - "50+ dev tools pre-installed"
+    - "Slim and full variants"
+
+  mde_advantages:
+    - "Declarative, reproducible toolchain (mise + chezmoi + hk)"
+    - "Supply chain security (SBOM, provenance in cpp-playground)"
+    - "Renovate for automated version updates"
+    - "CI/CD validation pipeline"
+    - "Multi-compiler C++ support (GCC-reflection, clang-p2996, LLVM stable)"
+    - "Proper testing (pytest + BATS)"
+    - "Type-safe Python orchestration (strict mypy, all ruff rules)"
+    - "APT snapshot pinning for reproducibility"
+    - "dotfiles as source of truth (not ad-hoc Docker layers)"
+
+  key_philosophical_difference: |
+    HolyClaude: Container-first disposable workstation. Everything baked into one image.
+    MDE: Dotfiles-first declarative environment. Container is a deployment target for dotfiles.
+
+    MDE approach is more maintainable long-term because tool versions are managed declaratively
+    in mise.toml/pixi.toml and updated via Renovate. HolyClaude requires manual Dockerfile edits.
+
+# ============================================================
+# RECOMMENDED IMPLEMENTATION PRIORITY
+# ============================================================
+
+implementation_waves:
+  wave_1_foundation:
+    description: "Docker build infrastructure alignment with cpp-playground"
+    items: [GAP-02, GAP-06, GAP-05, GAP-03]
+    rationale: "Without these, the devcontainer build is not reproducible or cacheable"
+
+  wave_2_toolchain:
+    description: "C++ compiler integration + AI tooling"
+    items: [GAP-01, GAP-07, GAP-08]
+    rationale: "Core requirement: C++ P2996 compilers + proper AI CLI installation"
+
+  wave_3_security:
+    description: "Supply chain hardening"
+    items: [GAP-04, GAP-13, GAP-09]
+    rationale: "Security gates that protect the build pipeline"
+
+  wave_4_polish:
+    description: "Developer experience improvements"
+    items: [GAP-10, GAP-11, GAP-12, GAP-15, GAP-16, GAP-17]
+    rationale: "Nice-to-haves that improve daily workflow"
+
+  deferred:
+    items: [GAP-14]
+    rationale: "Multi-arch blocked by P2996 compiler x86_64-only constraint"

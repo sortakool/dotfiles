@@ -1,0 +1,349 @@
+---
+title: "Devcontainer & Docker Best Practices 2025-2026"
+date: "2026-03-28"
+researcher: "claude-opus-4-6"
+status: complete
+topics:
+  - devcontainer-spec
+  - docker-multi-stage
+  - renovate-docker
+  - ai-cli-devcontainer
+  - mise-docker
+  - chezmoi-docker
+  - hk-git-hooks
+  - supply-chain-security
+  - build-caching
+
+findings:
+
+  # ─── 1. DEVCONTAINER SPEC ───────────────────────────────────────────
+  devcontainer_spec:
+    summary: |
+      The devcontainer.json spec continues to mature with lifecycle hooks
+      and the Features system as the two major extension points.
+    lifecycle_hooks:
+      order:
+        - initializeCommand    # runs on host before container starts
+        - onCreateCommand      # first container creation only
+        - updateContentCommand # creation + content updates
+        - postCreateCommand    # after updateContentCommand
+        - postStartCommand     # every container start
+        - postAttachCommand    # every client attach
+      notes: |
+        Each hook accepts a string, array, or object (parallel execution).
+        Commands run from workspaceFolder by default.
+    features_system:
+      distribution: "OCI Artifacts in any OCI-compliant registry (GHCR recommended)"
+      versioning: "semver via devcontainer-feature.json"
+      packaging: "tarballs containing install.sh + devcontainer-feature.json"
+      naming: "<registry>/<namespace>/<id>[:version]"
+      starter_repo: "https://github.com/devcontainers/feature-starter"
+      catalog: "https://containers.dev/features"
+      key_insight: |
+        Features are composable units of container tooling. Major vendors
+        (Anthropic, Google, etc.) now publish official devcontainer features
+        via GHCR. Custom features use GitHub Actions for automated publishing.
+    known_issues:
+      - "Renovate digest pinning for features breaks VSCode (features don't support hash pinning)"
+    sources:
+      - https://containers.dev/implementors/json_reference/
+      - https://containers.dev/implementors/features/
+      - https://github.com/devcontainers/spec
+      - https://github.com/devcontainers/features
+      - https://ivanlee.me/devcontainers-in-2025-a-personal-take/
+
+  # ─── 2. DOCKER MULTI-STAGE BUILDS ──────────────────────────────────
+  docker_multi_stage:
+    summary: "Build fat, ship thin. Separate build and runtime images."
+    best_practices:
+      - "Name stages with AS for clarity (FROM golang:1.22 AS builder)"
+      - "Order layers by change frequency (deps before code)"
+      - "Copy only necessary artifacts via COPY --from=builder"
+      - "Use distroless or scratch for runtime (no shell, no pkg manager)"
+      - "Run as non-root with dedicated USER"
+      - "Run tests in a dedicated test stage"
+      - "Execute build steps in parallel across stages"
+    size_reductions:
+      go: "1.1GB -> 8MB (99%)"
+      rust: "1.4GB -> 5MB (99%)"
+      nodejs: "1.2GB -> 150MB (87%)"
+      python: "1.0GB -> 180MB (82%)"
+    dev_environment_pattern: |
+      Use a full "dev" stage with compilers/debuggers/linters that is
+      NOT the final stage. The dev stage is used by devcontainers;
+      the final slim stage is used for production.
+      Example:
+        FROM ubuntu:24.04 AS base
+        FROM base AS dev       # compilers, linters, mise, chezmoi
+        FROM base AS builder   # compile the app
+        FROM gcr.io/distroless/static AS runtime  # production
+    sources:
+      - https://docs.docker.com/build/building/multi-stage/
+      - https://docs.docker.com/build/building/best-practices/
+      - https://devtoolbox.dedyn.io/blog/docker-multi-stage-builds-guide
+      - https://oneuptime.com/blog/post/2026-02-02-docker-multi-stage-builds/view
+
+  # ─── 3. RENOVATE FOR DOCKER ────────────────────────────────────────
+  renovate_docker:
+    summary: |
+      Renovate auto-updates Docker base images, tags, and digests.
+      Digest pinning is the gold standard for reproducibility.
+    recommended_config: |
+      {
+        "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+        "extends": ["config:recommended", "docker:pinDigests"],
+        "packageRules": [
+          {
+            "groupName": "all non-major dependencies",
+            "matchUpdateTypes": ["minor", "patch", "digest"],
+            "automerge": true
+          },
+          {
+            "description": "Disable digest pinning for devcontainer features (VSCode incompatible)",
+            "matchManagers": ["devcontainer"],
+            "pinDigests": false
+          }
+        ]
+      }
+    capabilities:
+      - "Updates FROM directives including multi-stage builds"
+      - "Digest pinning: node:14 -> node:14@sha256:..."
+      - "Tag version bumps: myimage:1.2.0 -> myimage:1.2.1"
+      - "Auto-merge for minor/patch/digest updates"
+      - "Works with docker-compose, Kubernetes manifests, Helm charts"
+    gotcha: |
+      devcontainer feature hash pinning is NOT supported by VSCode.
+      Use pinDigests:false for the devcontainer manager specifically.
+    sources:
+      - https://docs.renovatebot.com/docker/
+      - https://docs.renovatebot.com/modules/manager/dockerfile/
+      - https://emmer.dev/blog/keep-docker-base-images-updated-with-renovate/
+      - https://github.com/renovatebot/renovate/discussions/28767
+
+  # ─── 4. AI/LLM CLI INTEGRATIONS IN DEVCONTAINERS ───────────────────
+  ai_cli_devcontainer:
+    summary: |
+      In 2026, the pattern is to run AI coding agents INSIDE devcontainers
+      for sandboxing. Official devcontainer features exist for Claude Code.
+      Multi-agent session managers coordinate across tools.
+    anthropic_official:
+      feature: "ghcr.io/anthropics/devcontainer-features/claude-code:1"
+      docs: "https://code.claude.com/docs/en/devcontainer"
+      repo: "https://github.com/anthropics/devcontainer-features"
+      sandbox_pattern: |
+        Firewall rules whitelist only: npm registry, GitHub, Claude API.
+        Enables --dangerously-skip-permissions for unattended operation.
+    community_projects:
+      - name: "claude-code-devcontainers"
+        url: "https://github.com/centminmod/claude-code-devcontainers"
+        desc: "Production-ready devcontainer combining Claude Code, Codex CLI, Gemini CLI"
+      - name: "trailofbits/claude-code-devcontainer"
+        url: "https://github.com/trailofbits/claude-code-devcontainer"
+        desc: "Sandboxed devcontainer for bypass mode, built for security audits"
+      - name: "claudebox"
+        url: "https://github.com/RchGrav/claudebox"
+        desc: "Fully containerized Claude Code with pre-configured dev profiles"
+      - name: "agent-sandbox"
+        url: "https://github.com/mattolson/agent-sandbox"
+        desc: "Secure local dev environment for multi-AI agent collaboration"
+      - name: "gemini-cli-container"
+        url: "https://github.com/samhann/gemini-cli-container"
+        desc: "DevContainer for Gemini CLI inspired by Claude Code's implementation"
+    session_managers:
+      - name: "ccmanager"
+        url: "https://github.com/kbwo/ccmanager"
+        desc: "Manages Claude Code / Gemini CLI / Codex CLI / Copilot CLI sessions across worktrees"
+        devcontainer_support: true
+      - name: "claude-squad"
+        url: "https://github.com/smtg-ai/claude-squad"
+        desc: "Multiple AI agents in separate workspaces, simultaneous tasks"
+      - name: "agtx"
+        url: "https://github.com/fynnfluegge/agtx"
+        desc: "Kanban board for parallel coding agents in git worktrees"
+      - name: "agent-deck"
+        url: "https://github.com/asheshgoplani/agent-deck"
+        desc: "Terminal session manager TUI for multiple AI coding agents"
+    market_state_march_2026: |
+      Claude Code and Gemini CLI both support 1M token context.
+      Gemini CLI v0.34.0 defaults to Plan Mode (read-only first).
+      Many devs use Gemini for exploration (60-70% of tasks), Claude for consistency.
+      CCManager appends --teammate-mode in-process to Claude to avoid PTY conflicts.
+    sources:
+      - https://code.claude.com/docs/en/devcontainer
+      - https://github.com/anthropics/devcontainer-features
+      - https://codewithandrea.com/articles/run-ai-agents-inside-devcontainer/
+      - https://github.com/kbwo/ccmanager
+      - https://www.datacamp.com/blog/gemini-cli-vs-claude-code
+      - https://nimbalyst.com/blog/best-session-managers-for-claude-code-and-codex/
+
+  # ─── 5. MISE IN DOCKER ─────────────────────────────────────────────
+  mise_in_docker:
+    summary: |
+      mise replaces asdf/rtx for tool version management. Critical Docker
+      gotcha: home directory mounts hide tools installed during build.
+    installation_patterns:
+      copy_from_official_image: |
+        COPY --from=jdxcode/mise /usr/local/bin/mise /usr/local/bin/mise
+      install_script: |
+        RUN curl https://mise.run | sh
+      devcontainer_feature: |
+        Available as a community devcontainer feature
+    critical_gotcha: |
+      Devcontainers mount the user's home directory, which HIDES tools
+      installed during docker build into ~/.local/share/mise/installs.
+      SOLUTION: Use `mise install --system` to install to
+      /usr/local/share/mise/installs (outside ~ so it survives mounts).
+    best_practices:
+      - "Use mise.toml at project root for reproducible tool versions"
+      - "In Dockerfile: mise install --system to persist tools outside ~"
+      - "In postCreateCommand: mise install for user-level tools after mount"
+      - "Copy mise binary from official image for faster builds"
+      - "Same mise.toml drives both local dev and CI/CD"
+    cookbook: "https://mise.jdx.dev/mise-cookbook/docker.html"
+    sources:
+      - https://mise.jdx.dev/mise-cookbook/docker.html
+      - https://rezachegini.com/2025/10/14/mise-and-dev-containers-simple-setup-guide/
+      - https://sreake.com/en/blog/stop-worrying-about-ai-wrecking-your-code-a-template-for-unified-development-environments-using-dev-containers-and-mise/
+      - https://medium.com/@pedrotychang/my-reproducible-developer-environment-chezmoi-mise-devcontainers-omnictl-aa27740a0acf
+
+  # ─── 6. CHEZMOI IN DOCKER ──────────────────────────────────────────
+  chezmoi_in_docker:
+    summary: |
+      chezmoi bootstraps dotfiles in containers. The pattern is:
+      chezmoi init -> install mise (if missing) -> apply dotfiles -> mise install.
+    patterns:
+      devcontainer_postCreateCommand: |
+        chezmoi init --apply runs in postCreateCommand to bootstrap dotfiles
+        after the container is created and home directory is mounted.
+      docker_command: |
+        chezmoi docker <image-id> [-- init-args]
+        Creates container, installs chezmoi, runs chezmoi init --apply, opens shell.
+      github_codespaces: |
+        VS Code Codespaces/Devcontainers natively support dotfiles repos.
+        Set dotfiles.repository in VS Code settings or GitHub Codespaces config.
+      devpod_integration: |
+        DevPod supports dotfiles natively, linking container with IDE.
+    architecture: |
+      .devcontainer/
+        devcontainer.json  (references Dockerfile + dotfiles repo)
+        Dockerfile         (base image + system deps)
+      chezmoi run order:
+        1. chezmoi init --apply (dotfiles, shell config, tool config)
+        2. mise install (tools from mise.toml, bootstrapped by chezmoi)
+        3. postStartCommand hooks for session-specific setup
+    sources:
+      - https://www.chezmoi.io/reference/commands/docker/
+      - https://www.chezmoi.io/user-guide/machines/containers-and-vms/
+      - https://medium.com/@pedrotychang/my-reproducible-developer-environment-chezmoi-mise-devcontainers-omnictl-aa27740a0acf
+      - https://alfonsofortunato.com/projects/devpod-dotfiles-chezmoi/
+
+  # ─── 7. HK (GIT HOOKS) ────────────────────────────────────────────
+  hk_git_hooks:
+    summary: |
+      hk is a Rust-based git hook manager by jdx (mise author). Uses Pkl
+      for config. Key differentiator: read/write file locks for safe
+      parallel linting (no race conditions).
+    key_features:
+      - "Read/write file locks: multiple linters run in parallel safely"
+      - "Rust-native builtins: trailing whitespace, EOF fixing, merge conflict detection"
+      - "Pkl configuration format (hk.pkl)"
+      - "Deep mise integration (tool versions, env vars, task deps)"
+      - "Tighter linter integration than pre-commit/lefthook"
+    pkl_config_example: |
+      amends "https://hk.jdx.dev/hk.pkl"
+      hooks {
+        ["pre-commit"] {
+          linters {
+            ["ruff"] { glob = "*.py"; run = "ruff check --fix {files}" }
+            ["prettier"] { glob = "*.{ts,js,json}"; run = "prettier --write {files}" }
+          }
+        }
+      }
+    mise_integration: |
+      - mise manages tool versions used in hk.pkl
+      - mise provides env vars and task dependencies
+      - hk + mise = hooks + tools in one declarative stack
+    comparison:
+      vs_lefthook: "hk has file locks for safe parallel writes; lefthook does not"
+      vs_pre_commit: "hk is faster (Rust), has builtins, uses Pkl not YAML"
+      vs_husky: "hk is language-agnostic, not Node.js specific"
+    recent_updates: |
+      - Deprecated Types.pkl removed, simplifying configuration
+      - Monorepo task support landed in mise (Oct 2025)
+      - hk continues active development as companion to mise
+    sources:
+      - https://hk.jdx.dev/getting_started
+      - https://hk.jdx.dev/configuration.html
+      - https://hk.jdx.dev/mise_integration.html
+      - https://hk.jdx.dev/pkl_introduction.html
+      - https://github.com/jdx/hk
+      - https://github.com/jdx/mise/discussions/4434
+
+  # ─── 8. SUPPLY CHAIN SECURITY ──────────────────────────────────────
+  supply_chain_security:
+    summary: |
+      The 2026 standard: sign images with Cosign, generate SBOM with Trivy/Syft,
+      store attestations as OCI artifacts, verify at deploy time.
+    stack:
+      signing: "Cosign (Sigstore) - identity-based signing with ephemeral keys"
+      sbom: "Trivy, Syft, Docker Scout - SPDX or CycloneDX format"
+      attestation: "OCI Attestations (subject + predicate, cryptographically verifiable)"
+      verification: "Cosign verify + admission controllers (Kyverno/OPA)"
+      scanning: "Trivy, Grype, Docker Scout, Snyk"
+    best_practices:
+      - "Generate SBOM for every image build"
+      - "Store SBOM + provenance as attestations tied to image digest"
+      - "Use identity-based signing (no developer-managed keys)"
+      - "Reference images by digest, not tag (required for correct attestation)"
+      - "Scan at every CI/CD pipeline stage"
+      - "Use minimal base images (Alpine, distroless)"
+      - "Enforce admission controllers to block unsigned/non-compliant images"
+      - "SLSA provenance for build reproducibility"
+    ci_pipeline_pattern: |
+      1. Build image with BuildKit
+      2. Generate SBOM (trivy image --format spdx-json)
+      3. Sign image (cosign sign --identity-token)
+      4. Attach SBOM attestation (cosign attest --predicate sbom.json)
+      5. Push to registry
+      6. At deploy: cosign verify + policy check
+    sources:
+      - https://docs.docker.com/dhi/core-concepts/signatures/
+      - https://edu.chainguard.dev/open-source/sigstore/cosign/how-to-sign-an-sbom-with-cosign/
+      - https://bell-sw.com/blog/docker-image-security-best-practices-for-production/
+      - https://trivy.dev/docs/latest/supply-chain/attestation/sbom/
+      - https://sbomify.com/guides/docker/
+
+  # ─── 9. BUILD CACHING ──────────────────────────────────────────────
+  build_caching:
+    summary: |
+      BuildKit cache mounts + registry-backed caching = 70-90% build time reduction.
+      Cache mounts persist package manager caches even when layers invalidate.
+    cache_mount_types:
+      bind_mount: "Temporarily mount source without adding layers"
+      cache_mount: "RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt"
+      secret_mount: "RUN --mount=type=secret,id=mysecret cat /run/secrets/mysecret"
+    registry_backed_caching:
+      export: "docker buildx build --push --cache-to type=registry,ref=myregistry.com/myapp:cache"
+      import: "docker buildx build --cache-from type=registry,ref=myregistry.com/myapp:cache"
+      use_case: "CI/CD with ephemeral builders (GitHub Actions, etc.)"
+    cache_mount_examples:
+      pip: "RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt"
+      npm: "RUN --mount=type=cache,target=/root/.npm npm ci"
+      apt: "RUN --mount=type=cache,target=/var/cache/apt apt-get install -y gcc"
+      go: "RUN --mount=type=cache,target=/go/pkg/mod go build ./..."
+      cargo: "RUN --mount=type=cache,target=/usr/local/cargo/registry cargo build --release"
+      mise: "RUN --mount=type=cache,target=/root/.local/share/mise mise install"
+    optimization_rules:
+      - "Place least-changing layers first (OS -> deps -> code)"
+      - "Use cache mounts for package manager directories"
+      - "Use bind mounts for source code needed only at build time"
+      - "Use registry-backed cache for CI/CD (ephemeral builders)"
+      - "Combine RUN commands to reduce layer count"
+      - "Use .dockerignore to exclude unnecessary context"
+    performance: "70-90% build time reduction with proper caching strategy"
+    sources:
+      - https://docs.docker.com/build/cache/optimize/
+      - https://eastondev.com/blog/en/posts/dev/20251217-docker-build-cache/
+      - https://dockerbuild.com/reference/layer-caching
+      - https://tech.sparkfabrik.com/en/blog/docker-cache-deep-dive/
+      - https://www.netdata.cloud/academy/docker-layer-caching/

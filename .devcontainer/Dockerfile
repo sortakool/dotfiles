@@ -1,24 +1,63 @@
-# Declarative platform and base image
-FROM ubuntu:25.10
+# syntax=docker/dockerfile:1.7
 
-# Build arguments for user configuration
+# ============================================================
+# Composable base image: ubuntu (default) or cpp-devcontainer
+# ============================================================
+ARG BASE_IMAGE=ubuntu:25.10
+
+FROM ${BASE_IMAGE} AS base
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG APT_SNAPSHOT=20260328T000000Z
+ARG MISE_VERSION=2026.3.10
 ARG USERNAME=vscode
 ARG USER_UID=1000
-ARG USER_GID=$USER_UID
+ARG USER_GID=${USER_UID}
 
-# Enforce Mise strictness
-ENV MISE_STRICT=1
+ENV DEBIAN_FRONTEND=${DEBIAN_FRONTEND} \
+    MISE_STRICT=1
 
-# Use shell with pipefail for better error handling
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Bare minimum system dependencies
-# Everything else comes from Mise/Pixi/UV
-RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
-    && apt-get install -y --no-install-recommends \
+# APT snapshot pinning for reproducible builds
+# Cache scoped by APT_SNAPSHOT to prevent cross-target cache poisoning
+RUN --mount=type=cache,id=apt-cache-${APT_SNAPSHOT},target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=apt-lists-${APT_SNAPSHOT},target=/var/lib/apt/lists,sharing=locked \
+    distro="$(. /etc/os-release && printf '%s' "$ID")" && \
+    codename="$(. /etc/os-release && printf '%s' "$VERSION_CODENAME")" && \
+    case "$distro" in \
+      ubuntu) \
+        apt-get update && \
+        apt-get install -y --no-install-recommends ca-certificates ubuntu-keyring && \
+        find /etc/apt/sources.list.d -name '*.sources' -exec \
+          sed -i -E "s|URIs: https?://[^ ]+/ubuntu/?|URIs: https://snapshot.ubuntu.com/ubuntu/${APT_SNAPSHOT}/|g" {} + && \
+        printf 'Acquire::Check-Valid-Until "false";\n' >/etc/apt/apt.conf.d/90snapshot \
+        ;; \
+      debian) \
+        printf '%s\n' \
+          'Types: deb' \
+          "URIs: http://snapshot.debian.org/archive/debian/${APT_SNAPSHOT}/" \
+          "Suites: ${codename} ${codename}-updates" \
+          'Components: main' \
+          'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+          '' \
+          'Types: deb' \
+          "URIs: http://snapshot.debian.org/archive/debian-security/${APT_SNAPSHOT}/" \
+          "Suites: ${codename}-security" \
+          'Components: main' \
+          'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+          >/etc/apt/sources.list.d/debian.sources && \
+        printf 'Acquire::Check-Valid-Until "false";\n' >/etc/apt/apt.conf.d/90snapshot \
+        ;; \
+    esac
+
+# Bare minimum system dependencies (everything else via mise/pixi/uv)
+RUN --mount=type=cache,id=apt-cache-${APT_SNAPSHOT},target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=apt-lists-${APT_SNAPSHOT},target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     curl \
     git \
-    ca-certificates \
     sudo \
     zsh \
     build-essential \
@@ -28,10 +67,15 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     libreadline-dev \
     libsqlite3-dev \
     libatomic1 \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /tmp/*
 
-# Create the user using variables, handling potential UID/GID conflicts
+# ---------- user setup ----------
+FROM base AS user-setup
+
+ARG USERNAME
+ARG USER_UID
+ARG USER_GID
+
 RUN export USER_UID=${USER_UID:-1000} \
     && export USER_GID=${USER_GID:-$USER_UID} \
     && if id -u $USERNAME >/dev/null 2>&1; then userdel -r $USERNAME || true; fi \
@@ -46,14 +90,29 @@ RUN export USER_UID=${USER_UID:-1000} \
     && chown $USERNAME:$USERNAME /home/$USERNAME/.ssh \
     && echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
+# ---------- mise system install ----------
+FROM user-setup AS mise-setup
+
+ARG USERNAME
+
+# Install pinned mise version globally (survives home directory volume mounts)
+ARG MISE_VERSION
+RUN curl -fsSL "https://mise.jdx.dev/v${MISE_VERSION}/mise-v${MISE_VERSION}-linux-x64" \
+      -o /usr/local/bin/mise \
+    && chmod 755 /usr/local/bin/mise
+
+# ---------- final ----------
+FROM mise-setup AS final
+
+ARG USERNAME
+
 USER $USERNAME
-ENV USER=$USERNAME
+ENV USER=$USERNAME \
+    PATH="/home/$USERNAME/.local/bin:/home/$USERNAME/.local/share/mise/shims:/home/$USERNAME/.cargo/bin:/usr/local/bin:${PATH}"
+
 WORKDIR /home/$USERNAME
 
-# Copy the dotfiles repository
+# Copy dotfiles repository for chezmoi
 COPY --chown=$USERNAME:$USERNAME . /home/$USERNAME/.local/share/chezmoi
-
-# Declarative PATH enforcement
-ENV PATH="/home/$USERNAME/.local/bin:/home/$USERNAME/.local/share/mise/shims:/home/$USERNAME/.cargo/bin:${PATH}"
 
 WORKDIR /home/$USERNAME

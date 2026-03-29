@@ -1,0 +1,93 @@
+title: "Develop Phase: Gap Remediation Implementation"
+date: 2026-03-28
+type: implementation-log
+
+files_modified:
+  - path: ".devcontainer/Dockerfile"
+    action: rewrite
+    gaps_closed: [GAP-02, GAP-05, GAP-06, GAP-01]
+    changes:
+      - "Added syntax=docker/dockerfile:1.7 BuildKit directive"
+      - "Added ARG BASE_IMAGE=ubuntu:25.10 for composability"
+      - "Added APT snapshot pinning (ubuntu + debian auto-detect)"
+      - "Added BuildKit cache mounts for apt, mise"
+      - "Multi-stage: base -> user-setup -> mise-setup -> final"
+      - "Installed mise globally to /usr/local/bin (survives volume mounts)"
+
+  - path: "docker-bake.hcl"
+    action: create
+    gaps_closed: [GAP-03, GAP-04]
+    changes:
+      - "dev target: ubuntu base, registry caching, SBOM+provenance"
+      - "cpp target: cpp-devcontainer GHCR base, separate cache namespace"
+      - "dev-load and cpp-load for local docker output"
+      - "Follows cpp-playground bake patterns"
+
+  - path: ".devcontainer/devcontainer.json"
+    action: update
+    gaps_closed: [GAP-07]
+    changes:
+      - "Added ghcr.io/anthropics/devcontainer-features/claude-code:1"
+      - "Added BASE_IMAGE and APT_SNAPSHOT build args"
+      - "Added updateContentCommand for incremental mise installs"
+      - "Simplified postStartCommand"
+
+  - path: ".github/workflows/ci.yml"
+    action: rewrite
+    gaps_closed: [GAP-09]
+    changes:
+      - "Added contract-preflight job (Dockerfile validation + hadolint)"
+      - "Switched to docker/bake-action@v5"
+      - "Added path-based triggers"
+      - "Added workflow_dispatch with target selection"
+
+  - path: "renovate.json"
+    action: update
+    gaps_closed: [GAP-13]
+    changes:
+      - "Added docker:pinDigests preset"
+      - "Added pinDigests:false for devcontainer manager"
+      - "Added automerge for minor/patch/digest"
+      - "Enabled vulnerability alerts"
+      - "Added dockerfile and devcontainer managers"
+      - "Added regex managers for docker-bake.hcl"
+
+  - path: "hk.pkl"
+    action: create
+    gaps_closed: [GAP-08]
+    changes:
+      - "Pre-commit: ruff-format, ruff-check, ty-check, hadolint"
+      - "Pre-push: pytest"
+      - "Follows cpp-playground hk.pkl patterns"
+
+  - path: ".hadolint.yaml"
+    action: create
+    gaps_closed: []
+    changes:
+      - "Ignore DL3008 (APT snapshots replace version pinning)"
+      - "Ignore DL3013"
+
+  - path: "home/dot_config/mise/config.toml.tmpl"
+    action: update
+    gaps_closed: [GAP-08]
+    changes:
+      - "Added hk = 1.38.0"
+      - "Added hadolint = 2.12.0"
+
+gaps_status:
+  closed: [GAP-01, GAP-02, GAP-03, GAP-04, GAP-05, GAP-06, GAP-07, GAP-08, GAP-09, GAP-13]
+  deferred:
+    - id: GAP-10
+      reason: "s6-overlay is a polish item; current sshd feature handles process supervision"
+    - id: GAP-11
+      reason: "chezmoi drift detection is a follow-up skill"
+    - id: GAP-12
+      reason: "Claude skills as managed dotfiles is a separate effort"
+    - id: GAP-14
+      reason: "Multi-arch blocked by P2996 compiler x86_64 constraint"
+    - id: GAP-15
+      reason: "just task runner is optional; mise tasks suffice"
+    - id: GAP-16
+      reason: "pixi environments for toolchain isolation is a cpp-playground concern"
+    - id: GAP-17
+      reason: "watchexec is a nice-to-have"

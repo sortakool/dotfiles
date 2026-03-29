@@ -4,28 +4,92 @@ on:
   schedule:
     - cron: '0 0 * * 0' # Every Sunday at midnight
   push:
-    branches: [ main ]
+    branches: [main]
+    paths:
+      - '.devcontainer/**'
+      - 'docker-bake.hcl'
+      - 'home/**'
+      - 'python/**'
+      - 'install.sh'
+      - '.github/workflows/ci.yml'
+      - 'hk.pkl'
+      - 'renovate.json'
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      target:
+        description: 'Bake target (dev, cpp, all)'
+        required: false
+        default: 'dev'
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}-devcontainer
 
-jobs:
-  build-and-push-image:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
+permissions:
+  contents: read
+  packages: write
 
+jobs:
+  lint:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Install mise
+        uses: jdx/mise-action@v2
+
+      - name: Validate hk config
+        run: hk validate
+        env:
+          HK_PKL_BACKEND: pklr
+          HK_LOG: debug
+
+  contract-preflight:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate Dockerfile contracts
+        run: |
+          set -euo pipefail
+          echo "--- Checking Dockerfile syntax directive ---"
+          head -1 .devcontainer/Dockerfile | grep -q 'syntax=docker/dockerfile' || \
+            { echo "FAIL: Missing BuildKit syntax directive"; exit 1; }
+
+          echo "--- Checking APT snapshot pinning ---"
+          grep -q 'APT_SNAPSHOT' .devcontainer/Dockerfile || \
+            { echo "FAIL: Missing APT_SNAPSHOT build arg"; exit 1; }
+
+          echo "--- Checking BASE_IMAGE composability ---"
+          grep -q 'ARG BASE_IMAGE' .devcontainer/Dockerfile || \
+            { echo "FAIL: Missing BASE_IMAGE build arg"; exit 1; }
+
+          echo "--- Checking docker-bake.hcl exists ---"
+          test -f docker-bake.hcl || \
+            { echo "FAIL: Missing docker-bake.hcl"; exit 1; }
+
+          echo "--- Checking SBOM attestation ---"
+          grep -q 'type=sbom' docker-bake.hcl || \
+            { echo "FAIL: Missing SBOM attestation in bake config"; exit 1; }
+
+          echo "All contracts passed."
+
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: .devcontainer/Dockerfile
+
+  build-dev:
+    needs: contract-preflight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -37,7 +101,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
+      - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -46,29 +110,29 @@ jobs:
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
             type=ref,event=pr
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+      - name: Build and push (dev target)
+        uses: docker/bake-action@v5
         with:
-          context: .
-          file: .devcontainer/Dockerfile
-          platforms: linux/amd64
-          # Only push on main, schedule, or PR (PRs get a unique tag)
+          targets: dev
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          set: |
+            dev.tags=${{ steps.meta.outputs.tags }}
+            dev.labels=${{ steps.meta.outputs.labels }}
 
   validate-setup:
-    needs: build-and-push-image
+    needs: build-dev
     runs-on: ubuntu-latest
-    # Use the image built in the previous step via the local Docker cache/context
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run validation in local image
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.0"
+
+      - name: Run validation in built image
         run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          export PATH="$HOME/.local/bin:$PATH"
           export DOTFILES_IMAGE="ghcr.io/${{ github.repository }}-devcontainer:${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.number) || 'latest' }}"
           cd python
           uv run dotfiles-setup docker up

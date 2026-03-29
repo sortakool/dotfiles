@@ -1,0 +1,116 @@
+amends "package://github.com/jdx/hk/releases/download/v1.39.0/hk@1.39.0#/Config.pkl"
+
+// Zero-skip policy: fail_fast=false to report ALL issues, not just the first
+fail_fast = false
+
+hooks {
+  // ==========================================================================
+  // PRE-COMMIT: Quality gates before every commit
+  // ==========================================================================
+  ["pre-commit"] {
+    fix = true
+    stash = "git"
+    steps {
+      // --- File hygiene builtins (auto-detected by step name) ---
+      ["trailing_whitespace"] {}
+      ["newlines"] {}
+      ["mixed_line_ending"] {}
+
+      // --- Safety builtins ---
+      ["detect_private_key"] {}
+      ["check_added_large_files"] {}
+      ["check_merge_conflict"] {}
+      ["check_case_conflict"] {}
+      ["check_symlinks"] {}
+      ["check_executables_have_shebangs"] {}
+
+      // --- Typo detection ---
+      ["typos"] {}
+
+      // --- Python: ruff + ty ---
+      ["ruff_format"] {
+        glob = List("python/src/**/*.py", "python/tests/**/*.py")
+      }
+      ["ruff"] {
+        glob = List("python/src/**/*.py", "python/tests/**/*.py")
+      }
+      ["ty"] {
+        glob = List("python/src/**/*.py", "python/tests/**/*.py")
+      }
+
+      // --- Dockerfile ---
+      ["hadolint"] {
+        glob = List(".devcontainer/Dockerfile")
+      }
+
+      // --- TOML ---
+      ["taplo_format"] {
+        glob = List("**/*.toml")
+      }
+      ["taplo"] {
+        glob = List("**/*.toml")
+        depends = List("taplo_format")
+      }
+
+      // --- YAML ---
+      ["yamllint"] {
+        glob = List("**/*.yml", "**/*.yaml")
+      }
+
+      // --- JSON ---
+      ["jq"] {
+        glob = List("**/*.json")
+      }
+
+      // --- Pkl ---
+      ["pkl"] {
+        glob = List("**/*.pkl")
+      }
+      ["pkl_format"] {
+        glob = List("**/*.pkl")
+      }
+
+      // --- Shell ---
+      ["shellcheck"] {
+        glob = List("**/*.sh")
+      }
+      ["shfmt"] {
+        glob = List("**/*.sh")
+      }
+
+      // --- Markdown ---
+      ["markdown_lint"] {
+        glob = List("**/*.md")
+      }
+
+      // --- GitHub Actions ---
+      ["actionlint"] {
+        glob = List(".github/workflows/*.yml")
+      }
+      ["zizmor"] {
+        glob = List(".github/workflows/*.yml")
+      }
+    }
+  }
+
+  // ==========================================================================
+  // COMMIT-MSG: Enforce conventional commit format
+  // ==========================================================================
+  ["commit-msg"] {
+    steps {
+      ["check_conventional_commit"] {}
+    }
+  }
+
+  // ==========================================================================
+  // PRE-PUSH: Full test suite before pushing
+  // ==========================================================================
+  ["pre-push"] {
+    steps {
+      ["test"] {
+        exclusive = true
+        check = "cd python && uv run pytest tests/ -x -q"
+      }
+    }
+  }
+}
