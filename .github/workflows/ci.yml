@@ -51,7 +51,7 @@ jobs:
           HK_LOG: debug
 
       - name: Run hk checks
-        run: hk check --all
+        run: hk run pre-commit --all
         env:
           HK_PKL_BACKEND: pklr
 
