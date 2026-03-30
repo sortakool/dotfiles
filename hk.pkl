@@ -121,6 +121,13 @@ hooks {
       ["mise"] {
         glob = List("**/mise.toml")
       }
+
+      // --- No-vscode-user enforcement ---
+      ["no_vscode_user"] {
+        glob = List(".devcontainer/Dockerfile*", "docker-bake.hcl", ".devcontainer/devcontainer*.json")
+        batch = true
+        check = "! grep -n 'vscode' {files} || { echo 'FAIL: vscode username found'; exit 1; }"
+      }
     }
   }
 
