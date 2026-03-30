@@ -12,6 +12,9 @@ dotfiles-setup = "dotfiles_setup.main:main"
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
 [tool.ruff]
 line-length = 88
 target-version = "py313"
@@ -23,6 +26,9 @@ ignore = [
     "T201", # Allow print statements for CLI output
     "S603", "S607", # Allow subprocess calls with dynamic/partial paths
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

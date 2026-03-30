@@ -13,6 +13,7 @@ from typing import ClassVar
 from dotfiles_setup.ai import AIOrchestrator
 from dotfiles_setup.audit import DevEnvironmentAuditor, ToolManager
 from dotfiles_setup.docker import DevContainerManager
+from dotfiles_setup.verify import main as verify_main
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,17 @@ def setup_parser() -> argparse.ArgumentParser:
     docker_subparsers.add_parser("test", help="Run tests inside the container")
     docker_subparsers.add_parser("down", help="Bring the devcontainer down")
 
+    # verify command
+    verify_parser = subparsers.add_parser("verify", help="Run verification suites")
+    verify_sub = verify_parser.add_subparsers(
+        dest="verify_command", help="Verify commands"
+    )
+    run_parser = verify_sub.add_parser("run", help="Run verification suites")
+    run_parser.add_argument("--suite", help="Run a specific suite by name")
+    run_parser.add_argument(
+        "--json", action="store_true", dest="output_json", help="Output JSON"
+    )
+
     # version command
     subparsers.add_parser("version", help="Show the version of the library")
 
@@ -140,6 +152,13 @@ def run_command(args: argparse.Namespace, project_root: Path) -> None:
         sys.stdout.write("0.1.0\n")
     elif args.command == "install":
         handle_install(project_root)
+    elif args.command == "verify":
+        sys.exit(
+            verify_main(
+                suite_filter=getattr(args, "suite", None),
+                output_json=getattr(args, "output_json", False),
+            )
+        )
     elif args.command == "sync-versions":
         ToolManager().sync_versions(project_root)
 

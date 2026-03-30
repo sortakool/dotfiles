@@ -1,0 +1,4 @@
+[[suite]]
+name = "policy.no-vscode-user"
+description = "No vscode username references in Docker/devcontainer files"
+handler = "no_vscode_user"
