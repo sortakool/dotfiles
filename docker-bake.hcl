@@ -45,15 +45,15 @@ target "_common" {
   dockerfile = ".devcontainer/Dockerfile"
   platforms  = ["${PLATFORM}"]
   args = {
-    APT_SNAPSHOT = APT_SNAPSHOT
-    USERNAME     = DEVCONTAINER_USERNAME
+    APT_SNAPSHOT           = APT_SNAPSHOT
+    DEVCONTAINER_USERNAME  = DEVCONTAINER_USERNAME
   }
 }
 
 # Default dev environment on ubuntu base
 target "dev" {
   inherits = ["_common", "docker-metadata-action"]
-  target   = "final"
+  target   = "devcontainer"
   args = {
     BASE_IMAGE   = BASE_IMAGE
     APT_SNAPSHOT = APT_SNAPSHOT

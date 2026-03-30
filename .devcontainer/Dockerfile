@@ -9,9 +9,6 @@ FROM ${BASE_IMAGE} AS base
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG APT_SNAPSHOT=20260328T000000Z
-ARG USERNAME=vscode
-ARG USER_UID=1000
-ARG USER_GID=${USER_UID}
 
 ENV DEBIAN_FRONTEND=${DEBIAN_FRONTEND}
 
@@ -66,49 +63,56 @@ RUN --mount=type=cache,id=apt-cache-${APT_SNAPSHOT},target=/var/cache/apt,sharin
     libatomic1 \
     && rm -rf /tmp/*
 
-# ---------- user setup ----------
-FROM base AS user-setup
-
-ARG USERNAME
-ARG USER_UID
-ARG USER_GID
-
-RUN export USER_UID=${USER_UID:-1000} \
-    && export USER_GID=${USER_GID:-$USER_UID} \
-    && if id -u $USERNAME >/dev/null 2>&1; then userdel -r $USERNAME || true; fi \
-    && if getent group $USERNAME >/dev/null 2>&1; then groupdel $USERNAME || true; fi \
-    && if id -u 1000 >/dev/null 2>&1; then userdel -r $(id -nu 1000) || true; fi \
-    && if getent group 1000 >/dev/null 2>&1; then groupdel $(getent group 1000 | cut -d: -f1) || true; fi \
-    && if id -u $USER_UID >/dev/null 2>&1; then userdel -r $(id -nu $USER_UID) || true; fi \
-    && if getent group $USER_GID >/dev/null 2>&1; then groupdel $(getent group $USER_GID | cut -d: -f1) || true; fi \
-    && groupadd --gid $USER_GID $USERNAME \
-    && useradd --uid $USER_UID --gid $USER_GID -m -s /bin/bash $USERNAME \
-    && mkdir -p /home/$USERNAME/.ssh && chmod 700 /home/$USERNAME/.ssh \
-    && chown $USERNAME:$USERNAME /home/$USERNAME/.ssh \
-    && echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
-
 # ---------- dotfiles bootstrap ----------
-FROM user-setup AS final
+FROM base AS tools
 
-ARG USERNAME
-
-USER $USERNAME
-ENV USER=$USERNAME \
-    PATH="/home/$USERNAME/.local/bin:/home/$USERNAME/.local/share/mise/shims:/home/$USERNAME/.cargo/bin:/usr/local/bin:${PATH}"
-
-# Copy dotfiles repo and run the single bootstrap entry point
-# Cache mounts persist tool downloads across builds (not baked into image layer)
-COPY --chown=$USERNAME:$USERNAME . /tmp/dotfiles
-RUN mkdir -p /home/$USERNAME/.cache
-RUN --mount=type=cache,target=/home/$USERNAME/.cache/mise,uid=1000,gid=1000 \
-    --mount=type=cache,target=/home/$USERNAME/.cache/uv,uid=1000,gid=1000 \
-    --mount=type=cache,target=/home/$USERNAME/.cache/chezmoi,uid=1000,gid=1000 \
-    --mount=type=cache,target=/home/$USERNAME/.pkl,uid=1000,gid=1000 \
-    --mount=type=secret,id=github_token,uid=1000,gid=1000 \
+# Run bootstrap as root (tools install to neutral system paths)
+COPY . /tmp/dotfiles
+RUN --mount=type=cache,target=/root/.cache/mise,uid=0,gid=0 \
+    --mount=type=cache,target=/root/.cache/uv,uid=0,gid=0 \
+    --mount=type=cache,target=/root/.cache/chezmoi,uid=0,gid=0 \
+    --mount=type=cache,target=/root/.pkl,uid=0,gid=0 \
+    --mount=type=secret,id=github_token \
     if [ -f /run/secrets/github_token ]; then \
       export GITHUB_TOKEN="$(cat /run/secrets/github_token)"; \
       export MISE_GITHUB_TOKEN="$GITHUB_TOKEN"; \
     fi && \
     cd /tmp/dotfiles && bash install.sh --local
 
-WORKDIR /home/$USERNAME
+# ---------- devcontainer (default user + SSH) ----------
+FROM tools AS devcontainer
+
+ARG DEVCONTAINER_USERNAME=devcontainer
+ARG USER_UID=1000
+ARG USER_GID=1000
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssh-server \
+    && rm -rf /var/lib/apt/lists/* /tmp/*
+
+RUN groupadd --gid ${USER_GID} ${DEVCONTAINER_USERNAME} \
+    && useradd --uid ${USER_UID} --gid ${USER_GID} -m -s /bin/bash ${DEVCONTAINER_USERNAME} \
+    && echo "${DEVCONTAINER_USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${DEVCONTAINER_USERNAME} \
+    && chmod 0440 /etc/sudoers.d/${DEVCONTAINER_USERNAME} \
+    && mkdir -p /home/${DEVCONTAINER_USERNAME}/.ssh \
+    && chmod 700 /home/${DEVCONTAINER_USERNAME}/.ssh \
+    && chown ${DEVCONTAINER_USERNAME}:${DEVCONTAINER_USERNAME} /home/${DEVCONTAINER_USERNAME}/.ssh
+
+# Pre-stage cache directories
+RUN mkdir -p \
+    /home/${DEVCONTAINER_USERNAME}/.cache/uv \
+    /home/${DEVCONTAINER_USERNAME}/.local/share/mise \
+    /home/${DEVCONTAINER_USERNAME}/.local/bin \
+    /home/${DEVCONTAINER_USERNAME}/.local/state \
+    /home/${DEVCONTAINER_USERNAME}/.claude \
+    /home/${DEVCONTAINER_USERNAME}/.codex \
+    /home/${DEVCONTAINER_USERNAME}/.gemini \
+    /home/${DEVCONTAINER_USERNAME}/.config/gh \
+    && chown -R ${DEVCONTAINER_USERNAME}:${DEVCONTAINER_USERNAME} /home/${DEVCONTAINER_USERNAME}
+
+ENV USER=${DEVCONTAINER_USERNAME} \
+    HOME=/home/${DEVCONTAINER_USERNAME} \
+    PATH="/home/${DEVCONTAINER_USERNAME}/.local/bin:/home/${DEVCONTAINER_USERNAME}/.local/share/mise/shims:${PATH}"
+
+USER ${DEVCONTAINER_USERNAME}
+WORKDIR /home/${DEVCONTAINER_USERNAME}
