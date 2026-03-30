@@ -46,7 +46,7 @@ hooks {
 
       // --- Dockerfile (keep glob — only lint our Dockerfile, not random ones) ---
       ["hadolint"] {
-        glob = List(".devcontainer/Dockerfile")
+        glob = List(".devcontainer/Dockerfile", ".devcontainer/Dockerfile.host-user")
       }
 
       // --- TOML ---

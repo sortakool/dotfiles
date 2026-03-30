@@ -25,7 +25,7 @@ on:
 
 env:
   CONTAINER_REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}-devcontainer
+  IMAGE_NAME: ray-manaloto/cpp-devcontainer
 
 permissions:
   contents: read
@@ -91,6 +91,12 @@ jobs:
           echo "--- Checking SBOM attestation ---"
           grep -q 'type=sbom' docker-bake.hcl || \
             { echo "FAIL: Missing SBOM attestation in bake config"; exit 1; }
+
+          echo "--- Checking no vscode username ---"
+          if grep -rn 'vscode' .devcontainer/Dockerfile* docker-bake.hcl .devcontainer/devcontainer*.json 2>/dev/null | grep -v '#'; then
+            echo "FAIL: vscode username reference found in Docker/devcontainer files"
+            exit 1
+          fi
 
           echo "All contracts passed."
 
