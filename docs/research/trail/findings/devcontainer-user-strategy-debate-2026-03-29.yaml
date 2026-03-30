@@ -1,0 +1,86 @@
+title: "Devcontainer CI/CD & User Strategy Debate"
+date: "2026-03-29"
+type: adversarial-debate
+participants:
+  gemini: {position: "defend dotfiles", status: complete}
+  codex: {position: "attack dotfiles", status: "read files but no formatted argument"}
+  sonnet: {position: "pragmatic middle", status: "still processing during synthesis"}
+  opus: {position: "structural critic", status: complete}
+
+topic: >
+  Is the dotfiles repo's devcontainer CI/CD pipeline and user strategy
+  (hardcoded vscode user, UID 1000) correct and optimal, compared to
+  cpp-playground's approach (host-user passthrough with updateRemoteUserUID)?
+
+consensus:
+  user_strategy:
+    verdict: "vscode is fine for now, host-user is more future-proof"
+    gemini_score: 9
+    opus_score: 6
+    action: "Keep vscode; evaluate host-user in Phase 2 if non-VS-Code usage grows"
+    priority: low
+
+  ci_pipeline:
+    verdict: "Linear pipeline is correct for dotfiles scope"
+    gemini_score: 8
+    opus_score: 8
+    action: "No change needed"
+    priority: none
+
+  smoke_testing:
+    verdict: "Current inline bash smoke test is too thin"
+    gemini_score: 7
+    opus_score: 4
+    action: "Adopt structured Python-driven verification with named test suites"
+    priority: high
+
+  image_architecture:
+    verdict: "Single Dockerfile is correct"
+    gemini_score: 9
+    opus_score: 7
+    action: "No change needed"
+    priority: none
+
+  adopt_cpp_playground:
+    verdict: "Selectively adopt smoke tests; skip candidate-promote CI and self-hosted runners"
+    gemini_score: 2
+    opus_score: 5
+    action: "Cherry-pick verification patterns, not the full CI architecture"
+    priority: medium
+
+key_insights:
+  - "The comparison is structurally misleading — different project constraints"
+  - "cpp-playground needs host-user for debugger UID alignment; dotfiles doesn't"
+  - "candidate-promote CI is overkill for a single-consumer personal image"
+  - "Structured smoke testing is universally beneficial regardless of project scope"
+  - "Host-user becomes relevant if dotfiles image is used from non-VS-Code tools"
+
+focused_debate_round_2:
+  topic: "Should dotfiles adopt host-user passthrough?"
+  unanimous_verdict: "Keep hardcoded vscode user, fix registry mismatch bug"
+  key_discovery: >
+    localEnv:USER in CI resolves to the runner OS user (runner/ubuntu),
+    not vscode — Option B would break CI devcontainer validation.
+  web_research_findings:
+    - "updateRemoteUserUID is a no-op on macOS (Docker Desktop VM handles UID translation)"
+    - "The setting only matters on Linux hosts with direct UID passthrough"
+    - "localEnv:UID is NOT expanded during devcontainer build time"
+    - "Best practice for personal images: hardcoded user is fine"
+  bug_found:
+    description: "devcontainer.json image reference mismatch"
+    current: "ghcr.io/ray-manaloto/dotfiles-devcontainer:dev"
+    should_be: "ghcr.io/sortakool/dotfiles-devcontainer:dev"
+    severity: "HIGH — pulls wrong/nonexistent image"
+  action_items:
+    - fix: "Registry mismatch in devcontainer.json line 3"
+      effort: "1 minute"
+      priority: HIGH
+    - fix: "Keep vscode user as-is"
+      effort: "None"
+      priority: N/A
+
+automation_impact:
+  dockerfile_reviewer: "Update only if host-user adopted (accept parameterized usernames)"
+  chezmoi_check: "Unaffected"
+  hooks: "Unaffected"
+  new_skill: "Consider Python-driven verification skill if smoke tests are upgraded"

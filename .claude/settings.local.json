@@ -1,0 +1,55 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(claude plugin*)",
+      "Bash(claude --help*)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(mise use:*)",
+      "Bash(hk check:*)",
+      "Bash(hk --help)",
+      "Bash(hk validate:*)",
+      "Bash(npx agent-fetch:*)",
+      "WebFetch(domain:hk.jdx.dev)",
+      "Bash(gh run:*)",
+      "Bash(grep -E '\\(exporting to image|pushing|layer|done$|ERROR|exporting\\)')",
+      "Bash(grep -E 'build.*UNKNOWN.*\\(pushing manifest|exporting to image|#26|#27|#28|done$\\)')",
+      "Bash(docker buildx:*)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d[''''target''''][''''dev''''][''''tags''''], indent=2\\)\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''tags:'''', d[''''target''''][''''dev''''][''''tags'''']\\)\")"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'CMD=\"$CLAUDE_TOOL_INPUT\"; if echo \"$CMD\" | grep -qE \"codex\\s+-p\\s\" ; then echo \"BLOCK: codex -p is --profile, not prompt. Use: echo \\\"prompt\\\" | codex exec --ephemeral --sandbox read-only -\" >&2; exit 2; fi; if echo \"$CMD\" | grep -qE \"codex\\s+--full-context\" ; then echo \"BLOCK: --full-context is not a valid codex flag. Use: echo \\\"prompt\\\" | codex exec -\" >&2; exit 2; fi; if echo \"$CMD\" | grep -qE \"gemini\\s+-p\\s+\\\"[^\\\"]+\\\"\" ; then echo \"BLOCK: gemini -p \\\"prompt\\\" is wrong. Use: echo \\\"prompt\\\" | gemini -o text --approval-mode yolo -p \\\"\\\"\" >&2; exit 2; fi; exit 0'"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'FILE=\"$CLAUDE_FILE_PATH\"; case \"$FILE\" in */mise.lock|*/uv.lock|*.egg-info/*) echo \"BLOCK: $FILE is generated — modify mise.toml or pyproject.toml instead\" >&2; exit 2;; esac; exit 0'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'FILE=\"$CLAUDE_FILE_PATH\"; [ -z \"$FILE\" ] && exit 0; case \"$FILE\" in *.sh) shellcheck \"$FILE\" 2>&1 | head -5;; *.py) ruff check \"$FILE\" --no-fix 2>&1 | head -5;; */Dockerfile*) hadolint \"$FILE\" 2>&1 | head -5;; *.yml|*.yaml) yamllint -d relaxed \"$FILE\" 2>&1 | head -3;; esac; exit 0'"
+          }
+        ]
+      }
+    ]
+  }
+}

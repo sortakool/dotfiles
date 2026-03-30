@@ -1,0 +1,58 @@
+title: "Adversarial Review of Host-User Migration Spec"
+date: "2026-03-29"
+type: adversarial-spec-review
+spec: "docs/ultrapowers/specs/2026-03-29-devcontainer-host-user-migration-design.md"
+participants:
+  gemini: {role: "infrastructure architect", status: complete}
+  codex: {role: "implementation blocker finder", status: "reading files, no formatted output"}
+  sonnet: {role: "critical issue finder", status: "still processing"}
+  opus: {role: "scope critic", status: complete}
+
+showstoppers:
+  - id: 1
+    title: "Pre-built image has no user"
+    severity: CRITICAL
+    description: >
+      devcontainer stage creates no user. remoteUser: localEnv:USER points to
+      nonexistent user. updateRemoteUserUID cannot remap what doesn't exist.
+    fix: "Always use build block, or devcontainer stage must create a default user"
+    consensus: "all reviewers"
+
+  - id: 2
+    title: "substr() doesn't exist in docker-bake.hcl"
+    severity: CRITICAL
+    description: >
+      docker buildx bake uses a limited HCL dialect, not Terraform HCL.
+      substr() is not available.
+    fix: "Truncate SHAs in CI workflow, pass as separate SHORT variables"
+    consensus: "opus + spec-reviewer"
+
+  - id: 3
+    title: "Compiler builds don't belong in dotfiles"
+    severity: HIGH
+    description: >
+      GCC + Clang from source: 2+ hours on ubuntu-latest.
+      Turns 8-minute CI into 2-hour marathon.
+    fix: "COPY --from cpp-playground published images, don't build from source"
+    consensus: "gemini (2/10) + opus"
+
+scope_assessment:
+  gemini_verdict: "SEVERE over-engineering"
+  opus_verdict: "Scope monster - started as 2-file change, became 20-file 5-phase project"
+  recommendation: >
+    Cut compiler builds, simplify config cascade, defer candidate-promote CI,
+    reduce Python CLI to 3 subcommands, start agents in Phase 0 not Phase 4.
+
+what_to_keep:
+  - "Host-user overlay pattern (core requirement)"
+  - "Registry migration"
+  - "Dynamic localEnv:USER paths"
+  - "Python smoke test"
+  - "No-vscode enforcement"
+
+what_to_cut_or_defer:
+  - {item: "Compiler source builds", action: CUT, reason: "consume from cpp-playground"}
+  - {item: "3-layer config cascade", action: CUT, reason: "use env vars directly"}
+  - {item: "Candidate-promote CI", action: DEFER, reason: "keep linear pipeline for now"}
+  - {item: "13 CLI subcommands", action: DEFER, reason: "start with 3: up, smoke, verify"}
+  - {item: "6 skills", action: DEFER, reason: "start with 2 + 1 rule"}

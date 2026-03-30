@@ -1,0 +1,7 @@
+{
+  "enabledPlugins": {
+    "guide@claude-community": false,
+    "mcp2cli@claude-community": true,
+    "context7-plugin@context7-marketplace": true
+  }
+}
