@@ -216,6 +216,7 @@ jobs:
         run: |
           docker run --rm ${{ env.CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.smoke-tag.outputs.tag }} bash -lc '
             set -euo pipefail
+            export PATH="/root/.local/bin:/opt/mise/shims:$PATH"
             echo "=== hk validate ==="
             cd /root/.local/share/chezmoi
             mise trust .

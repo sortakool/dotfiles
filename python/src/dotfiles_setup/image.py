@@ -18,6 +18,7 @@ def build_smoke_script() -> str:
     """
     return """\
 set -euo pipefail
+export PATH="/root/.local/bin:/opt/mise/shims:$PATH"
 echo "=== hk validate ==="
 cd /root/.local/share/chezmoi
 mise trust .
