@@ -1,0 +1,66 @@
+# syntax=docker/dockerfile:1.7
+# Thin host-user overlay — renames default UID 1000 user to match host.
+# Built at `devcontainer up` time, never baked into published image.
+
+ARG BASE_IMAGE=ghcr.io/ray-manaloto/cpp-devcontainer:dev
+FROM ${BASE_IMAGE}
+USER root
+
+ARG DEVCONTAINER_USERNAME=devcontainer
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Validate username
+RUN if [ -z "${DEVCONTAINER_USERNAME}" ]; then \
+      echo "ERROR: DEVCONTAINER_USERNAME is empty" >&2; exit 1; \
+    fi && \
+    if [ "${DEVCONTAINER_USERNAME}" = "root" ]; then \
+      echo "ERROR: DEVCONTAINER_USERNAME cannot be root" >&2; exit 1; \
+    fi && \
+    if echo "${DEVCONTAINER_USERNAME}" | grep -qE '[^a-z0-9_-]'; then \
+      echo "ERROR: DEVCONTAINER_USERNAME contains invalid characters" >&2; exit 1; \
+    fi
+
+# Group handling: rename or create GID 1000
+RUN existing_group="$(getent group 1000 | cut -d: -f1 || true)" && \
+    if [ -n "${existing_group}" ] && [ "${existing_group}" != "${DEVCONTAINER_USERNAME}" ]; then \
+      groupmod -n "${DEVCONTAINER_USERNAME}" "${existing_group}"; \
+    elif [ -z "${existing_group}" ]; then \
+      groupadd --gid 1000 "${DEVCONTAINER_USERNAME}"; \
+    fi
+
+# User handling: rename existing UID 1000 or create new
+RUN existing_user="$(getent passwd 1000 | cut -d: -f1 || true)" && \
+    if [ -n "${existing_user}" ] && [ "${existing_user}" != "${DEVCONTAINER_USERNAME}" ]; then \
+      usermod --login "${DEVCONTAINER_USERNAME}" \
+              --home "/home/${DEVCONTAINER_USERNAME}" \
+              --move-home "${existing_user}"; \
+    elif [ -z "${existing_user}" ]; then \
+      useradd --uid 1000 --gid 1000 -m -s /bin/bash "${DEVCONTAINER_USERNAME}"; \
+    fi
+
+# Sudoers
+RUN usermod --append --groups sudo "${DEVCONTAINER_USERNAME}" && \
+    printf '%s ALL=(ALL) NOPASSWD:ALL\n' "${DEVCONTAINER_USERNAME}" \
+      > /etc/sudoers.d/"${DEVCONTAINER_USERNAME}" && \
+    chmod 0440 /etc/sudoers.d/"${DEVCONTAINER_USERNAME}"
+
+# Pre-stage home directories for volume mount targets
+RUN mkdir -p \
+    /home/${DEVCONTAINER_USERNAME}/.cache/uv \
+    /home/${DEVCONTAINER_USERNAME}/.local/share/mise \
+    /home/${DEVCONTAINER_USERNAME}/.local/bin \
+    /home/${DEVCONTAINER_USERNAME}/.local/state \
+    /home/${DEVCONTAINER_USERNAME}/.claude \
+    /home/${DEVCONTAINER_USERNAME}/.codex \
+    /home/${DEVCONTAINER_USERNAME}/.gemini \
+    /home/${DEVCONTAINER_USERNAME}/.config/gh \
+    /home/${DEVCONTAINER_USERNAME}/.ssh && \
+    chmod 700 /home/${DEVCONTAINER_USERNAME}/.ssh && \
+    chown -R ${DEVCONTAINER_USERNAME}:${DEVCONTAINER_USERNAME} /home/${DEVCONTAINER_USERNAME}
+
+ENV DEVCONTAINER_USERNAME=${DEVCONTAINER_USERNAME} \
+    HOME=/home/${DEVCONTAINER_USERNAME} \
+    PATH="/home/${DEVCONTAINER_USERNAME}/.local/bin:/home/${DEVCONTAINER_USERNAME}/.local/share/mise/shims:${PATH}"
+
+USER ${DEVCONTAINER_USERNAME}
