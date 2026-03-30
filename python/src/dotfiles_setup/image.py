@@ -20,6 +20,7 @@ def build_smoke_script() -> str:
 set -euo pipefail
 echo "=== hk validate ==="
 cd /root/.local/share/chezmoi
+mise trust .
 hk validate
 echo "=== mise ls (check no missing) ==="
 missing=$(mise ls 2>&1 | grep -c "(missing)" || true)
