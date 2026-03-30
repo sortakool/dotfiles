@@ -48,7 +48,6 @@ RUN usermod --append --groups sudo "${DEVCONTAINER_USERNAME}" && \
 # Pre-stage home directories for volume mount targets
 RUN mkdir -p \
     /home/${DEVCONTAINER_USERNAME}/.cache/uv \
-    /home/${DEVCONTAINER_USERNAME}/.local/share/mise \
     /home/${DEVCONTAINER_USERNAME}/.local/bin \
     /home/${DEVCONTAINER_USERNAME}/.local/state \
     /home/${DEVCONTAINER_USERNAME}/.claude \
@@ -61,6 +60,7 @@ RUN mkdir -p \
 
 ENV DEVCONTAINER_USERNAME=${DEVCONTAINER_USERNAME} \
     HOME=/home/${DEVCONTAINER_USERNAME} \
-    PATH="/home/${DEVCONTAINER_USERNAME}/.local/bin:/home/${DEVCONTAINER_USERNAME}/.local/share/mise/shims:${PATH}"
+    MISE_DATA_DIR=/opt/mise \
+    PATH="/home/${DEVCONTAINER_USERNAME}/.local/bin:/opt/mise/shims:${PATH}"
 
 USER ${DEVCONTAINER_USERNAME}

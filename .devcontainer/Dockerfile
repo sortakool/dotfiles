@@ -37,12 +37,18 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # ---------- dotfiles bootstrap ----------
 FROM base AS tools
 
+ENV MISE_DATA_DIR=/opt/mise \
+    MISE_CACHE_DIR=/opt/mise/cache \
+    MISE_ALWAYS_KEEP_DOWNLOAD=1
+
 # Run bootstrap as root (tools install to neutral system paths)
 COPY . /tmp/dotfiles
-RUN --mount=type=cache,target=/root/.cache/mise,uid=0,gid=0 \
-    --mount=type=cache,target=/root/.cache/uv,uid=0,gid=0 \
-    --mount=type=cache,target=/root/.cache/chezmoi,uid=0,gid=0 \
-    --mount=type=cache,target=/root/.pkl,uid=0,gid=0 \
+RUN --mount=type=cache,id=mise-data,target=/opt/mise,sharing=locked \
+    --mount=type=cache,id=mise-cache,target=/opt/mise/cache,sharing=locked \
+    --mount=type=cache,id=uv-cache,target=/root/.cache/uv,sharing=locked \
+    --mount=type=cache,id=chezmoi-cache,target=/root/.cache/chezmoi,sharing=locked \
+    --mount=type=cache,id=pkl-cache,target=/root/.pkl,sharing=locked \
+    --mount=type=cache,id=npm-cache,target=/root/.npm,sharing=locked \
     --mount=type=secret,id=github_token \
     if [ -f /run/secrets/github_token ]; then \
       export GITHUB_TOKEN="$(cat /run/secrets/github_token)"; \
@@ -87,7 +93,6 @@ RUN existing_group="$(getent group ${USER_GID} | cut -d: -f1 || true)" && \
 # Pre-stage cache directories
 RUN mkdir -p \
     /home/${DEVCONTAINER_USERNAME}/.cache/uv \
-    /home/${DEVCONTAINER_USERNAME}/.local/share/mise \
     /home/${DEVCONTAINER_USERNAME}/.local/bin \
     /home/${DEVCONTAINER_USERNAME}/.local/state \
     /home/${DEVCONTAINER_USERNAME}/.claude \
@@ -98,7 +103,8 @@ RUN mkdir -p \
 
 ENV USER=${DEVCONTAINER_USERNAME} \
     HOME=/home/${DEVCONTAINER_USERNAME} \
-    PATH="/home/${DEVCONTAINER_USERNAME}/.local/bin:/home/${DEVCONTAINER_USERNAME}/.local/share/mise/shims:${PATH}"
+    MISE_DATA_DIR=/opt/mise \
+    PATH="/home/${DEVCONTAINER_USERNAME}/.local/bin:/opt/mise/shims:${PATH}"
 
 USER ${DEVCONTAINER_USERNAME}
 WORKDIR /home/${DEVCONTAINER_USERNAME}

@@ -111,6 +111,30 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
 
+      - name: Restore BuildKit mount caches
+        uses: actions/cache/restore@v4
+        id: cache-restore
+        with:
+          path: /tmp/buildkit-cache
+          key: buildkit-mounts-${{ runner.os }}-${{ hashFiles('mise.lock', 'home/dot_config/mise/config.toml.tmpl', 'install.sh') }}
+          restore-keys: |
+            buildkit-mounts-${{ runner.os }}-
+
+      - name: Inject mount caches into BuildKit
+        uses: reproducible-containers/buildkit-cache-dance@v3
+        with:
+          cache-source: /tmp/buildkit-cache
+          cache-map: |
+            {
+              "mise-data": "/opt/mise",
+              "mise-cache": "/opt/mise/cache",
+              "uv-cache": "/root/.cache/uv",
+              "chezmoi-cache": "/root/.cache/chezmoi",
+              "pkl-cache": "/root/.pkl",
+              "npm-cache": "/root/.npm"
+            }
+          skip-extraction: ${{ steps.cache-restore.outputs.cache-hit == 'true' }}
+
       - name: Log in to Container Registry
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
         with:
@@ -160,6 +184,13 @@ jobs:
           echo "| BuildKit mount caches | mise, uv, pkl |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "_Check build logs for CACHED markers to verify cache hit rate._" >> $GITHUB_STEP_SUMMARY
+
+      - name: Save BuildKit mount caches
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: /tmp/buildkit-cache
+          key: buildkit-mounts-${{ runner.os }}-${{ hashFiles('mise.lock', 'home/dot_config/mise/config.toml.tmpl', 'install.sh') }}
 
   # ============================================================
   # Smoke test: validate the published image

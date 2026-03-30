@@ -20,7 +20,7 @@
     "MISE_STRICT": "1"
   },
   "remoteEnv": {
-    "PATH": "${containerEnv:PATH}:/home/${localEnv:USER}/.local/share/mise/shims"
+    "PATH": "${containerEnv:PATH}:/opt/mise/shims"
   },
   "runArgs": [
     "--platform=linux/amd64",
@@ -28,7 +28,7 @@
     "--security-opt=seccomp=unconfined"
   ],
   "mounts": [
-    "type=volume,src=mise-home,target=/home/${localEnv:USER}/.local/share/mise",
+    "type=volume,src=mise-home,target=/opt/mise",
     "type=volume,src=uv-cache,target=/home/${localEnv:USER}/.cache/uv",
     "type=volume,src=claude-home,target=/home/${localEnv:USER}/.claude",
     "type=volume,src=codex-home,target=/home/${localEnv:USER}/.codex",
