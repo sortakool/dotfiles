@@ -1,0 +1,178 @@
+digraph G {
+	graph [compound=true,
+		nodesep=1.00,
+		rankdir=LR,
+		ranksep=0.50
+	];
+	node [label="\N"];
+	subgraph cluster_before_first_stage {
+		graph [label="Before First Stage"];
+		before_first_stage_0	[label="ARG BASE_IMAGE=ubuntu:25.10",
+			shape=box,
+			style=rounded,
+			width=2];
+	}
+	subgraph cluster_stage_0 {
+		graph [label=base,
+			margin=16
+		];
+		stage_0_layer_0	[fillcolor=white,
+			label="FROM ubuntu:25.10 AS base",
+			penwidth=0.5,
+			shape=box,
+			style="filled,rounded",
+			width=2];
+		stage_0_layer_1	[fillcolor=white,
+			label="ARG DEBIAN_FRONTEND=noninteractive",
+			penwidth=0.5,
+			shape=box,
+			style="filled,rounded",
+			width=2];
+		stage_0_layer_0 -> stage_0_layer_1;
+		stage_0_layer_2	[fillcolor=white,
+			label="ENV DEBIAN_FRONTEND=${DEBIAN_FRONTEND}",
+			penwidth=0.5,
+			shape=box,
+			style="filled,rounded",
+			width=2];
+		stage_0_layer_1 -> stage_0_layer_2;
+		stage_0_layer_3	[fillcolor=white,
+			label="SHELL ['/bin/bash', '-o', 'pipefail', '-c']",
+			penwidth=0.5,
+			shape=box,
+			style="filled,rounded",
+			width=2];
+		stage_0_layer_2 -> stage_0_layer_3;
+		stage_0_layer_4	[fillcolor=white,
+			label="RUN --mount=type=cache,target=/var/cache/apt,sharing=lock...",
+			penwidth=0.5,
+			shape=box,
+			style="filled,rounded",
+			width=2];
+		stage_0_layer_3 -> stage_0_layer_4;
+	}
+	subgraph cluster_stage_1 {
+		graph [label=tools,
+			margin=16
+		];
+		stage_1_layer_0	[fillcolor=white,
+			label="FROM base AS tools",
+			penwidth=0.5,
+			shape=box,
+			style="filled,rounded",
+			width=2];
+		stage_1_layer_1	[fillcolor=white,
+			label="ARG DEVCONTAINER_USERNAME=devcontainer",
+			penwidth=0.5,
+			shape=box,
+			style="filled,rounded",
+			width=2];
+		stage_1_layer_0 -> stage_1_layer_1;
+		stage_1_layer_2	[fillcolor=white,
+			label="ENV MISE_DATA_DIR=/opt/mise MISE_CACHE_DIR=/opt/mise/cach...",
+			penwidth=0.5,
+			shape=box,
+			style="filled,rounded",
+			width=2];
+		stage_1_layer_1 -> stage_1_layer_2;
+		stage_1_layer_3	[fillcolor=white,
+			label="RUN mkdir -p /home/${DEVCONTAINER_USERNAME}",
+			penwidth=0.5,
+			shape=box,
+			style="filled,rounded",
+			width=2];
+		stage_1_layer_2 -> stage_1_layer_3;
+		stage_1_layer_4	[fillcolor=white,
+			label="COPY . /tmp/dotfiles",
+			penwidth=0.5,
+			shape=box,
+			style="filled,rounded",
+			width=2];
+		stage_1_layer_3 -> stage_1_layer_4;
+		stage_1_layer_5	[fillcolor=white,
+			label="RUN --mount=type=cache,id=mise-cache,target=/opt/mise/cac...",
+			penwidth=0.5,
+			shape=box,
+			style="filled,rounded",
+			width=2];
+		stage_1_layer_4 -> stage_1_layer_5;
+	}
+	subgraph cluster_stage_2 {
+		graph [fillcolor=grey90,
+			label=devcontainer,
+			margin=16,
+			style=filled
+		];
+		stage_2_layer_0	[fillcolor=white,
+			label="FROM tools AS devcontainer",
+			penwidth=0.5,
+			shape=box,
+			style="filled,rounded",
+			width=2];
+		stage_2_layer_1	[fillcolor=white,
+			label="ARG USER_UID=1000",
+			penwidth=0.5,
+			shape=box,
+			style="filled,rounded",
+			width=2];
+		stage_2_layer_0 -> stage_2_layer_1;
+		stage_2_layer_2	[fillcolor=white,
+			label="ARG USER_GID=1000",
+			penwidth=0.5,
+			shape=box,
+			style="filled,rounded",
+			width=2];
+		stage_2_layer_1 -> stage_2_layer_2;
+		stage_2_layer_3	[fillcolor=white,
+			label="RUN apt-get update && apt-get install -y --no-install-rec...",
+			penwidth=0.5,
+			shape=box,
+			style="filled,rounded",
+			width=2];
+		stage_2_layer_2 -> stage_2_layer_3;
+		stage_2_layer_4	[fillcolor=white,
+			label="RUN existing_group='$(getent group ${USER_GID} | cut -d: ...",
+			penwidth=0.5,
+			shape=box,
+			style="filled,rounded",
+			width=2];
+		stage_2_layer_3 -> stage_2_layer_4;
+		stage_2_layer_5	[fillcolor=white,
+			label="RUN mkdir -p /home/${DEVCONTAINER_USERNAME}/.cache/uv /ho...",
+			penwidth=0.5,
+			shape=box,
+			style="filled,rounded",
+			width=2];
+		stage_2_layer_4 -> stage_2_layer_5;
+		stage_2_layer_6	[fillcolor=white,
+			label="ENV USER=${DEVCONTAINER_USERNAME} HOME=/home/${DEVCONTAIN...",
+			penwidth=0.5,
+			shape=box,
+			style="filled,rounded",
+			width=2];
+		stage_2_layer_5 -> stage_2_layer_6;
+		stage_2_layer_7	[fillcolor=white,
+			label="USER ${DEVCONTAINER_USERNAME}",
+			penwidth=0.5,
+			shape=box,
+			style="filled,rounded",
+			width=2];
+		stage_2_layer_6 -> stage_2_layer_7;
+		stage_2_layer_8	[fillcolor=white,
+			label="WORKDIR /home/${DEVCONTAINER_USERNAME}",
+			penwidth=0.5,
+			shape=box,
+			style="filled,rounded",
+			width=2];
+		stage_2_layer_7 -> stage_2_layer_8;
+	}
+	stage_0_layer_4 -> stage_1_layer_0	[ltail=cluster_stage_0];
+	external_image_0	[color=grey20,
+		fontcolor=grey20,
+		label="ubuntu:25.10",
+		shape=box,
+		style="dashed,rounded",
+		width=2];
+	external_image_0 -> stage_0_layer_0;
+	stage_1_layer_5 -> stage_2_layer_0	[ltail=cluster_stage_1];
+}

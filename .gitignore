@@ -25,3 +25,4 @@ __pycache__/
 # Maestro Session State (Keep plans, ignore active state)
 docs/maestro/state/active-session.md
 docs/maestro/state/archive/
+.gstack/
