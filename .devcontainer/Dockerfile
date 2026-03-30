@@ -8,46 +8,17 @@ ARG BASE_IMAGE=ubuntu:25.10
 FROM ${BASE_IMAGE} AS base
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG APT_SNAPSHOT=20260328T000000Z
 
 ENV DEBIAN_FRONTEND=${DEBIAN_FRONTEND}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# APT snapshot pinning for reproducible builds
-RUN --mount=type=cache,id=apt-cache-${APT_SNAPSHOT},target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,id=apt-lists-${APT_SNAPSHOT},target=/var/lib/apt/lists,sharing=locked \
-    distro="$(. /etc/os-release && printf '%s' "$ID")" && \
-    codename="$(. /etc/os-release && printf '%s' "$VERSION_CODENAME")" && \
-    case "$distro" in \
-      ubuntu) \
-        apt-get update && \
-        apt-get install -y --no-install-recommends ca-certificates ubuntu-keyring && \
-        find /etc/apt/sources.list.d -name '*.sources' -exec \
-          sed -i -E "s|URIs: https?://[^ ]+/ubuntu/?|URIs: https://snapshot.ubuntu.com/ubuntu/${APT_SNAPSHOT}/|g" {} + && \
-        printf 'Acquire::Check-Valid-Until "false";\n' >/etc/apt/apt.conf.d/90snapshot \
-        ;; \
-      debian) \
-        printf '%s\n' \
-          'Types: deb' \
-          "URIs: http://snapshot.debian.org/archive/debian/${APT_SNAPSHOT}/" \
-          "Suites: ${codename} ${codename}-updates" \
-          'Components: main' \
-          'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
-          '' \
-          'Types: deb' \
-          "URIs: http://snapshot.debian.org/archive/debian-security/${APT_SNAPSHOT}/" \
-          "Suites: ${codename}-security" \
-          'Components: main' \
-          'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
-          >/etc/apt/sources.list.d/debian.sources && \
-        printf 'Acquire::Check-Valid-Until "false";\n' >/etc/apt/apt.conf.d/90snapshot \
-        ;; \
-    esac
-
-# Bare minimum system dependencies (everything else via mise)
-RUN --mount=type=cache,id=apt-cache-${APT_SNAPSHOT},target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,id=apt-lists-${APT_SNAPSHOT},target=/var/lib/apt/lists,sharing=locked \
+# System dependencies (everything else via mise)
+# Uses default archive.ubuntu.com mirrors — no snapshot pinning.
+# Zero out of 456 GitHub projects using ubuntu:25.10 use snapshot pinning;
+# snapshot.ubuntu.com has known reliability issues (503s, rate limiting).
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \

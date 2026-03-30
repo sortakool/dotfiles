@@ -72,10 +72,6 @@ jobs:
           head -1 .devcontainer/Dockerfile | grep -q 'syntax=docker/dockerfile' || \
             { echo "FAIL: Missing BuildKit syntax directive"; exit 1; }
 
-          echo "--- Checking APT snapshot pinning ---"
-          grep -q 'APT_SNAPSHOT' .devcontainer/Dockerfile || \
-            { echo "FAIL: Missing APT_SNAPSHOT build arg"; exit 1; }
-
           echo "--- Checking BASE_IMAGE composability ---"
           grep -q 'ARG BASE_IMAGE' .devcontainer/Dockerfile || \
             { echo "FAIL: Missing BASE_IMAGE build arg"; exit 1; }

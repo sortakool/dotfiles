@@ -24,10 +24,6 @@ variable "BASE_IMAGE" {
   default = "ubuntu:25.10"
 }
 
-variable "APT_SNAPSHOT" {
-  default = "20260328T000000Z"
-}
-
 variable "DEVCONTAINER_USERNAME" {
   default = "devcontainer"
 }
@@ -45,8 +41,7 @@ target "_common" {
   dockerfile = ".devcontainer/Dockerfile"
   platforms  = ["${PLATFORM}"]
   args = {
-    APT_SNAPSHOT           = APT_SNAPSHOT
-    DEVCONTAINER_USERNAME  = DEVCONTAINER_USERNAME
+    DEVCONTAINER_USERNAME = DEVCONTAINER_USERNAME
   }
 }
 
@@ -55,8 +50,7 @@ target "dev" {
   inherits = ["_common", "docker-metadata-action"]
   target   = "devcontainer"
   args = {
-    BASE_IMAGE   = BASE_IMAGE
-    APT_SNAPSHOT = APT_SNAPSHOT
+    BASE_IMAGE = BASE_IMAGE
   }
   # Tags inherited from docker-metadata-action (CI overrides with SHA/latest/PR tags)
   # Registry cache: shared across CI runs and local dev
