@@ -1,9 +1,9 @@
 variable "DEFAULT_REGISTRY" {
-  default = "ghcr.io/sortakool"
+  default = "ghcr.io/ray-manaloto"
 }
 
 variable "IMAGE" {
-  default = "dotfiles-devcontainer"
+  default = "cpp-devcontainer"
 }
 
 # Full image reference used for tags and cache refs
@@ -24,16 +24,12 @@ variable "BASE_IMAGE" {
   default = "ubuntu:25.10"
 }
 
-variable "CPP_BASE_IMAGE" {
-  default = "${DEFAULT_REGISTRY}/cpp-devcontainer:dev"
-}
-
 variable "APT_SNAPSHOT" {
   default = "20260328T000000Z"
 }
 
 variable "DEVCONTAINER_USERNAME" {
-  default = "vscode"
+  default = "devcontainer"
 }
 
 // Default tags for local builds; overridden by docker/metadata-action
@@ -79,31 +75,6 @@ target "dev" {
   ]
 }
 
-# C++ variant using cpp-playground's published image as base
-target "cpp" {
-  inherits = ["_common"]
-  target   = "final"
-  args = {
-    BASE_IMAGE   = CPP_BASE_IMAGE
-    APT_SNAPSHOT = APT_SNAPSHOT
-  }
-  tags = [
-    "${IMAGE_REF}:cpp-${TAG}",
-  ]
-  cache-from = [
-    "type=registry,ref=${IMAGE_REF}:cpp-buildcache",
-    "type=gha,scope=dotfiles-cpp",
-  ]
-  cache-to = [
-    "type=registry,ref=${IMAGE_REF}:cpp-buildcache,mode=max",
-    "type=gha,scope=dotfiles-cpp,mode=max",
-  ]
-  attest = [
-    "type=provenance,mode=min",
-    "type=sbom",
-  ]
-}
-
 # Local-load variant (outputs to docker instead of registry)
 target "dev-load" {
   inherits = ["dev"]
@@ -111,16 +82,10 @@ target "dev-load" {
   tags     = ["${IMAGE_REF}:${TAG}", "${IMAGE}:${TAG}"]
 }
 
-target "cpp-load" {
-  inherits = ["cpp"]
-  output   = ["type=docker"]
-  tags     = ["${IMAGE_REF}:cpp-${TAG}", "${IMAGE}:cpp-${TAG}"]
-}
-
 group "default" {
   targets = ["dev"]
 }
 
 group "all" {
-  targets = ["dev", "cpp"]
+  targets = ["dev"]
 }
