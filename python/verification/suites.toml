@@ -42,15 +42,6 @@ paths = [".devcontainer/Dockerfile"]
 pattern = '^\s*ENV\s.*HOME=/root\b'
 
 [[suite]]
-name = "build.home-devcontainer-user"
-description = "HOME must reference DEVCONTAINER_USERNAME variable"
-category = "build"
-check_type = "static"
-handler = "regex_match"
-paths = [".devcontainer/Dockerfile"]
-pattern = 'HOME=/home/\$\{?DEVCONTAINER_USERNAME\}?'
-
-[[suite]]
 name = "build.no-warning-suppression"
 description = "Never suppress mise warnings"
 category = "build"
@@ -167,6 +158,60 @@ check_type = "static"
 handler = "require_tokens"
 paths = [".devcontainer/Dockerfile"]
 tokens = ["/opt/mise/shims"]
+
+[[suite]]
+name = "build.cargo-home-opt"
+description = "CARGO_HOME must be /opt/data/cargo in Dockerfile"
+category = "build"
+check_type = "static"
+handler = "require_tokens"
+paths = [".devcontainer/Dockerfile"]
+tokens = ["CARGO_HOME=/opt/data/cargo"]
+
+[[suite]]
+name = "build.rustup-home-opt"
+description = "RUSTUP_HOME must be /opt/data/rustup in Dockerfile"
+category = "build"
+check_type = "static"
+handler = "require_tokens"
+paths = [".devcontainer/Dockerfile"]
+tokens = ["RUSTUP_HOME=/opt/data/rustup"]
+
+[[suite]]
+name = "build.gopath-opt"
+description = "GOPATH must be /opt/data/go in Dockerfile"
+category = "build"
+check_type = "static"
+handler = "require_tokens"
+paths = [".devcontainer/Dockerfile"]
+tokens = ["GOPATH=/opt/data/go"]
+
+[[suite]]
+name = "build.npm-prefix-opt"
+description = "NPM_CONFIG_PREFIX must be /opt/data/npm in Dockerfile"
+category = "build"
+check_type = "static"
+handler = "require_tokens"
+paths = [".devcontainer/Dockerfile"]
+tokens = ["NPM_CONFIG_PREFIX=/opt/data/npm"]
+
+[[suite]]
+name = "build.home-opt-home"
+description = "HOME must be /opt/home in tools stage (user-agnostic)"
+category = "build"
+check_type = "static"
+handler = "require_tokens"
+paths = [".devcontainer/Dockerfile"]
+tokens = ["HOME=/opt/home"]
+
+[[suite]]
+name = "build.no-xdg-in-tools-stage"
+description = "XDG_DATA_HOME/XDG_CACHE_HOME must not be in Dockerfile"
+category = "build"
+check_type = "static"
+handler = "forbid_tokens"
+paths = [".devcontainer/Dockerfile"]
+tokens = ["XDG_DATA_HOME", "XDG_CACHE_HOME"]
 
 # =============================================================================
 # CI Constraints (~6) — Workflow correctness
@@ -296,15 +341,6 @@ pattern = 'DEVCONTAINER_USERNAME.*=.*"root"'
 # =============================================================================
 
 [[suite]]
-name = "arch.mise-shims-in-path-template"
-description = "Chezmoi templates must use MISE_DATA_DIR for shims path"
-category = "architecture"
-check_type = "static"
-handler = "require_tokens"
-paths = ["home/dot_zshenv.tmpl", "home/dot_profile.tmpl"]
-tokens = ["MISE_DATA_DIR"]
-
-[[suite]]
 name = "arch.devcontainer-remote-user-dynamic"
 description = "remoteUser must use localEnv:USER, not hardcoded"
 category = "architecture"
@@ -330,6 +366,15 @@ check_type = "static"
 handler = "require_tokens"
 paths = [".devcontainer/devcontainer.json"]
 tokens = ["MISE_STRICT"]
+
+[[suite]]
+name = "arch.chezmoiscripts-lifecycle"
+description = "Chezmoi lifecycle scripts must exist (run_once_before + run_onchange_after)"
+category = "architecture"
+check_type = "static"
+handler = "require_tokens"
+paths = ["home/.chezmoiscripts/run_once_before_01_install_mise.sh", "home/.chezmoiscripts/run_onchange_after_10_mise_install.sh.tmpl"]
+tokens = ["mise"]
 
 # =============================================================================
 # Policy Constraints (~4) — Human-only, not automatable
