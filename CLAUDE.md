@@ -14,7 +14,7 @@ uv run --directory python pytest tests/ -x -q  # Run tests
 ```
 
 ## Architecture
-- `.devcontainer/Dockerfile` — Multi-stage devcontainer (base → tools → devcontainer); uses default archive.ubuntu.com mirrors (no snapshot pinning), mise bootstrap; sets `MISE_DATA_DIR=/opt/mise`, `MISE_CACHE_DIR=/opt/mise/cache`, `MISE_ALWAYS_KEEP_DOWNLOAD=1`; `HOME=/home/devcontainer` in tools stage (not /root); devcontainer stage renames existing UID 1000 user/group via groupmod/usermod (handles ubuntu:25.10's built-in `ubuntu` user); cache mounts with `sharing=locked` and named IDs; **openssh-server NOT in base image** (moved to overlay)
+- `.devcontainer/Dockerfile` — Multi-stage devcontainer (base → tools → devcontainer); uses default archive.ubuntu.com mirrors (no snapshot pinning), mise bootstrap; base stage installs `gnupg` (for mise signature verification); tools stage sets `MISE_DATA_DIR=/opt/mise`, `MISE_CACHE_DIR=/opt/mise/cache`, `MISE_ALWAYS_KEEP_DOWNLOAD=1`, `HOME=/home/devcontainer`, `RUSTUP_HOME=/home/${DEVCONTAINER_USERNAME}/.rustup`, `CARGO_HOME=/home/${DEVCONTAINER_USERNAME}/.cargo`, `npm_config_update_notifier=false`; `UV_LINK_MODE=copy` exported inline inside the RUN cache-mount block (NOT as global `ENV` — avoids bleeding into runtime); devcontainer stage renames existing UID 1000 user/group via groupmod/usermod (handles ubuntu:25.10's built-in `ubuntu` user); devcontainer stage `chown -R /opt/mise` to fix ownership for runtime cache ops; `RUSTUP_HOME`, `CARGO_HOME`, `/home/${DEVCONTAINER_USERNAME}/.cargo/bin` added to devcontainer stage ENV/PATH; cache mounts with `sharing=locked` and named IDs; **openssh-server NOT in base image** (moved to overlay)
 - `.devcontainer/Dockerfile.host-user` — Host-user overlay; renames UID 1000 user to match host via `DEVCONTAINER_USERNAME` build arg using `usermod --login --move-home`; installs openssh-server (local dev only, never published); validates username (empty/root/char checks); fixes stale sudoers with `rm -f /etc/sudoers.d/devcontainer`; sets `USER`, `LOGNAME`, `WORKDIR` to match renamed user; built at `devcontainer up` time, never pushed
 - `docker-bake.hcl` — BuildKit bake config (dev, dev-load targets); `IMAGE_REF` consolidates registry+image; `docker-metadata-action` target for CI tag inheritance
 - `install.sh` — Single bootstrap entry point used by Dockerfile
@@ -39,7 +39,7 @@ Registry: `ghcr.io/ray-manaloto/cpp-devcontainer`
 - Bake targets: `dev` (CI push), `dev-load` (local)
 - `IMAGE_REF` variable (`${DEFAULT_REGISTRY}/${IMAGE}`) consolidates registry+image for tags and cache refs
 - `docker-metadata-action` bake target provides default tags locally; CI overrides with SHA/latest/PR tags via metadata-action bake file
-- `contract-preflight` job runs `dotfiles-setup verify run --category build --category ci --category identity --category architecture --json` (replaces inline grep; ~30 suites across 4 automated categories)
+- `contract-preflight` job runs `dotfiles-setup verify run --category build --category ci --category identity --category architecture --json` (replaces inline grep; 36 suites across 4 automated categories + policy category skipped at runtime)
 - GHCR login is unconditional (no `if: github.event_name != 'pull_request'` guard); the `push` flag on bake-action controls whether images are pushed, but auth is required for `cache-to` registry writes regardless — conditional login was the root cause of 403s on PR builds
 - **buildkit-cache-dance@v3**: `reproducible-containers/buildkit-cache-dance@v3` + `actions/cache` restore/save for `/tmp/buildkit-cache`; cache-map: `mise-cache`→`/opt/mise/cache`, `uv-cache`, `chezmoi-cache`, `pkl-cache`, `npm-cache` (mise-data excluded — cache mounts excluded from image layers, tools would vanish)
 - **Cache key**: `hashFiles('mise.lock', 'home/dot_config/mise/config.toml.tmpl', 'install.sh')` — covers both mise configs (root `mise.toml` omitted; only the chezmoi template drives container toolchain)
@@ -57,10 +57,10 @@ dotfiles-setup image smoke --image-ref <ref>                                    
 ```
 
 ### Verification Suites
-Structured Python-driven verification via `python/verification/suites.toml` manifest (~30 suites, 5 categories).
+Structured Python-driven verification via `python/verification/suites.toml` manifest (36 suites, 5 categories; `[meta] version = "2"`).
 
 Categories:
-- `build` (~16 suites): Dockerfile structure constraints (MISE_DATA_DIR, HOME path, cache mounts, openssh placement, BuildKit syntax, ARG ordering, no warning suppression)
+- `build` (~17 suites): Dockerfile structure constraints (MISE_DATA_DIR, HOME path, cache mounts, openssh placement, BuildKit syntax, no warning suppression, gnupg-installed, npm-no-update-notifier, path-includes-mise-shims, uv-link-mode-not-global)
 - `ci` (~6 suites): Workflow correctness (SBOM/provenance attestation, cache key contents, unconditional GHCR login, no mise-data in cache-map)
 - `identity` (~6 suites): User/group enforcement (no-vscode-user across Dockerfiles + install.sh + ci.yml, USER/LOGNAME/WORKDIR set, stale sudoers cleanup, username validation)
 - `architecture` (~4 suites): Structural invariants (MISE_DATA_DIR in shims path template, remoteUser dynamic, no mise-home volume, MISE_STRICT in containerEnv)
@@ -80,7 +80,7 @@ Agent spec: `.claude/agents/devcontainer-specialist.md` — role card for Docker
 - **DONE**: Registry migration to `ghcr.io/ray-manaloto/cpp-devcontainer`; image renamed from `dotfiles-devcontainer`
 - **DONE**: No-vscode enforcement — `contract-preflight` CI job (uses `dotfiles-setup verify run --category build --category ci --category identity --category architecture`) + `identity.no-vscode-user` suite covering Dockerfiles, devcontainer.json, docker-bake.hcl, install.sh, ci.yml + image-level checks in `image.py` `build_smoke_script()`
 - **DONE**: `dotfiles-setup` CLI: `verify run [--suite] [--category] [--json]`, `verify list [--category]`, `image smoke <ref>`, `docker {build,up,test,down}`
-- **DONE**: `suites.toml` expanded from 1 suite to ~30 suites across 5 categories (build, ci, identity, architecture, policy); all handlers are generic TOML-parameterized functions
+- **DONE**: `suites.toml` expanded from 1 suite to 36 suites across 5 categories (build, ci, identity, architecture, policy); `[meta] version = "2"` header added; all handlers are generic TOML-parameterized functions
 - **DONE**: `substr()` removed from docker-bake HCL; SHAs truncated externally
 - **DONE**: Dockerfile stages renamed to `tools` + `devcontainer`; devcontainer stage renames existing UID 1000 user via `groupmod`/`usermod` (not purge-then-recreate) — handles ubuntu:25.10's built-in `ubuntu` user
 - **DONE**: `MISE_DATA_DIR=/opt/mise` — neutral shared path set as `ENV` in `tools` stage; resolves CRITICAL path mismatch between root build and devcontainer user
@@ -95,6 +95,12 @@ Agent spec: `.claude/agents/devcontainer-specialist.md` — role card for Docker
 - **DONE**: Chezmoi template PATH fix — `home/dot_zshenv.tmpl` and `home/dot_profile.tmpl` use `${MISE_DATA_DIR:-$HOME/.local/share/mise}/shims` instead of hardcoded `$HOME/.local/share/mise/shims` (Debate 006)
 - **DONE**: Dockerfile.host-user identity fixes (Debate 004 blockers): `USER=${DEVCONTAINER_USERNAME}`, `LOGNAME=${DEVCONTAINER_USERNAME}`, `WORKDIR /home/${DEVCONTAINER_USERNAME}` in ENV block; `rm -f /etc/sudoers.d/devcontainer` before new sudoers entry; username validation (empty/root/char checks)
 - **DONE**: openssh-server moved from base Dockerfile to Dockerfile.host-user overlay (Debate 005) — removes CVE exposure from published image
+- **DONE**: `gnupg` added to base stage apt-get install (required for mise signature verification)
+- **DONE**: `RUSTUP_HOME` and `CARGO_HOME` set in both tools and devcontainer stage ENV blocks (pinned to `/home/${DEVCONTAINER_USERNAME}/.rustup` and `.cargo`)
+- **DONE**: `npm_config_update_notifier=false` in tools stage ENV — suppresses npm update notices during build
+- **DONE**: `UV_LINK_MODE=copy` exported inline inside the RUN cache-mount block (not global `ENV`) — prevents hardlink mode from bleeding into runtime containers
+- **DONE**: `chown -R ${DEVCONTAINER_USERNAME}:${DEVCONTAINER_USERNAME} /opt/mise` in devcontainer stage — fixes /opt/mise ownership so runtime mise cache ops succeed as non-root user
+- **DONE**: `/home/${DEVCONTAINER_USERNAME}/.cargo/bin` added to PATH in devcontainer stage ENV
 
 **Remaining (not yet implemented):**
 - **Debate 003 follow-up** (items 1-3 DONE; one partial):

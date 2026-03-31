@@ -23,6 +23,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ca-certificates \
     curl \
     git \
+    gnupg \
     sudo \
     zsh \
     build-essential \
@@ -44,7 +45,9 @@ ENV MISE_DATA_DIR=/opt/mise \
     MISE_ALWAYS_KEEP_DOWNLOAD=1 \
     HOME=/home/${DEVCONTAINER_USERNAME} \
     RUSTUP_HOME=/home/${DEVCONTAINER_USERNAME}/.rustup \
-    CARGO_HOME=/home/${DEVCONTAINER_USERNAME}/.cargo
+    CARGO_HOME=/home/${DEVCONTAINER_USERNAME}/.cargo \
+    RUSTUP_INIT_SKIP_PATH_CHECK=yes \
+    npm_config_update_notifier=false
 
 # Pre-create home so install.sh writes to the final user's home, not /root.
 # Avoids all /root permission and path issues when running as non-root user.

@@ -142,6 +142,24 @@ paths = [".devcontainer/Dockerfile"]
 tokens = ["install.sh"]
 
 [[suite]]
+name = "build.gnupg-installed"
+description = "gnupg must be in apt-get install for mise signature verification"
+category = "build"
+check_type = "static"
+handler = "require_tokens"
+paths = [".devcontainer/Dockerfile"]
+tokens = ["gnupg"]
+
+[[suite]]
+name = "build.npm-no-update-notifier"
+description = "npm_config_update_notifier=false to suppress build notices"
+category = "build"
+check_type = "static"
+handler = "require_tokens"
+paths = [".devcontainer/Dockerfile"]
+tokens = ["npm_config_update_notifier=false"]
+
+[[suite]]
 name = "build.path-includes-mise-shims"
 description = "PATH must include /opt/mise/shims"
 category = "build"
