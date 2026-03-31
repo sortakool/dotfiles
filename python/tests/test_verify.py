@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from dotfiles_setup.verify import load_manifest, run_suite
+from dotfiles_setup.verify import forbid_tokens, load_manifest, run_suite
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -36,3 +36,23 @@ def test_run_suite_returns_fail_for_missing_handler() -> None:
     result = run_suite(entry, handlers={})
     assert result["status"] == "failed"
     assert "handler" in result["reason"].lower()
+
+
+def test_forbid_tokens_ignores_comments(tmp_path: Path) -> None:
+    """Verify forbid_tokens skips tokens that appear only in comments."""
+    f = tmp_path / "test.txt"
+    f.write_text("good_user = devcontainer\n# migrated from vscode user\n")
+    result = forbid_tokens([f], ["vscode"])
+    assert result["status"] == "passed"
+
+
+def test_forbid_tokens_catches_uncommented(tmp_path: Path) -> None:
+    """Verify forbid_tokens catches tokens in non-comment content."""
+    f = tmp_path / "test.txt"
+    f.write_text("USER vscode\n")
+    try:
+        forbid_tokens([f], ["vscode"])
+        raised = False
+    except Exception:
+        raised = True
+    assert raised

@@ -161,7 +161,7 @@ jobs:
         with:
           source: .
           targets: ${{ github.event.inputs.target || 'dev' }}
-          push: true
+          push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
           files: |
             docker-bake.hcl
             ${{ steps.meta.outputs.bake-file-tags }}

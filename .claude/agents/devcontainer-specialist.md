@@ -9,7 +9,7 @@ This project uses a two-layer devcontainer identity system:
 
 ### Stage Graph
 ```
-base (ubuntu:25.10, APT snapshot) → tools (root, install.sh) → devcontainer (default user)
+base (ubuntu:25.10) → tools (root, install.sh) → devcontainer (default user)
 ```
 
 ### Key Patterns
@@ -44,7 +44,7 @@ When reviewing Docker/devcontainer changes:
 3. Secret and cache mounts have correct uid/gid for the stage (root=0, user=1000)
 4. HCL variable names won't collide with CI environment variables
 5. Cache-from/cache-to refs match push tag org
-6. APT snapshot dates are valid and consistent
+6. APT packages use default mirrors (no snapshot pinning)
 7. SBOM and provenance attestations on push targets
 8. Local-only tags only on `-load` targets
 9. Overlay Dockerfile validates username (no empty, no root, no special chars)

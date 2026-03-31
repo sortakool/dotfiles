@@ -103,7 +103,10 @@ def forbid_tokens(
     for path in paths:
         if not path.exists():
             continue
-        text = path.read_text()
+        lines = path.read_text().splitlines()
+        # Strip comment-only lines and inline comments (after #) to match CI behavior
+        stripped = [line.split("#", 1)[0] for line in lines]
+        text = "\n".join(stripped)
         violations.extend(
             f"{path}: contains '{token}'" for token in tokens if token in text
         )
