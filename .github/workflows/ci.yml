@@ -65,36 +65,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@6b9c6063abd6010835644d4c2e1bef4cf5cd0fca # v6
+        with:
+          enable-cache: false
+
       - name: Validate Dockerfile contracts
         run: |
-          set -euo pipefail
-          echo "--- Checking Dockerfile syntax directive ---"
-          head -1 .devcontainer/Dockerfile | grep -q 'syntax=docker/dockerfile' || \
-            { echo "FAIL: Missing BuildKit syntax directive"; exit 1; }
-
-          echo "--- Checking BASE_IMAGE composability ---"
-          grep -q 'ARG BASE_IMAGE' .devcontainer/Dockerfile || \
-            { echo "FAIL: Missing BASE_IMAGE build arg"; exit 1; }
-
-          echo "--- Checking install.sh entry point ---"
-          grep -q 'install.sh' .devcontainer/Dockerfile || \
-            { echo "FAIL: Dockerfile must use install.sh as entry point"; exit 1; }
-
-          echo "--- Checking docker-bake.hcl exists ---"
-          test -f docker-bake.hcl || \
-            { echo "FAIL: Missing docker-bake.hcl"; exit 1; }
-
-          echo "--- Checking SBOM attestation ---"
-          grep -q 'type=sbom' docker-bake.hcl || \
-            { echo "FAIL: Missing SBOM attestation in bake config"; exit 1; }
-
-          echo "--- Checking no vscode username ---"
-          if grep -rn 'vscode' .devcontainer/Dockerfile* docker-bake.hcl .devcontainer/devcontainer*.json 2>/dev/null | grep -v '#'; then
-            echo "FAIL: vscode username reference found in Docker/devcontainer files"
-            exit 1
-          fi
-
-          echo "All contracts passed."
+          uv run --directory python dotfiles-setup verify run \
+            --category build --category ci --category identity --category architecture \
+            --json
 
   # ============================================================
   # Build Type 2: Dotfiles environment image (Docker → ghcr.io)

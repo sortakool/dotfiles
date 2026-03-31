@@ -92,7 +92,20 @@ def setup_parser() -> argparse.ArgumentParser:
     run_parser = verify_sub.add_parser("run", help="Run verification suites")
     run_parser.add_argument("--suite", help="Run a specific suite by name")
     run_parser.add_argument(
+        "--category",
+        action="append",
+        dest="categories",
+        help="Filter by category (repeatable)",
+    )
+    run_parser.add_argument(
         "--json", action="store_true", dest="output_json", help="Output JSON"
+    )
+    list_parser = verify_sub.add_parser("list", help="List all verification suites")
+    list_parser.add_argument(
+        "--category",
+        action="append",
+        dest="categories",
+        help="Filter by category (repeatable)",
     )
 
     # image subcommands
@@ -161,7 +174,9 @@ def handle_verify(args: argparse.Namespace) -> None:
     sys.exit(
         verify_main(
             suite_filter=getattr(args, "suite", None),
+            category_filter=getattr(args, "categories", None),
             output_json=getattr(args, "output_json", False),
+            list_only=getattr(args, "verify_command", None) == "list",
         )
     )
 

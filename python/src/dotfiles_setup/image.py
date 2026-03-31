@@ -32,6 +32,33 @@ fi
 echo "=== shell integration ==="
 command -v zsh || { echo "FAIL: zsh not found"; exit 1; }
 command -v git || { echo "FAIL: git not found"; exit 1; }
+echo "=== identity constraints ==="
+if getent passwd vscode >/dev/null 2>&1; then
+  echo "FAIL: vscode user exists in image"; exit 1
+fi
+if getent group vscode >/dev/null 2>&1; then
+  echo "FAIL: vscode group exists in image"; exit 1
+fi
+if [ -d /home/vscode ]; then
+  echo "FAIL: /home/vscode directory exists"; exit 1
+fi
+if env | grep -qi vscode; then
+  echo "FAIL: vscode found in environment variables"; exit 1
+fi
+echo "=== path constraints ==="
+if [ "${MISE_DATA_DIR:-}" != "/opt/mise" ]; then
+  echo "FAIL: MISE_DATA_DIR=${MISE_DATA_DIR:-unset}, expected /opt/mise"; exit 1
+fi
+if [ ! -d /opt/mise/shims ]; then
+  echo "FAIL: /opt/mise/shims directory missing"; exit 1
+fi
+echo "=== zero-warning check ==="
+warn_count=$(mise ls 2>&1 | grep -ci "WARN" || true)
+if [ "$warn_count" -gt 0 ]; then
+  echo "FAIL: mise produced warnings (zero-warning policy)"
+  mise ls 2>&1 | grep -i "WARN"
+  exit 1
+fi
 echo "=== All smoke checks passed ==="
 """
 

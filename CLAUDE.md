@@ -39,7 +39,7 @@ Registry: `ghcr.io/ray-manaloto/cpp-devcontainer`
 - Bake targets: `dev` (CI push), `dev-load` (local)
 - `IMAGE_REF` variable (`${DEFAULT_REGISTRY}/${IMAGE}`) consolidates registry+image for tags and cache refs
 - `docker-metadata-action` bake target provides default tags locally; CI overrides with SHA/latest/PR tags via metadata-action bake file
-- `contract-preflight` job enforces: no `vscode` username references in Docker/devcontainer files
+- `contract-preflight` job runs `dotfiles-setup verify run --category build --category ci --category identity --category architecture --json` (replaces inline grep; ~30 suites across 4 automated categories)
 - GHCR login is unconditional (no `if: github.event_name != 'pull_request'` guard); the `push` flag on bake-action controls whether images are pushed, but auth is required for `cache-to` registry writes regardless — conditional login was the root cause of 403s on PR builds
 - **buildkit-cache-dance@v3**: `reproducible-containers/buildkit-cache-dance@v3` + `actions/cache` restore/save for `/tmp/buildkit-cache`; cache-map: `mise-cache`→`/opt/mise/cache`, `uv-cache`, `chezmoi-cache`, `pkl-cache`, `npm-cache` (mise-data excluded — cache mounts excluded from image layers, tools would vanish)
 - **Cache key**: `hashFiles('mise.lock', 'home/dot_config/mise/config.toml.tmpl', 'install.sh')` — covers both mise configs (root `mise.toml` omitted; only the chezmoi template drives container toolchain)
@@ -47,17 +47,28 @@ Registry: `ghcr.io/ray-manaloto/cpp-devcontainer`
 
 ## Testing
 ```bash
-pytest tests/ -x -q                                       # All tests
-pytest tests/test_audit.py -x -q                          # Single file
-dotfiles-setup verify run                                  # Run policy verification suites
-dotfiles-setup verify run --suite policy.no-vscode-user   # Single suite
-dotfiles-setup image smoke --image-ref <ref>               # Smoke test a built image
+pytest tests/ -x -q                                                                   # All tests
+pytest tests/test_audit.py -x -q                                                      # Single file
+dotfiles-setup verify run                                                              # Run all verification suites
+dotfiles-setup verify run --suite identity.no-vscode-user                             # Single suite by name
+dotfiles-setup verify run --category build --category ci --category identity          # Filter by category
+dotfiles-setup verify list                                                             # List all suites
+dotfiles-setup image smoke --image-ref <ref>                                           # Smoke test a built image
 ```
 
 ### Verification Suites
-Structured Python-driven verification via `python/verification/suites.toml` manifest.
-Current suites: `policy.no-vscode-user` — enforces no `vscode` references in Docker/devcontainer files.
-Handler implementations: `python/src/dotfiles_setup/verify.py` (forbid_tokens pattern).
+Structured Python-driven verification via `python/verification/suites.toml` manifest (~30 suites, 5 categories).
+
+Categories:
+- `build` (~16 suites): Dockerfile structure constraints (MISE_DATA_DIR, HOME path, cache mounts, openssh placement, BuildKit syntax, ARG ordering, no warning suppression)
+- `ci` (~6 suites): Workflow correctness (SBOM/provenance attestation, cache key contents, unconditional GHCR login, no mise-data in cache-map)
+- `identity` (~6 suites): User/group enforcement (no-vscode-user across Dockerfiles + install.sh + ci.yml, USER/LOGNAME/WORKDIR set, stale sudoers cleanup, username validation)
+- `architecture` (~4 suites): Structural invariants (MISE_DATA_DIR in shims path template, remoteUser dynamic, no mise-home volume, MISE_STRICT in containerEnv)
+- `policy` (~4 suites): Human-only policy checks (always skipped; references `.claude/rules/`)
+
+Handler architecture: all generic, parameterized via TOML entry fields (`forbid_tokens`, `require_tokens`, `regex_match`, `regex_forbid`, `dockerfile_structure`, `policy_doc`). `_handle_no_vscode_user` is a legacy shim delegating to `_handle_forbid_tokens`.
+
+Image-level identity checks in `python/src/dotfiles_setup/image.py` `build_smoke_script()`: `getent passwd/group vscode`, `/home/vscode` dir check, `env | grep -qi vscode`, MISE_DATA_DIR=/opt/mise, /opt/mise/shims presence.
 
 ## Phase 2 (In Progress)
 Full design spec: `docs/ultrapowers/specs/2026-03-29-devcontainer-host-user-migration-design.md`
@@ -67,8 +78,9 @@ Agent spec: `.claude/agents/devcontainer-specialist.md` — role card for Docker
 **Implemented (2026-03-29):**
 - **DONE**: Host-user passthrough — `Dockerfile.host-user` overlay renames UID 1000 user via `usermod --login --move-home`; `devcontainer.json` uses `${localEnv:USER}` for `DEVCONTAINER_USERNAME` and `remoteUser`
 - **DONE**: Registry migration to `ghcr.io/ray-manaloto/cpp-devcontainer`; image renamed from `dotfiles-devcontainer`
-- **DONE**: No-vscode enforcement — `contract-preflight` CI job + `policy.no-vscode-user` verify suite (`python/verification/suites.toml`)
-- **DONE**: `dotfiles-setup` CLI: `verify run [--suite] [--json]`, `image smoke <ref>`, `docker {build,up,test,down}`
+- **DONE**: No-vscode enforcement — `contract-preflight` CI job (uses `dotfiles-setup verify run --category build --category ci --category identity --category architecture`) + `identity.no-vscode-user` suite covering Dockerfiles, devcontainer.json, docker-bake.hcl, install.sh, ci.yml + image-level checks in `image.py` `build_smoke_script()`
+- **DONE**: `dotfiles-setup` CLI: `verify run [--suite] [--category] [--json]`, `verify list [--category]`, `image smoke <ref>`, `docker {build,up,test,down}`
+- **DONE**: `suites.toml` expanded from 1 suite to ~30 suites across 5 categories (build, ci, identity, architecture, policy); all handlers are generic TOML-parameterized functions
 - **DONE**: `substr()` removed from docker-bake HCL; SHAs truncated externally
 - **DONE**: Dockerfile stages renamed to `tools` + `devcontainer`; devcontainer stage renames existing UID 1000 user via `groupmod`/`usermod` (not purge-then-recreate) — handles ubuntu:25.10's built-in `ubuntu` user
 - **DONE**: `MISE_DATA_DIR=/opt/mise` — neutral shared path set as `ENV` in `tools` stage; resolves CRITICAL path mismatch between root build and devcontainer user
@@ -85,10 +97,10 @@ Agent spec: `.claude/agents/devcontainer-specialist.md` — role card for Docker
 - **DONE**: openssh-server moved from base Dockerfile to Dockerfile.host-user overlay (Debate 005) — removes CVE exposure from published image
 
 **Remaining (not yet implemented):**
-- **Debate 003 MUST-DO (before PR #9 merges)**:
-  1. Expand `verify.py` paths: add `install.sh`, `home/**/*.tmpl`, `.github/workflows/ci.yml` to `_handle_no_vscode_user`
-  2. Replace CI inline `grep` in contract-preflight with `dotfiles-setup verify run --suite policy.no-vscode-user`
-  3. Add image-level checks to smoke-test: `getent passwd vscode`, `getent group vscode`, `ls /home/vscode`, `env | grep -qi vscode`
+- **Debate 003 follow-up** (items 1-3 DONE; one partial):
+  - ~~1. Expand verify.py paths to install.sh + ci.yml~~ — DONE (identity.no-vscode-user in suites.toml)
+  - ~~2. Replace CI inline grep with dotfiles-setup verify run~~ — DONE (contract-preflight uses --category flags)
+  - ~~3. Image-level vscode checks~~ — DONE in `image.py` `build_smoke_script()`; ci.yml smoke-test still uses inline bash (does not call `dotfiles-setup image smoke`)
 - SSH Phase 2 roadmap (follow-up PR after #9): sshd_config hardening, `--publish=127.0.0.1:4444:4444`, sshd start in postStartCommand, authorized_keys from host, SSH smoke-test assertions
 - Dynamic container naming: `{IMAGE_NAME}-{USER}-{SSH_PORT}` (default SSH port 4444)
 - TCP relay: deferred (Colima's `/run/host-services/ssh-auth.sock` + `ssh -A` + `"forwardAgent": true` may eliminate need)
@@ -97,7 +109,7 @@ Agent spec: `.claude/agents/devcontainer-specialist.md` — role card for Docker
 - Candidate-promote CI (deferred to Phase 3+)
 
 **Debates completed:**
-- Debate 003 — no-vscode enforcement completeness: `debates/003-no-vscode-enforcement/synthesis.md` — 3 MUST-DOs remain (see above)
+- Debate 003 — no-vscode enforcement completeness: `debates/003-no-vscode-enforcement/synthesis.md` — all 3 MUST-DOs implemented (suites expanded, CI grep replaced, image-level checks in image.py)
 - Debate 004 — user identity enforcement: `debates/004-user-identity-enforcement/synthesis_v2.md` — CRITICAL fixes applied to Dockerfile.host-user (USER/LOGNAME/WORKDIR/sudoers)
 - Debate 005 — SSH access review: `debates/005-ssh-access-review/synthesis_v2.md` — openssh-server moved to overlay; TCP relay deferred
 - Debate 006 — cpp-playground parity: `debates/006-cpp-playground-parity/synthesis_v2.md` — chezmoi template PATH fixed; gap analysis vs reference
