@@ -58,14 +58,10 @@ target "dev" {
     BASE_IMAGE = BASE_IMAGE
   }
   # Tags inherited from docker-metadata-action (CI overrides with SHA/latest/PR tags)
-  # Registry cache: shared across CI runs and local dev
-  # GHA cache: faster for same-repo CI (set ACTIONS_CACHE_URL to enable)
   cache-from = [
-    "type=registry,ref=${IMAGE_REF}:buildcache",
     "type=gha,scope=dotfiles-dev",
   ]
   cache-to = [
-    "type=registry,ref=${IMAGE_REF}:buildcache,mode=max",
     "type=gha,scope=dotfiles-dev,mode=max",
   ]
   attest = [

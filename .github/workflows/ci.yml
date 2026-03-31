@@ -97,27 +97,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
 
-      - name: Restore BuildKit mount caches
-        uses: actions/cache/restore@v4
-        id: cache-restore
-        with:
-          path: /tmp/buildkit-cache
-          key: buildkit-mounts-${{ runner.os }}-${{ hashFiles('mise.lock', 'home/dot_config/mise/config.toml.tmpl', 'install.sh') }}
-          restore-keys: |
-            buildkit-mounts-${{ runner.os }}-
-
-      - name: Inject mount caches into BuildKit
-        uses: reproducible-containers/buildkit-cache-dance@v3
-        with:
-          cache-map: |
-            {
-              "mise-cache": "/opt/mise/cache",
-              "uv-cache": "/opt/data/uv/cache",
-              "npm-cache": "/opt/data/npm/cache",
-              "pkl-cache": "/opt/data/pkl"
-            }
-          skip-extraction: ${{ steps.cache-restore.outputs.cache-hit == 'true' }}
-
       - name: Log in to Container Registry
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
         with:
@@ -157,25 +136,15 @@ jobs:
         if: always()
         env:
           BAKE_RESULT: ${{ steps.bake.outcome }}
-          CACHE_HIT: ${{ steps.cache-restore.outputs.cache-hit }}
         run: |
           echo "## Build Performance" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| Build result | ${BAKE_RESULT} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| BuildKit mount cache | ${CACHE_HIT:-miss} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Cache sources | registry + gha |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| BuildKit mount caches | mise, uv, npm, pkl |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Cache sources | gha |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "_Compare consecutive runs to verify cache effectiveness._" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Save BuildKit mount caches
-        uses: actions/cache/save@v4
-        if: always()
-        with:
-          path: /tmp/buildkit-cache
-          key: buildkit-mounts-${{ runner.os }}-${{ hashFiles('mise.lock', 'home/dot_config/mise/config.toml.tmpl', 'install.sh') }}
 
   # ============================================================
   # Smoke test: validate the published image

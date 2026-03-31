@@ -245,22 +245,22 @@ paths = [".github/workflows/ci.yml"]
 pattern = '"mise-data"'
 
 [[suite]]
-name = "ci.cache-key-includes-mise-lock"
-description = "Cache key must hash mise.lock"
+name = "ci.gha-cache-enabled"
+description = "Buildx gha cache must remain enabled in bake config"
 category = "ci"
 check_type = "static"
 handler = "require_tokens"
-paths = [".github/workflows/ci.yml"]
-tokens = ["mise.lock"]
+paths = ["docker-bake.hcl"]
+tokens = ["type=gha,scope=dotfiles-dev"]
 
 [[suite]]
-name = "ci.cache-key-includes-config-template"
-description = "Cache key must hash chezmoi mise config template"
+name = "ci.no-actions-cache-workaround"
+description = "Workflow must not use the deprecated actions/cache workaround for BuildKit mounts"
 category = "ci"
 check_type = "static"
-handler = "require_tokens"
+handler = "forbid_tokens"
 paths = [".github/workflows/ci.yml"]
-tokens = ["home/dot_config/mise/config.toml.tmpl"]
+tokens = ["actions/cache/restore", "actions/cache/save", "buildkit-cache-dance"]
 
 [[suite]]
 name = "ci.unconditional-ghcr-login"

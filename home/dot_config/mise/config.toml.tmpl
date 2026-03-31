@@ -41,7 +41,6 @@ bat = "0.26.1"
 "github:go-task/task" = "latest"
 "github:mozilla/sccache" = "latest"
 "github:facebook/infer" = "latest"
-"github:oclint/oclint" = "latest"
 "pipx:meson" = "latest"
 "pipx:conan" = "latest"
 "pipx:cpplint" = "latest"
@@ -50,7 +49,7 @@ bat = "0.26.1"
 "pipx:cmakelang" = "latest"
 "pipx:codechecker" = "latest"
 "pipx:gcovr" = "latest"
-"pipx:cppclean" = "latest"
+"pipx:cppclean" = "0.13"
 "conda:clang" = "latest"
 "conda:clangxx" = "latest"
 "conda:cmake" = "latest"
@@ -71,7 +70,7 @@ bat = "0.26.1"
 "conda:git" = "latest"
 "conda:make" = "latest"
 "conda:linux-perf" = "latest"
-"conda:gnu-tar" = "latest"
+"conda:tar" = "latest"
 "conda:p7zip" = "latest"
 # AI CLIs
 "npm:@google/gemini-cli" = "0.35.3"
@@ -83,7 +82,7 @@ experimental = true
 auto_install = true
 asdf_compat = true
 lockfile = true
-jobs = 8
+jobs = 1
 npm.package_manager = "bun"
 pipx.uvx = true
 cargo.binstall = true
@@ -107,6 +106,7 @@ GOPATH = "{{ "{{ env.GOPATH | default(value=env.HOME ~ '/.local/share/go') }}" }
 GOBIN = "{{ "{{ env.GOBIN | default(value=env.HOME ~ '/.local/share/go/bin') }}" }}"
 GOMODCACHE = "{{ "{{ env.GOMODCACHE | default(value=env.HOME ~ '/.cache/go/mod') }}" }}"
 GOCACHE = "{{ "{{ env.GOCACHE | default(value=env.HOME ~ '/.cache/go/build') }}" }}"
+CONDA_SUBDIR = "{{ "{{ env.CONDA_SUBDIR | default(value='linux-64') }}" }}"
 
 # Build toolchain
 CC = "gcc"
