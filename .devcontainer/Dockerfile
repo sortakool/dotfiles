@@ -38,38 +38,44 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # ---------- dotfiles bootstrap ----------
 FROM base AS tools
 
-ARG DEVCONTAINER_USERNAME=devcontainer
-
+# Per-tool install paths — all under /opt/, no user dependency
 ENV MISE_DATA_DIR=/opt/mise \
     MISE_CACHE_DIR=/opt/mise/cache \
     MISE_ALWAYS_KEEP_DOWNLOAD=1 \
-    HOME=/home/${DEVCONTAINER_USERNAME} \
-    RUSTUP_HOME=/home/${DEVCONTAINER_USERNAME}/.rustup \
-    CARGO_HOME=/home/${DEVCONTAINER_USERNAME}/.cargo \
+    CARGO_HOME=/opt/data/cargo \
+    RUSTUP_HOME=/opt/data/rustup \
+    NPM_CONFIG_PREFIX=/opt/data/npm \
+    NPM_CONFIG_CACHE=/opt/data/npm/cache \
+    GOPATH=/opt/data/go \
+    GOBIN=/opt/data/go/bin \
+    GOMODCACHE=/opt/data/go/mod \
+    GOCACHE=/opt/data/go/cache \
     RUSTUP_INIT_SKIP_PATH_CHECK=yes \
     npm_config_update_notifier=false
 
-# Pre-create home so install.sh writes to the final user's home, not /root.
-# Avoids all /root permission and path issues when running as non-root user.
-RUN mkdir -p /home/${DEVCONTAINER_USERNAME}
+# Neutral build home — no username dependency. Chezmoi deploys configs here;
+# devcontainer stage copies them to the real user's home.
+ENV HOME=/opt/home
+
+RUN mkdir -p /opt/data /opt/mise/cache /opt/home
 
 COPY . /tmp/dotfiles
 RUN --mount=type=cache,id=mise-cache,target=/opt/mise/cache,sharing=locked \
-    --mount=type=cache,id=uv-cache,target=${HOME}/.cache/uv,sharing=locked \
-    --mount=type=cache,id=chezmoi-cache,target=${HOME}/.cache/chezmoi,sharing=locked \
-    --mount=type=cache,id=pkl-cache,target=${HOME}/.pkl,sharing=locked \
-    --mount=type=cache,id=npm-cache,target=${HOME}/.npm,sharing=locked \
+    --mount=type=cache,id=uv-cache,target=/opt/data/uv/cache,sharing=locked \
+    --mount=type=cache,id=npm-cache,target=/opt/data/npm/cache,sharing=locked \
+    --mount=type=cache,id=pkl-cache,target=/opt/data/pkl,sharing=locked \
     --mount=type=secret,id=github_token \
     export UV_LINK_MODE=copy && \
     if [ -f /run/secrets/github_token ]; then \
       export GITHUB_TOKEN="$(cat /run/secrets/github_token)"; \
       export MISE_GITHUB_TOKEN="$GITHUB_TOKEN"; \
     fi && \
-    cd /tmp/dotfiles && bash install.sh --local
+    cd /tmp/dotfiles && bash install.sh
 
-# ---------- devcontainer (default user + SSH) ----------
+# ---------- devcontainer (user setup) ----------
 FROM tools AS devcontainer
 
+ARG DEVCONTAINER_USERNAME=devcontainer
 ARG USER_UID=1000
 ARG USER_GID=1000
 
@@ -85,7 +91,7 @@ RUN existing_group="$(getent group ${USER_GID} | cut -d: -f1 || true)" && \
     if [ -n "${existing_user}" ] && [ "${existing_user}" != "${DEVCONTAINER_USERNAME}" ]; then \
       usermod --login "${DEVCONTAINER_USERNAME}" \
               --home "/home/${DEVCONTAINER_USERNAME}" "${existing_user}"; \
-      rm -rf "/home/${existing_user}"; \
+      rm -rf "/home/${existing_user:?}"; \
     elif [ -z "${existing_user}" ]; then \
       useradd --uid ${USER_UID} --gid ${USER_GID} --no-create-home -s /bin/bash ${DEVCONTAINER_USERNAME}; \
     fi && \
@@ -96,26 +102,27 @@ RUN existing_group="$(getent group ${USER_GID} | cut -d: -f1 || true)" && \
     chmod 700 /home/${DEVCONTAINER_USERNAME}/.ssh && \
     chown ${DEVCONTAINER_USERNAME}:${DEVCONTAINER_USERNAME} /home/${DEVCONTAINER_USERNAME}/.ssh
 
-# Pre-stage cache directories and fix /opt/mise ownership.
-# /opt/mise was created by root in the tools stage; the devcontainer user needs
-# write access for mise cache operations at runtime.
-RUN mkdir -p \
-    /home/${DEVCONTAINER_USERNAME}/.cache/uv \
-    /home/${DEVCONTAINER_USERNAME}/.local/bin \
-    /home/${DEVCONTAINER_USERNAME}/.local/state \
-    /home/${DEVCONTAINER_USERNAME}/.claude \
-    /home/${DEVCONTAINER_USERNAME}/.codex \
-    /home/${DEVCONTAINER_USERNAME}/.gemini \
-    /home/${DEVCONTAINER_USERNAME}/.config/gh \
+# Copy chezmoi-deployed configs from neutral build home to real user home.
+# /opt/home/.config/mise/config.toml → /home/${DEVCONTAINER_USERNAME}/.config/mise/config.toml
+# /opt/home/.zshenv → /home/${DEVCONTAINER_USERNAME}/.zshenv
+# etc.
+RUN cp -a /opt/home/. /home/${DEVCONTAINER_USERNAME}/ && \
+    mkdir -p \
+      /home/${DEVCONTAINER_USERNAME}/.cache/uv \
+      /home/${DEVCONTAINER_USERNAME}/.local/bin \
+      /home/${DEVCONTAINER_USERNAME}/.local/state \
+      /home/${DEVCONTAINER_USERNAME}/.claude \
+      /home/${DEVCONTAINER_USERNAME}/.codex \
+      /home/${DEVCONTAINER_USERNAME}/.gemini \
+      /home/${DEVCONTAINER_USERNAME}/.config/gh \
     && chown -R ${DEVCONTAINER_USERNAME}:${DEVCONTAINER_USERNAME} /home/${DEVCONTAINER_USERNAME} \
-    && chown -R ${DEVCONTAINER_USERNAME}:${DEVCONTAINER_USERNAME} /opt/mise
+    && chown -R ${DEVCONTAINER_USERNAME}:${DEVCONTAINER_USERNAME} /opt/mise \
+    && chown -R ${DEVCONTAINER_USERNAME}:${DEVCONTAINER_USERNAME} /opt/data
 
 ENV USER=${DEVCONTAINER_USERNAME} \
     HOME=/home/${DEVCONTAINER_USERNAME} \
     MISE_DATA_DIR=/opt/mise \
-    RUSTUP_HOME=/home/${DEVCONTAINER_USERNAME}/.rustup \
-    CARGO_HOME=/home/${DEVCONTAINER_USERNAME}/.cargo \
-    PATH="/home/${DEVCONTAINER_USERNAME}/.cargo/bin:/home/${DEVCONTAINER_USERNAME}/.local/bin:/opt/mise/shims:${PATH}"
+    PATH="/opt/data/cargo/bin:/opt/data/go/bin:/opt/data/npm/bin:/home/${DEVCONTAINER_USERNAME}/.local/bin:/opt/mise/shims:${PATH}"
 
 USER ${DEVCONTAINER_USERNAME}
 WORKDIR /home/${DEVCONTAINER_USERNAME}
