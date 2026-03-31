@@ -48,6 +48,18 @@ show_tools = true
 missing_tools = "always"
 
 [env]
+# Per-tool paths: Dockerfile ENV provides /opt/ values in containers;
+# Tera default() provides bare-metal fallback to ~/.local/share/*.
+CARGO_HOME = "{{ "{{ env.CARGO_HOME | default(value=env.HOME ~ '/.local/share/cargo') }}" }}"
+RUSTUP_HOME = "{{ "{{ env.RUSTUP_HOME | default(value=env.HOME ~ '/.local/share/rustup') }}" }}"
+NPM_CONFIG_PREFIX = "{{ "{{ env.NPM_CONFIG_PREFIX | default(value=env.HOME ~ '/.local/share/npm') }}" }}"
+NPM_CONFIG_CACHE = "{{ "{{ env.NPM_CONFIG_CACHE | default(value=env.HOME ~ '/.cache/npm') }}" }}"
+GOPATH = "{{ "{{ env.GOPATH | default(value=env.HOME ~ '/.local/share/go') }}" }}"
+GOBIN = "{{ "{{ env.GOBIN | default(value=env.HOME ~ '/.local/share/go/bin') }}" }}"
+GOMODCACHE = "{{ "{{ env.GOMODCACHE | default(value=env.HOME ~ '/.cache/go/mod') }}" }}"
+GOCACHE = "{{ "{{ env.GOCACHE | default(value=env.HOME ~ '/.cache/go/build') }}" }}"
+
+# Build toolchain
 CC = "gcc"
 CXX = "g++"
 HK_PKL_BACKEND = "pklr"
