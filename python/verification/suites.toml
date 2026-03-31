@@ -6,31 +6,31 @@ version = "2"
 # =============================================================================
 
 [[suite]]
-name = "build.mise-data-dir"
-description = "MISE_DATA_DIR must be /opt/mise (neutral shared path)"
+name = "build.no-custom-mise-data-dir"
+description = "Base image should rely on mise system/default data paths instead of custom MISE_DATA_DIR"
 category = "build"
 check_type = "static"
-handler = "require_tokens"
+handler = "forbid_tokens"
 paths = [".devcontainer/Dockerfile"]
-tokens = ["MISE_DATA_DIR=/opt/mise"]
+tokens = ["MISE_DATA_DIR="]
 
 [[suite]]
-name = "build.mise-always-keep-download"
-description = "MISE_ALWAYS_KEEP_DOWNLOAD=1 for cache reuse"
+name = "build.mise-install-path-system"
+description = "Base image should install the mise binary system-wide"
 category = "build"
 check_type = "static"
 handler = "require_tokens"
 paths = [".devcontainer/Dockerfile"]
-tokens = ["MISE_ALWAYS_KEEP_DOWNLOAD=1"]
+tokens = ["MISE_INSTALL_PATH=/usr/local/bin/mise"]
 
 [[suite]]
-name = "build.mise-cache-dir"
-description = "MISE_CACHE_DIR must be /opt/mise/cache"
+name = "build.no-custom-mise-cache-dir"
+description = "Base image should rely on default cache locations instead of custom MISE_CACHE_DIR"
 category = "build"
 check_type = "static"
-handler = "require_tokens"
+handler = "forbid_tokens"
 paths = [".devcontainer/Dockerfile"]
-tokens = ["MISE_CACHE_DIR=/opt/mise/cache"]
+tokens = ["MISE_CACHE_DIR="]
 
 [[suite]]
 name = "build.home-not-root"
@@ -71,12 +71,12 @@ pattern = '--mount=type=cache(?!.*sharing=locked).*target='
 
 [[suite]]
 name = "build.no-mise-data-cache-mount"
-description = "MISE_DATA_DIR must not be a cache mount (tools vanish from image)"
+description = "Custom mise data dir must not be a cache mount (tools vanish from image)"
 category = "build"
 check_type = "static"
 handler = "regex_forbid"
 paths = [".devcontainer/Dockerfile"]
-pattern = 'target=/opt/mise[,\s]'
+pattern = 'target=.*/mise/installs?[,\s]'
 
 [[suite]]
 name = "build.buildkit-syntax"
@@ -152,48 +152,48 @@ tokens = ["npm_config_update_notifier=false"]
 
 [[suite]]
 name = "build.path-includes-mise-shims"
-description = "PATH must include /opt/mise/shims"
+description = "Overlay/runtime paths must include the default per-user mise shims path"
 category = "build"
 check_type = "static"
 handler = "require_tokens"
-paths = [".devcontainer/Dockerfile"]
-tokens = ["/opt/mise/shims"]
+paths = [".devcontainer/Dockerfile.host-user", ".devcontainer/devcontainer.json", "home/.chezmoi.toml.tmpl"]
+tokens = [".local/share/mise/shims"]
 
 [[suite]]
-name = "build.cargo-home-opt"
-description = "CARGO_HOME must be /opt/data/cargo in Dockerfile"
+name = "build.no-custom-cargo-home"
+description = "Base image should rely on default cargo locations instead of custom CARGO_HOME"
 category = "build"
 check_type = "static"
-handler = "require_tokens"
+handler = "forbid_tokens"
 paths = [".devcontainer/Dockerfile"]
-tokens = ["CARGO_HOME=/opt/data/cargo"]
+tokens = ["CARGO_HOME="]
 
 [[suite]]
-name = "build.rustup-home-opt"
-description = "RUSTUP_HOME must be /opt/data/rustup in Dockerfile"
+name = "build.no-custom-rustup-home"
+description = "Base image should rely on default rustup locations instead of custom RUSTUP_HOME"
 category = "build"
 check_type = "static"
-handler = "require_tokens"
+handler = "forbid_tokens"
 paths = [".devcontainer/Dockerfile"]
-tokens = ["RUSTUP_HOME=/opt/data/rustup"]
+tokens = ["RUSTUP_HOME="]
 
 [[suite]]
-name = "build.gopath-opt"
-description = "GOPATH must be /opt/data/go in Dockerfile"
+name = "build.no-custom-gopath"
+description = "Base image should rely on default Go locations instead of custom GOPATH"
 category = "build"
 check_type = "static"
-handler = "require_tokens"
+handler = "forbid_tokens"
 paths = [".devcontainer/Dockerfile"]
-tokens = ["GOPATH=/opt/data/go"]
+tokens = ["GOPATH=", "GOBIN=", "GOMODCACHE=", "GOCACHE="]
 
 [[suite]]
-name = "build.npm-prefix-opt"
-description = "NPM_CONFIG_PREFIX must be /opt/data/npm in Dockerfile"
+name = "build.no-custom-npm-prefix"
+description = "Base image should rely on default npm locations instead of custom NPM_CONFIG_PREFIX"
 category = "build"
 check_type = "static"
-handler = "require_tokens"
+handler = "forbid_tokens"
 paths = [".devcontainer/Dockerfile"]
-tokens = ["NPM_CONFIG_PREFIX=/opt/data/npm"]
+tokens = ["NPM_CONFIG_PREFIX=", "NPM_CONFIG_CACHE="]
 
 [[suite]]
 name = "build.home-opt-home"

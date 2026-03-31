@@ -23,9 +23,19 @@ uv = "0.11.2"
 experimental = true
 auto_install = true
 
+[settings.status]
+show_prepare_stale = true
+
 [env]
 HK_PKL_BACKEND = "pklr"
 HK_MISE = "1"
+
+[prepare.python]
+auto = true
+dir = "python"
+sources = ["pyproject.toml", "uv.lock"]
+outputs = [".venv/"]
+run = "uv sync"
 
 [tasks.lint]
 description = "Run all linters via hk"

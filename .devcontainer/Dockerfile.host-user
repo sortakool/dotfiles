@@ -71,10 +71,8 @@ ENV DEVCONTAINER_USERNAME=${DEVCONTAINER_USERNAME} \
     USER=${DEVCONTAINER_USERNAME} \
     LOGNAME=${DEVCONTAINER_USERNAME} \
     HOME=/home/${DEVCONTAINER_USERNAME} \
-    MISE_DATA_DIR=/opt/mise \
-    NPM_CONFIG_PREFIX=/home/${DEVCONTAINER_USERNAME}/.local/share/npm \
-    NPM_CONFIG_CACHE=/home/${DEVCONTAINER_USERNAME}/.cache/npm \
-    PATH="/opt/data/cargo/bin:/opt/data/go/bin:/opt/data/npm/bin:/home/${DEVCONTAINER_USERNAME}/.local/bin:/opt/mise/shims:${PATH}"
+    MISE_TRUSTED_CONFIG_PATHS=/home/${DEVCONTAINER_USERNAME}/.config/mise \
+    PATH="/home/${DEVCONTAINER_USERNAME}/.local/bin:/home/${DEVCONTAINER_USERNAME}/.local/share/mise/shims:${PATH}"
 
 WORKDIR /home/${DEVCONTAINER_USERNAME}
 

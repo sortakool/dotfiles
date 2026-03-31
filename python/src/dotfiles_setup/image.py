@@ -65,11 +65,11 @@ if env | grep -qi vscode; then
   echo "FAIL: vscode found in environment variables"; exit 1
 fi
 echo "=== path constraints ==="
-if [ "${MISE_DATA_DIR:-}" != "/opt/mise" ]; then
-  echo "FAIL: MISE_DATA_DIR=${MISE_DATA_DIR:-unset}, expected /opt/mise"; exit 1
+if [ ! -x /usr/local/bin/mise ]; then
+  echo "FAIL: /usr/local/bin/mise missing"; exit 1
 fi
-if [ ! -d /opt/mise/shims ]; then
-  echo "FAIL: /opt/mise/shims directory missing"; exit 1
+if [ ! -d /usr/local/share/mise/installs ]; then
+  echo "FAIL: /usr/local/share/mise/installs missing"; exit 1
 fi
 echo "=== backend policy checks ==="
 grep -q 'npm.package_manager = "bun"' "$HOME/.config/mise/config.toml" || {
@@ -80,6 +80,9 @@ grep -q 'pipx.uvx = true' "$HOME/.config/mise/config.toml" || {
 }
 grep -q 'cargo.binstall = true' "$HOME/.config/mise/config.toml" || {
   echo "FAIL: cargo-binstall policy missing"; exit 1;
+}
+grep -q 'python.uv_venv_auto = "source"' "$HOME/.config/mise/config.toml" || {
+  echo "FAIL: python uv venv policy missing"; exit 1;
 }
 echo "=== clang tooling checks ==="
 for tool in clang clang++ clangd clang-tidy clang-format lld lldb llvm-symbolizer llvm-cov llvm-profdata; do

@@ -5,9 +5,13 @@ set -eu
 # {{ include "dot_config/mise/config.toml.tmpl" | sha256sum }}
 
 MISE="$HOME/.local/bin/mise"
+SYSTEM_ARGS=""
+if [ -n "${DEVCONTAINER:-}" ] || [ -n "${CI:-}" ]; then
+  SYSTEM_ARGS="--system"
+fi
 
 # Phase 1: install the fast-path package managers and Node compatibility first
-$MISE install uv bun node cargo-binstall -y
+$MISE install $SYSTEM_ARGS uv bun node cargo-binstall -y --jobs 1
 
 # Phase 2: all remaining tools
-$MISE install -y
+$MISE install $SYSTEM_ARGS -y --jobs 1

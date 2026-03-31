@@ -13,7 +13,7 @@
   "updateRemoteUserUID": false,
   "init": true,
   "overrideCommand": true,
-  "postCreateCommand": "chezmoi init --apply --source '/workspaces/${localWorkspaceFolderBasename}' --force && cd '/workspaces/${localWorkspaceFolderBasename}' && mise install -y",
+  "postCreateCommand": "chezmoi init --apply --source '/workspaces/${localWorkspaceFolderBasename}' --force && cd '/workspaces/${localWorkspaceFolderBasename}' && mise reshim -f && mise prepare",
   "postStartCommand": "cd '/workspaces/${localWorkspaceFolderBasename}' && UV_CACHE_DIR=/tmp/dotfiles-uv-cache uv run --project '/workspaces/${localWorkspaceFolderBasename}/python' dotfiles-setup ensure-ssh",
   "containerEnv": {
     "DEVCONTAINER": "true",
@@ -22,7 +22,7 @@
     "MISE_STRICT": "1"
   },
   "remoteEnv": {
-    "PATH": "${containerEnv:PATH}:/opt/mise/shims"
+    "PATH": "${containerEnv:PATH}:/home/${localEnv:USER}/.local/share/mise/shims"
   },
   "runArgs": [
     "--platform=linux/amd64",
