@@ -222,6 +222,15 @@ handler = "require_tokens"
 paths = [".devcontainer/Dockerfile"]
 tokens = ["sed -i '/^path-exclude=\\/usr\\/share\\/man\\/\\*$/d' /etc/dpkg/dpkg.cfg.d/excludes"]
 
+[[suite]]
+name = "build.no-conda-graphviz"
+description = "Graphviz must stay out of the broken conda backend until issue #22 is resolved"
+category = "build"
+check_type = "static"
+handler = "forbid_tokens"
+paths = ["home/dot_config/mise/config.toml.tmpl"]
+tokens = ['"conda:graphviz"']
+
 # =============================================================================
 # CI Constraints (~6) — Workflow correctness
 # =============================================================================
