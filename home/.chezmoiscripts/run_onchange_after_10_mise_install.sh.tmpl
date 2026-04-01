@@ -4,9 +4,9 @@ set -eu
 # Re-runs when mise config template changes:
 # {{ include "dot_config/mise/config.toml.tmpl" | sha256sum }}
 
-MISE="$HOME/.local/bin/mise"
+MISE="${MISE_INSTALL_PATH:-$(command -v mise || printf '%s' "$HOME/.local/bin/mise")}"
 SYSTEM_ARGS=""
-if [ -n "${DEVCONTAINER:-}" ] || [ -n "${CI:-}" ]; then
+if [ "${MISE_INSTALL_MODE:-}" = "system" ]; then
   SYSTEM_ARGS="--system"
 fi
 

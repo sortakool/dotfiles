@@ -21,6 +21,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    sed -i '/path-exclude=\\/usr\\/share\\/man\\/*/d' /etc/dpkg/dpkg.cfg.d/excludes && \
     apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     ca-certificates \
@@ -47,6 +48,7 @@ RUN --mount=type=cache,id=mise-cache,target=/root/.cache/mise,sharing=locked \
     --mount=type=cache,id=uv-cache,target=/root/.cache/uv,sharing=locked \
     --mount=type=secret,id=github_token \
     export MISE_VERSION="${MISE_VERSION}" && \
+    export MISE_INSTALL_MODE=system && \
     export UV_LINK_MODE=copy && \
     if [ -f /run/secrets/github_token ]; then \
       export GITHUB_TOKEN="$(cat /run/secrets/github_token)"; \
