@@ -10,8 +10,8 @@ if [ "${MISE_INSTALL_MODE:-}" = "system" ]; then
   SYSTEM_ARGS="--system"
 fi
 
-# Phase 1: install the fast-path package managers and Node compatibility first
-$MISE install $SYSTEM_ARGS uv bun node cargo-binstall -y --jobs 1
+# Phase 1: install the core package managers and Rust before cargo-backed tools
+$MISE install $SYSTEM_ARGS uv bun node rust cargo-binstall -y --jobs 1
 
 # Phase 2: all remaining tools
 $MISE install $SYSTEM_ARGS -y --jobs 1

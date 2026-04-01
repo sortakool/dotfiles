@@ -213,6 +213,24 @@ handler = "forbid_tokens"
 paths = [".devcontainer/Dockerfile"]
 tokens = ["XDG_DATA_HOME", "XDG_CACHE_HOME"]
 
+[[suite]]
+name = "build.manpage-restore-sed-syntax"
+description = "Base image must remove the manpage path exclusion with a valid exact-line sed expression"
+category = "build"
+check_type = "static"
+handler = "require_tokens"
+paths = [".devcontainer/Dockerfile"]
+tokens = ["sed -i '/^path-exclude=\\/usr\\/share\\/man\\/\\*$/d' /etc/dpkg/dpkg.cfg.d/excludes"]
+
+[[suite]]
+name = "build.rustup-skip-path-check"
+description = "mise env must disable rustup PATH checks during non-interactive installs"
+category = "build"
+check_type = "static"
+handler = "require_tokens"
+paths = ["home/dot_config/mise/config.toml.tmpl"]
+tokens = ['RUSTUP_INIT_SKIP_PATH_CHECK = "yes"']
+
 # =============================================================================
 # CI Constraints (~6) — Workflow correctness
 # =============================================================================
@@ -279,6 +297,24 @@ check_type = "static"
 handler = "require_tokens"
 paths = [".github/workflows/ci.yml"]
 tokens = ["ray-manaloto/dotfiles-devcontainer"]
+
+[[suite]]
+name = "ci.pr-builds-do-not-push"
+description = "Only main-branch and scheduled builds may publish GHCR images"
+category = "ci"
+check_type = "static"
+handler = "require_tokens"
+paths = [".github/workflows/ci.yml"]
+tokens = ["push: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}"]
+
+[[suite]]
+name = "ci.smoke-test-skips-pr"
+description = "Registry-backed smoke tests must only run when CI published an image"
+category = "ci"
+check_type = "static"
+handler = "require_tokens"
+paths = [".github/workflows/ci.yml"]
+tokens = ["if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'"]
 
 # =============================================================================
 # Identity Constraints (~6) — User/group handling

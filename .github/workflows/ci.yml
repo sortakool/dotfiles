@@ -129,7 +129,7 @@ jobs:
         with:
           source: .
           targets: ${{ github.event.inputs.target || 'dev' }}
-          push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          push: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
           files: |
             docker-bake.hcl
             ${{ steps.meta.outputs.bake-file-tags }}
@@ -156,6 +156,7 @@ jobs:
   # ============================================================
   smoke-test:
     needs: build
+    if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
