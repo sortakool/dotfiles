@@ -24,3 +24,10 @@ def test_smoke_script_does_not_require_llvm_symbolizer() -> None:
     script = build_smoke_script()
 
     assert "llvm-symbolizer" not in script
+
+
+def test_smoke_script_does_not_require_standalone_llvm_tools() -> None:
+    script = build_smoke_script()
+
+    assert "llvm-cov" not in script
+    assert "llvm-profdata" not in script

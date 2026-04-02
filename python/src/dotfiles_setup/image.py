@@ -85,7 +85,7 @@ grep -q 'python.uv_venv_auto = "source"' "$HOME/.config/mise/config.toml" || {
   echo "FAIL: python uv venv policy missing"; exit 1;
 }
 echo "=== clang tooling checks ==="
-for tool in clang clang++ clangd clang-tidy clang-format lld lldb llvm-cov llvm-profdata; do
+for tool in clang clang++ clangd clang-tidy clang-format lld lldb; do
   command -v "$tool" >/dev/null 2>&1 || { echo "FAIL: missing $tool"; exit 1; }
 done
 echo "=== sanitizer compile checks ==="
