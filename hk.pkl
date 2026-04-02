@@ -138,6 +138,10 @@ hooks {
   // ==========================================================================
   ["pre-push"] {
     steps {
+      ["ghcr_publish_prereqs"] {
+        exclusive = true
+        check = "uv run --directory python dotfiles-setup ghcr-check"
+      }
       ["test"] {
         exclusive = true
         check = "uv run pytest tests/ -x -q"

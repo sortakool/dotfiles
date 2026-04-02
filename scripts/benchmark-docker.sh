@@ -110,7 +110,7 @@ fi
 
 # F8: hk validate
 echo "--- F8: hk Validate ---"
-HK_RESULT="$(docker run --rm --platform linux/amd64 dotfiles-devcontainer:dev bash -lc 'cd ~/.local/share/chezmoi && hk validate >/dev/null 2>&1' && echo 'PASS' || echo 'FAIL')"
+HK_RESULT="$(docker run --rm --platform linux/amd64 dotfiles-devcontainer:dev bash -lc 'cd ~/.local/share/chezmoi && HK_FILE=hk.pkl hk validate >/dev/null 2>&1' && echo 'PASS' || echo 'FAIL')"
 echo "hk validate: ${HK_RESULT}"
 
 # F9: Bind mount performance

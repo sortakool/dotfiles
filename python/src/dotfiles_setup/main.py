@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import platform
@@ -13,6 +14,7 @@ from typing import Any, ClassVar
 from dotfiles_setup.ai import AIOrchestrator
 from dotfiles_setup.audit import DevEnvironmentAuditor, ToolManager
 from dotfiles_setup.docker import DevContainerManager
+from dotfiles_setup.ghcr import validate_ghcr_prereqs
 from dotfiles_setup.image import main as image_main
 from dotfiles_setup.verify import main as verify_main
 
@@ -134,6 +136,18 @@ def setup_parser() -> argparse.ArgumentParser:
     compare_parser.add_argument("--baseline", required=True, help="Baseline JSON path")
     compare_parser.add_argument("--candidate", required=True, help="Candidate JSON path")
 
+    ghcr_parser = subparsers.add_parser(
+        "ghcr-check",
+        help="Validate local GHCR publish prerequisites exposed via GitHub CLI",
+    )
+    ghcr_parser.add_argument("--owner", default="ray-manaloto", help="GitHub org/user owner")
+    ghcr_parser.add_argument("--repo", default="dotfiles", help="Repository name")
+    ghcr_parser.add_argument(
+        "--package-name",
+        default="dotfiles-devcontainer",
+        help="GHCR container package name",
+    )
+
     # version command
     subparsers.add_parser("version", help="Show the version of the library")
 
@@ -229,6 +243,17 @@ def handle_image(args: argparse.Namespace) -> None:
         )
 
 
+def handle_ghcr_check(args: argparse.Namespace, project_root: Path) -> None:
+    """Handle GHCR prerequisite validation."""
+    result = validate_ghcr_prereqs(
+        repo_root=project_root,
+        owner=args.owner,
+        repo=args.repo,
+        package_name=args.package_name,
+    )
+    sys.stdout.write(json.dumps(result, indent=2) + "\n")
+
+
 def _build_command_handlers(
     args: argparse.Namespace,
     project_root: Path,
@@ -268,6 +293,7 @@ def _build_command_handlers(
         "install": lambda: handle_install(project_root),
         "verify": lambda: handle_verify(args),
         "image": lambda: handle_image(args),
+        "ghcr-check": lambda: handle_ghcr_check(args, project_root),
         "sync-versions": lambda: handle_sync_versions(project_root),
     }
 

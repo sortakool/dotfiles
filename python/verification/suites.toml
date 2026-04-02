@@ -299,6 +299,15 @@ paths = [".github/workflows/ci.yml"]
 tokens = ["ray-manaloto/dotfiles-devcontainer"]
 
 [[suite]]
+name = "ci.explicit-packages-write"
+description = "CI workflow must explicitly request packages: write for GHCR publishing"
+category = "ci"
+check_type = "static"
+handler = "require_tokens"
+paths = [".github/workflows/ci.yml"]
+tokens = ["packages: write"]
+
+[[suite]]
 name = "ci.pr-builds-do-not-push"
 description = "Only main-branch and scheduled builds may publish GHCR images"
 category = "ci"

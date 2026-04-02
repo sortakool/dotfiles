@@ -39,7 +39,7 @@ set -euo pipefail
 echo "=== hk validate ==="
 cd /tmp/dotfiles
 mise trust .
-hk validate
+HK_FILE=hk.pkl hk validate
 echo "=== mise ls (check no missing) ==="
 mise_output=$(mise ls 2>&1)
 missing=$(echo "$mise_output" | grep -c "(missing)" || true)
