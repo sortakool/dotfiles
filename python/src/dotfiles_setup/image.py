@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
 import sys
 import time
@@ -177,16 +178,20 @@ def _gzip_size_for_image(image_ref: str) -> int:
 
 def _parse_human_size(size: str) -> int:
     cleaned = size.strip()
-    units = [
-        ("GB", 1024**3),
-        ("MB", 1024**2),
-        ("KB", 1024),
-        ("B", 1),
-    ]
-    for unit, scale in units:
-        if cleaned.endswith(unit):
-            number = cleaned[: -len(unit)] or "0"
-            return int(float(number) * scale)
+    match = re.fullmatch(r"(?i)\s*([0-9]+(?:\.[0-9]+)?)\s*([kmgt]?b)\s*", cleaned)
+    if match:
+        number = float(match.group(1))
+        unit = match.group(2).upper()
+        scales = {
+            "B": 1,
+            "KB": 1024,
+            "MB": 1024**2,
+            "GB": 1024**3,
+            "TB": 1024**4,
+        }
+        return int(number * scales[unit])
+    if cleaned.isdigit():
+        return int(cleaned)
     return 0
 
 

@@ -39,3 +39,11 @@ def test_smoke_script_does_not_require_standalone_llvm_tools() -> None:
 
 def test_parse_human_size_handles_gigabytes_before_bytes_suffix() -> None:
     assert _parse_human_size("12.3GB") == int(12.3 * 1024**3)
+
+
+def test_parse_human_size_handles_lowercase_kilobytes() -> None:
+    assert _parse_human_size("1.17kB") == int(1.17 * 1024)
+
+
+def test_parse_human_size_handles_plain_bytes() -> None:
+    assert _parse_human_size("512") == 512
