@@ -177,8 +177,13 @@ def _gzip_size_for_image(image_ref: str) -> int:
 
 def _parse_human_size(size: str) -> int:
     cleaned = size.strip()
-    units = {"B": 1, "KB": 1024, "MB": 1024**2, "GB": 1024**3}
-    for unit, scale in units.items():
+    units = [
+        ("GB", 1024**3),
+        ("MB", 1024**2),
+        ("KB", 1024),
+        ("B", 1),
+    ]
+    for unit, scale in units:
         if cleaned.endswith(unit):
             number = cleaned[: -len(unit)] or "0"
             return int(float(number) * scale)
