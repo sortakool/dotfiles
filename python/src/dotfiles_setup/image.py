@@ -113,22 +113,29 @@ echo "=== All smoke checks passed ==="
 """
 
 
-def smoke(image_ref: str, *, platform: str = "linux/amd64") -> dict[str, Any]:
-    """Run smoke tests against a container image."""
-    logger.info("Smoking image: %s", image_ref)
+def build_smoke_docker_cmd(image_ref: str, *, platform: str = "linux/amd64") -> list[str]:
+    """Build the docker command used for smoke validation."""
     script = build_smoke_script()
-    cmd = [
+    return [
         "docker",
         "run",
         "--rm",
         "--platform",
         platform,
+        "--volume",
+        f"{_project_root()}:/tmp/dotfiles:ro",
         "--entrypoint",
         "/bin/bash",
         image_ref,
         "-lc",
         script,
     ]
+
+
+def smoke(image_ref: str, *, platform: str = "linux/amd64") -> dict[str, Any]:
+    """Run smoke tests against a container image."""
+    logger.info("Smoking image: %s", image_ref)
+    cmd = build_smoke_docker_cmd(image_ref, platform=platform)
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         logger.error("Smoke test FAILED:\n%s\n%s", result.stdout, result.stderr)
