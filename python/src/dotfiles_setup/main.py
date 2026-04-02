@@ -13,7 +13,7 @@ from typing import Any, ClassVar
 
 from dotfiles_setup.ai import AIOrchestrator
 from dotfiles_setup.audit import DevEnvironmentAuditor, ToolManager
-from dotfiles_setup.docker import DevContainerManager
+from dotfiles_setup.docker import DevContainerManager, parse_host_port, serve_proxy
 from dotfiles_setup.ghcr import validate_ghcr_prereqs
 from dotfiles_setup.image import main as image_main
 from dotfiles_setup.verify import main as verify_main
@@ -38,7 +38,7 @@ class EnvironmentValidator:
             logger.warning("MISE_STRICT is not set to 1. This is not recommended.")
 
 
-def setup_parser() -> argparse.ArgumentParser:
+def setup_parser() -> argparse.ArgumentParser:  # noqa: PLR0915
     """Configure the argument parser."""
     parser = argparse.ArgumentParser(description="Reproducible Dotfiles Orchestrator")
     subparsers = parser.add_subparsers(dest="command", help="Commands")
@@ -85,6 +85,18 @@ def setup_parser() -> argparse.ArgumentParser:
     docker_subparsers.add_parser("up", help="Bring the devcontainer up")
     docker_subparsers.add_parser("test", help="Run tests inside the container")
     docker_subparsers.add_parser("down", help="Bring the devcontainer down")
+    docker_subparsers.add_parser(
+        "initialize-host",
+        help="Prepare host-side SSH runtime for direct devcontainer launches",
+    )
+    proxy_parser = docker_subparsers.add_parser(
+        "proxy",
+        help="Run a socket proxy for SSH agent forwarding",
+    )
+    proxy_parser.add_argument("--listen-unix")
+    proxy_parser.add_argument("--listen-tcp")
+    proxy_parser.add_argument("--target-unix")
+    proxy_parser.add_argument("--target-tcp")
 
     # verify command
     verify_parser = subparsers.add_parser("verify", help="Run verification suites")
@@ -123,7 +135,10 @@ def setup_parser() -> argparse.ArgumentParser:
         "--image-ref", required=True, help="Image reference to inspect"
     )
     size_parser.add_argument("--platform", default="linux/amd64", help="Platform")
-    benchmark_parser = image_sub.add_parser("benchmark", help="Benchmark image smoke/report timings")
+    benchmark_parser = image_sub.add_parser(
+        "benchmark",
+        help="Benchmark image smoke/report timings",
+    )
     benchmark_parser.add_argument(
         "--image-ref", required=True, help="Image reference to benchmark"
     )
@@ -132,15 +147,26 @@ def setup_parser() -> argparse.ArgumentParser:
         "--output-path",
         help="Optional JSON output path for benchmark metrics",
     )
-    compare_parser = image_sub.add_parser("metrics-compare", help="Compare two benchmark JSON files")
+    compare_parser = image_sub.add_parser(
+        "metrics-compare",
+        help="Compare two benchmark JSON files",
+    )
     compare_parser.add_argument("--baseline", required=True, help="Baseline JSON path")
-    compare_parser.add_argument("--candidate", required=True, help="Candidate JSON path")
+    compare_parser.add_argument(
+        "--candidate",
+        required=True,
+        help="Candidate JSON path",
+    )
 
     ghcr_parser = subparsers.add_parser(
         "ghcr-check",
         help="Validate local GHCR publish prerequisites exposed via GitHub CLI",
     )
-    ghcr_parser.add_argument("--owner", default="ray-manaloto", help="GitHub org/user owner")
+    ghcr_parser.add_argument(
+        "--owner",
+        default="ray-manaloto",
+        help="GitHub org/user owner",
+    )
     ghcr_parser.add_argument("--repo", default="dotfiles", help="Repository name")
     ghcr_parser.add_argument(
         "--package-name",
@@ -170,6 +196,15 @@ def handle_docker(args: argparse.Namespace, project_root: Path) -> None:
         docker_manager.test()
     elif args.docker_command == "down":
         docker_manager.down()
+    elif args.docker_command == "initialize-host":
+        docker_manager.initialize_host()
+    elif args.docker_command == "proxy":
+        serve_proxy(
+            listen_unix=Path(args.listen_unix) if args.listen_unix else None,
+            listen_tcp=parse_host_port(args.listen_tcp) if args.listen_tcp else None,
+            target_unix=Path(args.target_unix) if args.target_unix else None,
+            target_tcp=parse_host_port(args.target_tcp) if args.target_tcp else None,
+        )
 
 
 def handle_audit() -> None:
@@ -221,7 +256,13 @@ def handle_image(args: argparse.Namespace) -> None:
     if args.image_command == "smoke":
         sys.exit(image_main(args.image_ref, platform=args.platform))
     if args.image_command == "size-report":
-        sys.exit(image_main(args.image_ref, platform=args.platform, command="size-report"))
+        sys.exit(
+            image_main(
+                args.image_ref,
+                platform=args.platform,
+                command="size-report",
+            )
+        )
     if args.image_command == "benchmark":
         output_path = Path(args.output_path) if args.output_path else None
         sys.exit(

@@ -14,7 +14,11 @@ import sys
 from pathlib import Path
 from typing import Any, ClassVar
 
+from dotfiles_setup.docker import ensure_container_ssh_proxy, host_authorized_keys
+
 logger = logging.getLogger(__name__)
+
+NON_SYSTEM_UID_MIN = 1000
 
 
 class ToolManager:
@@ -190,7 +194,7 @@ class DevEnvironmentAuditor:
         non_root_users = [
             entry.pw_name
             for entry in pwd.getpwall()
-            if entry.pw_uid >= 1000 and entry.pw_name not in {"nobody"}
+            if entry.pw_uid >= NON_SYSTEM_UID_MIN and entry.pw_name != "nobody"
         ]
         sole_non_root_user = len(non_root_users) == 1 and current_user in non_root_users
 
@@ -362,26 +366,49 @@ class DevEnvironmentAuditor:
         ssh_dir = Path.home() / ".ssh"
         ssh_dir.mkdir(mode=0o700, exist_ok=True)
 
-        # 2. Get public keys from agent
+        if os.environ.get("DEVCONTAINER") == "true":
+            proxy_socket = ensure_container_ssh_proxy()
+            if proxy_socket:
+                os.environ["SSH_AUTH_SOCK"] = proxy_socket
+                logger.info("Using container SSH agent proxy at %s", proxy_socket)
+
+        public_key_lines: list[str] = []
+
+        # 2a. Get public keys from agent when available
         try:
             result = subprocess.run(
                 ["ssh-add", "-L"],
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
             )
             public_keys = result.stdout.strip()
             if public_keys:
-                auth_keys_path = ssh_dir / "authorized_keys"
-                # Atomic write to authorized_keys
-                auth_keys_path.write_text(public_keys + "\n")
-                auth_keys_path.chmod(0o600)
-                count = len(public_keys.splitlines())
-                logger.info("Authorized %d keys from agent", count)
+                public_key_lines.extend(
+                    line.strip() for line in public_keys.splitlines() if line.strip()
+                )
+                logger.info(
+                    "Collected %d keys from SSH agent",
+                    len(public_key_lines),
+                )
             else:
                 logger.warning("No keys found in SSH agent to authorize")
         except subprocess.CalledProcessError:
             logger.warning("SSH agent unreachable during authorization sync")
+
+        # 2b. Fall back to host-provided public keys from runtime state.
+        public_key_lines.extend(host_authorized_keys())
+
+        unique_public_keys = list(
+            dict.fromkeys(line for line in public_key_lines if line)
+        )
+        if unique_public_keys:
+            auth_keys_path = ssh_dir / "authorized_keys"
+            auth_keys_path.write_text("\n".join(unique_public_keys) + "\n")
+            auth_keys_path.chmod(0o600)
+            logger.info("Authorized %d SSH keys", len(unique_public_keys))
+        else:
+            logger.warning("No SSH public keys available to authorize")
 
         # 3. Ensure sshd is running
         try:

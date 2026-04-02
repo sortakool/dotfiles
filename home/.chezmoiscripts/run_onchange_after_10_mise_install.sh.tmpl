@@ -4,6 +4,10 @@ set -eu
 # Re-runs when mise config template changes:
 # {{ include "dot_config/mise/config.toml.tmpl" | sha256sum }}
 
+if [ "${DEVCONTAINER:-}" = "true" ]; then
+  exit 0
+fi
+
 MISE="${MISE_INSTALL_PATH:-$(command -v mise || printf '%s' "$HOME/.local/bin/mise")}"
 SYSTEM_ARGS=""
 if [ "${MISE_INSTALL_MODE:-}" = "system" ]; then

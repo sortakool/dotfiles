@@ -2,6 +2,9 @@
   "name": "dotfiles-devcontainer",
   "build": {
     "dockerfile": "Dockerfile.host-user",
+    "options": [
+      "--platform=linux/amd64"
+    ],
     "args": {
       "DEVCONTAINER_USERNAME": "${localEnv:USER}",
       "BASE_IMAGE": "ghcr.io/ray-manaloto/dotfiles-devcontainer:dev"
@@ -13,16 +16,20 @@
   "updateRemoteUserUID": false,
   "init": true,
   "overrideCommand": true,
-  "postCreateCommand": "chezmoi init --apply --source '/workspaces/${localWorkspaceFolderBasename}' --force && cd '/workspaces/${localWorkspaceFolderBasename}' && mise reshim -f && mise prepare",
-  "postStartCommand": "cd '/workspaces/${localWorkspaceFolderBasename}' && UV_CACHE_DIR=/tmp/dotfiles-uv-cache uv run --project '/workspaces/${localWorkspaceFolderBasename}/python' dotfiles-setup ensure-ssh",
+  "initializeCommand": "cd '${localWorkspaceFolder}/python' && uv run dotfiles-setup docker initialize-host",
+  "postCreateCommand": "cd '/workspaces/${localWorkspaceFolderBasename}' && mise trust . && mise reshim -f",
+  "postStartCommand": "cd '/workspaces/${localWorkspaceFolderBasename}' && mise trust . && PYTHONPATH='/workspaces/${localWorkspaceFolderBasename}/python/src' mise exec python -- python -m dotfiles_setup.main ensure-ssh",
   "containerEnv": {
     "DEVCONTAINER": "true",
     "DOTFILES_HOST_USER": "${localEnv:USER}",
+    "DOTFILES_HOST_STATE_DIR": "/tmp/dotfiles-host-state",
+    "SSH_AUTH_SOCK": "/tmp/dotfiles-ssh-agent.sock",
     "MISE_TRUSTED_CONFIG_PATHS": "/home/${localEnv:USER}/.config/mise",
     "MISE_STRICT": "1"
   },
   "remoteEnv": {
-    "PATH": "${containerEnv:PATH}:/home/${localEnv:USER}/.local/share/mise/shims"
+    "PATH": "${containerEnv:PATH}:/home/${localEnv:USER}/.local/share/mise/shims",
+    "SSH_AUTH_SOCK": "/tmp/dotfiles-ssh-agent.sock"
   },
   "runArgs": [
     "--platform=linux/amd64",
@@ -37,6 +44,6 @@
     "type=bind,source=${localEnv:HOME}/.claude,target=/home/${localEnv:USER}/.claude",
     "type=bind,source=${localEnv:HOME}/.codex,target=/home/${localEnv:USER}/.codex",
     "type=bind,source=${localEnv:HOME}/.gemini,target=/home/${localEnv:USER}/.gemini",
-    "type=bind,source=${localEnv:HOME}/.ssh,target=/home/${localEnv:USER}/.ssh,readonly"
+    "type=bind,source=${localEnv:HOME}/.local/state/dotfiles,target=/tmp/dotfiles-host-state"
   ]
 }
