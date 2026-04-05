@@ -58,7 +58,7 @@ pkl = "latest"
 "pipx:gcovr" = "latest"
 # Security scanners
 pinact = "latest"
-betterleaks = "latest"
+# betterleaks: not in mise tool registry for linux-x64 (tracked in docs/hk-builtins-audit.md)
 # Conda packages (C++ toolchain for devcontainer)
 "conda:clang" = "latest"
 "conda:clangxx" = "latest"

@@ -37,9 +37,7 @@ hooks {
       ["gitleaks"] {
         batch = true
       }
-      ["betterleaks"] {
-        batch = true
-      }
+      // betterleaks: not in mise tool registry for linux-x64
 
       // --- Typo detection ---
       ["typos"] {
