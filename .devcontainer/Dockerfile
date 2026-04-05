@@ -57,6 +57,10 @@ RUN groupadd --gid 2000 mise && \
 COPY .devcontainer/mise-system.toml /etc/mise/config.toml
 
 # Pre-install tools globally via mise
+# Known cosmetic warnings during install (no suppression available):
+# - rustup "existing settings file at /opt/rustup/settings.toml": rustup creates
+#   settings.toml then warns about its own file; no RUSTUP_QUIET env var exists
+# - bun "add the global bin folder to $PATH": mise shims handle resolution
 RUN --mount=type=cache,id=mise-cache,target=/opt/mise/cache,sharing=locked \
     --mount=type=cache,id=uv-cache,target=/root/.cache/uv,sharing=locked \
     --mount=type=secret,id=github_token \

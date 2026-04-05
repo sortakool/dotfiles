@@ -39,9 +39,9 @@ fd = "latest"
 bat = "latest"
 vivid = "latest"
 "github:cli/cli" = "latest"
-# AI CLIs
-"npm:@google/gemini-cli" = "latest"
-"npm:@openai/codex" = "latest"
+# AI CLIs (depends=node ensures npm is available for version resolution)
+"npm:@google/gemini-cli" = { version = "latest", depends = ["node"] }
+"npm:@openai/codex" = { version = "latest", depends = ["node"] }
 # Build systems & C++ tooling
 bats = "latest"
 pkl = "latest"
@@ -95,14 +95,12 @@ pipx.uvx = true
 cargo.binstall = true
 cargo.binstall_only = false
 conda.channel = "conda-forge"
-# Attestation verification disabled in Docker builds — requires GITHUB_TOKEN
-# which is not reliably available in buildkit secret mounts.
-# CI passes token via secret mount; local builds hit rate limits without it.
-github.github_attestations = false
-github.slsa = false
-aqua.github_attestations = false
-aqua.slsa = false
-python.github_attestations = false
+# Attestation verification disabled in Docker builds — global override covers
+# all backends (aqua, github, python, core/ruby). Per-backend settings don't
+# cover core backends like ruby. GITHUB_TOKEN not reliably available in
+# buildkit secret mounts; CI passes token but local builds hit rate limits.
+github_attestations = false
+slsa = false
 python.uv_venv_auto = "source"
 
 [settings.status]
