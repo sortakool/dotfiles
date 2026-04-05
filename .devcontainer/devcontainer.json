@@ -25,9 +25,11 @@
     "MISE_OS": "linux",
     "MISE_DATA_DIR": "/opt/mise",
     "MISE_CONFIG_DIR": "/etc/mise",
-    "MISE_TRUSTED_CONFIG_PATHS": "/etc/mise:/workspaces/dotfiles"
+    "MISE_TRUSTED_CONFIG_PATHS": "/etc/mise:/workspaces/dotfiles",
+    "MISE_STRICT": "1"
   },
   "forwardAgent": true,
+  "updateRemoteUserUID": false,
   "postCreateCommand": "./install.sh",
   "customizations": {
     "vscode": {

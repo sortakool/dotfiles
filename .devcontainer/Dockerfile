@@ -41,8 +41,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     libsqlite3-dev \
     libssl-dev \
     zlib1g-dev \
-    sudo \
-    openssh-server \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
 # Install mise globally

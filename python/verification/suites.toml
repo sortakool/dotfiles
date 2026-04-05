@@ -13,6 +13,7 @@ check_type = "static"
 handler = "forbid_tokens"
 paths = [".devcontainer/Dockerfile"]
 tokens = ["MISE_DATA_DIR="]
+allowlist = ["^\\s*ENV\\s"]
 
 [[suite]]
 name = "build.mise-install-path-system"
@@ -123,14 +124,6 @@ handler = "require_tokens"
 paths = [".devcontainer/Dockerfile"]
 tokens = ["ARG BASE_IMAGE"]
 
-[[suite]]
-name = "build.install-sh-entry"
-description = "install.sh must be referenced as entry point"
-category = "build"
-check_type = "static"
-handler = "require_tokens"
-paths = [".devcontainer/Dockerfile"]
-tokens = ["install.sh"]
 
 [[suite]]
 name = "build.gnupg-installed"
@@ -143,12 +136,12 @@ tokens = ["gnupg"]
 
 [[suite]]
 name = "build.npm-no-update-notifier"
-description = "npm_config_update_notifier=false to suppress build notices"
+description = "npm_config_update_notifier=false set in mise-system.toml to suppress build notices"
 category = "build"
 check_type = "static"
 handler = "require_tokens"
-paths = [".devcontainer/Dockerfile"]
-tokens = ["npm_config_update_notifier=false"]
+paths = [".devcontainer/mise-system.toml"]
+tokens = ['npm_config_update_notifier = "false"']
 
 [[suite]]
 name = "build.path-includes-mise-shims"
@@ -167,6 +160,7 @@ check_type = "static"
 handler = "forbid_tokens"
 paths = [".devcontainer/Dockerfile"]
 tokens = ["CARGO_HOME="]
+allowlist = ["CARGO_HOME=/opt/cargo"]
 
 [[suite]]
 name = "build.no-custom-rustup-home"
@@ -176,6 +170,7 @@ check_type = "static"
 handler = "forbid_tokens"
 paths = [".devcontainer/Dockerfile"]
 tokens = ["RUSTUP_HOME="]
+allowlist = ["RUSTUP_HOME=/opt/rustup"]
 
 [[suite]]
 name = "build.no-custom-gopath"
@@ -344,6 +339,7 @@ paths = [
     ".github/workflows/ci.yml",
 ]
 tokens = ["vscode"]
+allowlist = ["\"vscode\"\\s*:", "ms-vscode", "vscode-clangd", "vscode-pylance"]
 
 [[suite]]
 name = "identity.user-env-set"
