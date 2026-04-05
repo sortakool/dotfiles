@@ -1,4 +1,4 @@
-amends "package://github.com/jdx/hk/releases/download/v1.39.0/hk@1.39.0#/Config.pkl"
+amends "package://github.com/jdx/hk/releases/download/v1.40.0/hk@1.40.0#/Config.pkl"
 
 // Zero-skip policy: fail_fast=false to report ALL issues, not just the first
 fail_fast = false
@@ -15,6 +15,7 @@ hooks {
       ["trailing_whitespace"] {}
       ["newlines"] {}
       ["mixed_line_ending"] {}
+      ["fix_smart_quotes"] {}
 
       // --- Safety builtins ---
       ["detect_private_key"] {}
@@ -24,6 +25,7 @@ hooks {
       ["check_symlinks"] {}
       ["check_executables_have_shebangs"] {}
       ["check_byte_order_marker"] {}
+      ["no_commit_to_branch"] {}
 
       // --- Style & Consistency ---
       ["editorconfig-checker"] {}
@@ -33,6 +35,9 @@ hooks {
 
       // --- Security ---
       ["gitleaks"] {
+        batch = true
+      }
+      ["betterleaks"] {
         batch = true
       }
 
@@ -132,6 +137,9 @@ hooks {
         glob = List(".github/workflows/*.yml")
       }
       ["zizmor"] {
+        glob = List(".github/workflows/*.yml")
+      }
+      ["pinact"] {
         glob = List(".github/workflows/*.yml")
       }
 
