@@ -156,6 +156,12 @@ hooks {
         glob = List("**/mise.toml")
       }
 
+      // --- Agent documentation ---
+      ["agnix"] {
+        check = "npx agnix ."
+        glob = List("CLAUDE.md", "AGENTS.md", ".claude/**/*.md", ".agnix.toml")
+      }
+
     }
   }
 

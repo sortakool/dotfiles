@@ -84,7 +84,7 @@ run = "pinact run --verify"
 
 [tasks.lint-docs]
 description = "Validate agent documentation"
-run = "npx agnix --target claude-code ."
+run = "npx agnix ."
 
 [tasks.lock]
 description = "Generate mise lockfile for linux-x64"

@@ -1,0 +1,37 @@
+severity = "Warning"
+exclude = [
+    "node_modules/**",
+    ".git/**",
+    ".codex/**",
+    ".omx/**",
+    ".omc/**",
+    ".omg/**",
+    ".logging/**",
+    "plugins/**",
+    "missions/**",
+    ".claude/skills.bak/**",
+]
+tools = ["claude-code"]
+max_files_to_validate = 10000
+
+[rules]
+skills = true
+hooks = true
+agents = true
+memory = true
+plugins = true
+xml = true
+mcp = true
+imports = true
+agents_md = true
+prompt_engineering = true
+frontmatter_validation = true
+xml_balance = true
+import_references = true
+disabled_rules = []
+disabled_validators = []
+
+[files]
+include_as_memory = []
+include_as_generic = []
+exclude = []
