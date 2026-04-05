@@ -25,7 +25,7 @@ variable "BASE_IMAGE" {
 }
 
 variable "MISE_VERSION" {
-  default = "v2026.3.18"
+  default = "v2026.4.4"
 }
 
 variable "DEVCONTAINER_USERNAME" {
@@ -46,8 +46,11 @@ target "_common" {
   platforms  = ["${PLATFORM}"]
   args = {
     DEVCONTAINER_USERNAME = DEVCONTAINER_USERNAME
-    MISE_VERSION = MISE_VERSION
+    MISE_VERSION          = MISE_VERSION
   }
+  secret = [
+    "id=github_token,env=GITHUB_TOKEN",
+  ]
 }
 
 # Default dev environment on ubuntu base
@@ -75,6 +78,17 @@ target "dev-load" {
   inherits = ["dev"]
   output   = ["type=docker"]
   tags     = ["${IMAGE_REF}:${TAG}", "${IMAGE}:${TAG}"]
+}
+
+# Validation target (dry-run mode)
+target "validate" {
+  inherits = ["dev"]
+  call     = "check"
+}
+
+# Introspection target (lists all targets)
+target "help" {
+  call = "targets"
 }
 
 group "default" {

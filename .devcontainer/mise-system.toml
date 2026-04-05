@@ -1,0 +1,148 @@
+# :schema https://mise.jdx.dev/schema/mise.json
+#
+# System-wide mise config for Docker devcontainer image
+# This is a DEDICATED config — not derived from chezmoi templates.
+# Installed to /etc/mise/config.toml during docker build.
+# Changes here must be validated via: docker buildx bake dev-load
+
+[tools]
+# Core runtimes
+python = "latest"
+uv = "latest"
+node = "latest"
+bun = "latest"
+go = "latest"
+rust = "latest"
+zig = "latest"
+pixi = "latest"
+java = "latest"
+deno = "latest"
+ruby = "latest"
+cargo-binstall = "latest"
+# Dotfiles management
+chezmoi = "latest"
+# Git hooks & linting
+hk = "latest"
+hadolint = "latest"
+shellcheck = "latest"
+shfmt = "latest"
+taplo = "latest"
+actionlint = "latest"
+typos = "latest"
+yamllint = "latest"
+yamlfmt = "latest"
+yq = "latest"
+ghalint = "latest"
+jq = "latest"
+# CLI utilities
+fzf = "latest"
+ripgrep = "latest"
+fd = "latest"
+bat = "latest"
+vivid = "latest"
+"github:cli/cli" = "latest"
+# AI CLIs (depends=node ensures npm is available for version resolution)
+"npm:@google/gemini-cli" = { version = "latest", depends = ["node"] }
+"npm:@openai/codex" = { version = "latest", depends = ["node"] }
+# Build systems & C++ tooling
+bats = "latest"
+pkl = "latest"
+"github:go-task/task" = "latest"
+"github:mozilla/sccache" = "latest"
+# pipx tools (C++ ecosystem)
+"pipx:meson" = "latest"
+"pipx:conan" = "latest"
+"pipx:cpplint" = "latest"
+"pipx:flawfinder" = "latest"
+"pipx:lizard" = "latest"
+"pipx:cmakelang" = "latest"
+"pipx:codechecker" = "latest"
+"pipx:gcovr" = "latest"
+# Security scanners
+pinact = "latest"
+# betterleaks: not in mise tool registry for linux-x64 (tracked in docs/hk-builtins-audit.md)
+# Claude Code CLI — uses http:claude backend (native binary, no npm)
+claude-code = "latest"
+# Conda packages (C++ toolchain for devcontainer)
+"conda:clang" = "latest"
+"conda:clangxx" = "latest"
+"conda:cmake" = "latest"
+"conda:ninja" = "latest"
+"conda:clang-tools" = "latest"
+"conda:clang-format" = "latest"
+"conda:lld" = "latest"
+"conda:mold" = "latest"
+"conda:bear" = "latest"
+"conda:ccache" = "latest"
+"conda:cppcheck" = "latest"
+"conda:include-what-you-use" = "latest"
+"conda:gdb" = "latest"
+"conda:lldb" = "latest"
+"conda:lcov" = "latest"
+"conda:doxygen" = "latest"
+"conda:git" = "latest"
+"conda:make" = "latest"
+"conda:linux-perf" = "latest"
+"conda:tar" = "latest"
+"conda:p7zip" = "latest"
+
+[settings]
+experimental = true
+auto_install = true
+asdf_compat = true
+lockfile = true
+jobs = 1
+npm.package_manager = "bun"
+pipx.uvx = true
+cargo.binstall = true
+cargo.binstall_only = false
+conda.channel = "conda-forge"
+# Attestation verification disabled in Docker builds — global override covers
+# all backends (aqua, github, python, core/ruby). Per-backend settings don't
+# cover core backends like ruby. GITHUB_TOKEN not reliably available in
+# buildkit secret mounts; CI passes token but local builds hit rate limits.
+github_attestations = false
+slsa = false
+python.uv_venv_auto = "source"
+
+[settings.status]
+show_tools = true
+missing_tools = "always"
+
+[env]
+# Build toolchain
+CC = "gcc"
+CXX = "g++"
+# Hook runner
+HK_PKL_BACKEND = "pklr"
+HK_MISE = "1"
+# Locale (set here so all mise-activated shells inherit)
+LANG = "C.UTF-8"
+LC_ALL = "C.UTF-8"
+# Platform hints for tool backends
+MISE_ARCH = "x64"
+MISE_OS = "linux"
+CONDA_SUBDIR = "linux-64"
+# Network / install behavior
+MISE_HTTP_TIMEOUT = "120"
+npm_config_update_notifier = "false"
+# Rust: skip PATH check during non-interactive installs
+RUSTUP_INIT_SKIP_PATH_CHECK = "yes"
+CARGO_HOME = "/opt/cargo"
+RUSTUP_HOME = "/opt/rustup"
+
+[tasks."setup:tools"]
+description = "Install all tools and reshim"
+run = "mise install -y && mise reshim -f"
+
+[tasks."setup:gpg"]
+description = "Import GPG keys"
+run = """
+for keyfile in ~/.config/git/*.asc; do
+    [ -f "$keyfile" ] || continue
+    gpg --import "$keyfile" 2>/dev/null || true
+done
+"""
+
+# [hooks] postinstall removed — Claude Code now installed via mise http:claude backend
+# For per-user native binary in overlay: run `claude install` in Dockerfile.host-user

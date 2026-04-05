@@ -1,0 +1,3 @@
+# Mission
+
+Build a comprehensive Docker build validation system for .devcontainer/Dockerfile. Simplify using /etc/mise/config.toml as a dedicated system config (not derived from chezmoi template). Eliminate chezmoi dependency from Docker build. Only PATH stays as Docker ENV; all other vars move to mise [env]. Add hk linters for tool installation validation, build metrics (time/size), build log scanning for warnings/errors (zero-skip policy), mise tasks/hooks for automation. Target: linux/amd64 on GitHub Actions CI/CD. Invariants: thin host-user overlay (user + SSH + cache mount only), no lifecycle tool installs in devcontainer.json. Mac + CLion is the client. Review against remote main. Spec: .omc/specs/deep-interview-docker-mise-system-config.md

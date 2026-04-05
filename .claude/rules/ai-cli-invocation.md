@@ -1,3 +1,12 @@
+---
+paths:
+  - "AGENTS.md"
+  - ".claude/**"
+  - "scripts/**"
+  - ".omc/**"
+  - ".omx/**"
+---
+
 # AI CLI Invocation Policy
 
 When calling external AI CLIs (Codex, Gemini, OpenCode) from Bash, you MUST use the

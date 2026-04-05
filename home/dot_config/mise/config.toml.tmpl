@@ -1,79 +1,45 @@
-# Dotfiles environment tools — baked into the Docker image via install.sh
-# These are Build Type 2 tools: the full dev toolchain
+# Dotfiles environment tools — baked into the Docker image
+# These are pre-installed globally in /opt/mise during the build stage
 
 [tools]
 # Core runtimes
-python = "3.14.3"
-uv = "0.11.2"
-node = "25.8.2"
-go = "1.26.1"
-rust = "1.94.1"
-zig = "0.15.2"
-bun = "1.3.11"
-pixi = "0.66.0"
+python = "latest"
+uv = "latest"
+node = "latest"
+bun = "latest"
+go = "latest"
+rust = "latest"
+zig = "latest"
+pixi = "latest"
 java = "latest"
 deno = "latest"
 ruby = "latest"
 cargo-binstall = "latest"
 # Dotfiles management
-chezmoi = "2.70.0"
-# Git hooks & linting (also in project mise.toml, pinned here for image reproducibility)
-hk = "1.39.0"
-pkl = "0.31.1"
-hadolint = "2.14.0"
-shellcheck = "0.11.0"
-shfmt = "3.13.0"
-taplo = "0.10.0"
-actionlint = "1.7.11"
-typos = "1.44.0"
-yamllint = "1.38.0"
-yamlfmt = "0.18.0"
-yq = "4.52.5"
-ghalint = "1.0.0"
-jq = "1.8.1"
+chezmoi = "latest"
+# Git hooks & linting
+hk = "latest"
+hadolint = "latest"
+shellcheck = "latest"
+shfmt = "latest"
+taplo = "latest"
+actionlint = "latest"
+typos = "latest"
+yamllint = "latest"
+yamlfmt = "latest"
+yq = "latest"
+ghalint = "latest"
+jq = "latest"
 # CLI utilities
-bats = "1.13.0"
-fzf = "0.70.0"
-ripgrep = "15.1.0"
-fd = "10.4.2"
-bat = "0.26.1"
-# C/C++ and systems tooling
-"github:go-task/task" = "latest"
-"github:mozilla/sccache" = "latest"
-"github:facebook/infer" = "latest"
-"pipx:meson" = "latest"
-"pipx:conan" = "latest"
-"pipx:cpplint" = "latest"
-"pipx:flawfinder" = "latest"
-"pipx:lizard" = "latest"
-"pipx:cmakelang" = "latest"
-"pipx:codechecker" = "latest"
-"pipx:gcovr" = "latest"
-"conda:clang" = "latest"
-"conda:clangxx" = "latest"
-"conda:cmake" = "latest"
-"conda:ninja" = "latest"
-"conda:clang-tools" = "latest"
-"conda:clang-format" = "latest"
-"conda:lld" = "latest"
-"conda:mold" = "latest"
-"conda:bear" = "latest"
-"conda:ccache" = "latest"
-"conda:cppcheck" = "latest"
-"conda:include-what-you-use" = "latest"
-"conda:gdb" = "latest"
-"conda:lldb" = "latest"
-"conda:lcov" = "latest"
-"conda:doxygen" = "latest"
-"conda:git" = "latest"
-"conda:make" = "latest"
-"conda:linux-perf" = "latest"
-"conda:tar" = "latest"
-"conda:p7zip" = "latest"
+fzf = "latest"
+ripgrep = "latest"
+fd = "latest"
+bat = "latest"
+vivid = "latest"
+"github:cli/cli" = "latest"
 # AI CLIs
-"npm:@google/gemini-cli" = "0.35.3"
-"npm:@openai/codex" = "0.117.0"
-"npm:@anthropic-ai/claude-code" = "latest"
+"npm:@google/gemini-cli" = "latest"
+"npm:@openai/codex" = "latest"
 
 [settings]
 experimental = true
@@ -102,3 +68,19 @@ HK_PKL_BACKEND = "pklr"
 HK_MISE = "1"
 # rustup warns during non-interactive installs unless PATH checking is explicitly skipped
 RUSTUP_INIT_SKIP_PATH_CHECK = "yes"
+# Global mise paths
+MISE_ARCH = "x64"
+MISE_OS = "linux"
+
+[tasks."setup:tools"]
+description = "Install all tools and reshim"
+run = "mise install -y && mise reshim -f"
+
+[tasks."setup:gpg"]
+description = "Import GPG keys"
+run = """
+for keyfile in ~/.config/git/*.asc; do
+    [ -f "$keyfile" ] || continue
+    gpg --import "$keyfile" 2>/dev/null || true
+done
+"""

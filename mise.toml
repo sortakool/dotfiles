@@ -2,29 +2,37 @@
 # These are Build Type 1 tools: run locally before commits
 
 [tools]
-hk = "1.39.0"
+hk = "1.41.0"
 pkl = "0.31.1"
 hadolint = "2.14.0"
 shellcheck = "0.11.0"
 shfmt = "3.13.0"
 taplo = "0.10.0"
-actionlint = "1.7.11"
-typos = "1.44.0"
+actionlint = "1.7.12"
+typos = "1.45.0"
 yamllint = "1.38.0"
-yamlfmt = "0.18.0"
+yamlfmt = "0.21.0"
 yq = "4.52.5"
-ghalint = "1.0.0"
+ghalint = "1.5.5"
 jq = "1.8.1"
 # Python toolchain for the mde-py package in python/
 python = "3.14.3"
-uv = "0.11.2"
+uv = "0.11.3"
+pinact = "latest"
+"npm:@devcontainers/cli" = "latest"
+"npm:agnix" = "latest"
+"npm:agents-lint" = "latest"
 
 [settings]
 experimental = true
 auto_install = true
+lockfile = true
 
 [settings.status]
 show_prepare_stale = true
+
+[hooks]
+postinstall = "hk install --mise"
 
 [env]
 HK_PKL_BACKEND = "pklr"
@@ -49,6 +57,18 @@ depends = ["lint", "test"]
 description = "Run Python test suite"
 run = "uv run pytest tests/ -x -q"
 
+[tasks.up]
+description = "Bring the devcontainer up"
+run = "uv run --directory python dotfiles-setup docker up"
+
+[tasks.stop]
+description = "Bring the devcontainer down"
+run = "uv run --directory python dotfiles-setup docker down"
+
+[tasks.build]
+description = "Build the docker image locally using docker bake"
+run = "docker buildx bake dev-load"
+
 [tasks.fmt]
 description = "Auto-fix formatting issues"
 run = "hk fix"
@@ -59,4 +79,16 @@ run = "mise outdated"
 
 [tasks.validate]
 description = "Validate Docker and CI contracts"
-run = "hk check --all"
+run = "docker buildx bake validate"
+
+[tasks.pin-actions]
+description = "Verify GHA actions are SHA-pinned"
+run = "pinact run --verify"
+
+[tasks.lint-docs]
+description = "Validate agent documentation"
+run = "agnix ."
+
+[tasks.lock]
+description = "Generate mise lockfile for linux-x64"
+run = "mise lock --platform linux-x64"

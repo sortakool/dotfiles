@@ -1,21 +1,6 @@
 #!/bin/sh
-# chezmoi:template:hash
-set -eu
-# Re-runs when mise config template changes:
 # {{ include "dot_config/mise/config.toml.tmpl" | sha256sum }}
+set -eu
 
-if [ "${DEVCONTAINER:-}" = "true" ]; then
-  exit 0
-fi
-
-MISE="${MISE_INSTALL_PATH:-$(command -v mise || printf '%s' "$HOME/.local/bin/mise")}"
-SYSTEM_ARGS=""
-if [ "${MISE_INSTALL_MODE:-}" = "system" ]; then
-  SYSTEM_ARGS="--system"
-fi
-
-# Phase 1: install the core package managers and Rust before cargo-backed tools
-$MISE install $SYSTEM_ARGS uv bun node rust cargo-binstall -y --jobs 1
-
-# Phase 2: all remaining tools
-$MISE install $SYSTEM_ARGS -y --jobs 1
+# Declarative tool setup using global mise
+mise run setup:tools

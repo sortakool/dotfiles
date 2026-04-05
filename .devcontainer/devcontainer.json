@@ -1,5 +1,5 @@
 {
-  "name": "dotfiles-devcontainer",
+  "name": "dotfiles-refactor-fresh",
   "build": {
     "dockerfile": "Dockerfile.host-user",
     "options": [
@@ -7,43 +7,42 @@
     ],
     "args": {
       "DEVCONTAINER_USERNAME": "${localEnv:USER}",
-      "BASE_IMAGE": "ghcr.io/ray-manaloto/dotfiles-devcontainer:dev"
+      "BASE_IMAGE": "dotfiles-devcontainer:dev"
     }
   },
-  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},type=bind,consistency=cached",
-  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
   "remoteUser": "${localEnv:USER}",
-  "updateRemoteUserUID": false,
-  "init": true,
-  "overrideCommand": true,
-  "initializeCommand": "cd '${localWorkspaceFolder}/python' && uv run dotfiles-setup docker initialize-host",
-  "postCreateCommand": "cd '/workspaces/${localWorkspaceFolderBasename}' && mise trust . && mise reshim -f",
-  "postStartCommand": "cd '/workspaces/${localWorkspaceFolderBasename}' && mise trust . && PYTHONPATH='/workspaces/${localWorkspaceFolderBasename}/python/src' mise exec python -- python -m dotfiles_setup.main ensure-ssh",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},type=bind,consistency=cached",
+  "mounts": [
+    "source=${localEnv:HOME}/.ssh,target=/home/${localEnv:USER}/.ssh,type=bind,readonly=true",
+    "source=${localEnv:HOME}/.claude,target=/home/${localEnv:USER}/.claude,type=bind",
+    "source=${localEnv:HOME}/.codex,target=/home/${localEnv:USER}/.codex,type=bind",
+    "source=${localEnv:HOME}/.gemini,target=/home/${localEnv:USER}/.gemini,type=bind",
+    "source=${localEnv:HOME}/.local/state/dotfiles,target=/tmp/dotfiles-host-state,type=bind"
+  ],
   "containerEnv": {
-    "DEVCONTAINER": "true",
-    "DOTFILES_HOST_USER": "${localEnv:USER}",
-    "DOTFILES_HOST_STATE_DIR": "/tmp/dotfiles-host-state",
-    "SSH_AUTH_SOCK": "/tmp/dotfiles-ssh-agent.sock",
-    "MISE_TRUSTED_CONFIG_PATHS": "/home/${localEnv:USER}/.config/mise",
+    "MISE_ARCH": "x64",
+    "MISE_OS": "linux",
+    "MISE_DATA_DIR": "/opt/mise",
+    "MISE_CONFIG_DIR": "/etc/mise",
+    "MISE_TRUSTED_CONFIG_PATHS": "/etc/mise:/workspaces/dotfiles",
     "MISE_STRICT": "1"
   },
-  "remoteEnv": {
-    "PATH": "${containerEnv:PATH}:/home/${localEnv:USER}/.local/share/mise/shims",
-    "SSH_AUTH_SOCK": "/tmp/dotfiles-ssh-agent.sock"
-  },
-  "runArgs": [
-    "--platform=linux/amd64",
-    "--cap-add=SYS_PTRACE",
-    "--security-opt=seccomp=unconfined",
-    "--publish=127.0.0.1:4444:22"
-  ],
-  "mounts": [
-    "type=volume,src=uv-cache,target=/home/${localEnv:USER}/.cache/uv",
-    "type=volume,src=claude-project-cache,target=/home/${localEnv:USER}/.cache/claude",
-    "type=volume,src=gh-config,target=/home/${localEnv:USER}/.config/gh",
-    "type=bind,source=${localEnv:HOME}/.claude,target=/home/${localEnv:USER}/.claude",
-    "type=bind,source=${localEnv:HOME}/.codex,target=/home/${localEnv:USER}/.codex",
-    "type=bind,source=${localEnv:HOME}/.gemini,target=/home/${localEnv:USER}/.gemini",
-    "type=bind,source=${localEnv:HOME}/.local/state/dotfiles,target=/tmp/dotfiles-host-state"
-  ]
+  "forwardAgent": true,
+  "updateRemoteUserUID": false,
+  "postCreateCommand": "./install.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-vscode.cpptools-extension-pack",
+        "llvm-vs-code-extensions.vscode-clangd",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "tamasfe.even-better-toml",
+        "mkhl.direnv"
+      ]
+    }
+  }
 }

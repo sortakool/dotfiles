@@ -11,16 +11,20 @@ mise install                          # Install all tools
 hk run pre-commit --all               # Run lint checks
 docker buildx bake dev-load           # Build devcontainer locally
 uv run --directory python pytest tests/ -x -q  # Run tests
+mise run pin-actions                  # Verify GHA actions are SHA-pinned
+mise run lint-docs                    # Validate agent documentation
+mise run lock                         # Regenerate mise.lock for linux-x64
 ```
 
 ## Architecture
 - `.devcontainer/Dockerfile` — Multi-stage devcontainer (APT snapshot pinning, mise bootstrap)
-- `docker-bake.hcl` — BuildKit bake config (dev, cpp, dev-load, cpp-load targets); `IMAGE_REF` consolidates registry+image; `docker-metadata-action` target for CI tag inheritance
+- `.devcontainer/mise-system.toml` — Dedicated Docker system-wide mise config (installed to `/etc/mise/config.toml`); not derived from chezmoi templates; includes postinstall hook for Claude Code CLI
+- `docker-bake.hcl` — BuildKit bake config (dev, cpp, dev-load, cpp-load targets); `IMAGE_REF` consolidates registry+image; `docker-metadata-action` target for CI tag inheritance; secret mount in `_common`; `validate` (dry-run) and `help` (list targets) bake targets
 - `install.sh` — Single bootstrap entry point used by Dockerfile
 - `home/` — Chezmoi-managed dotfiles (shell, git, editor config)
-- `python/` — Python package (`dotfiles_setup`) for orchestration
-- `hk.pkl` — Git hook config (pre-commit via hk)
-- `mise.toml` — Tool versions (hk, pkl, hadolint, shellcheck, actionlint, etc.)
+- `python/` — Python package (`dotfiles_setup`) for orchestration; requires Python 3.14; `[tool.ty]` section for ty type checker
+- `hk.pkl` — Git hook config (pre-commit via hk v1.40.0); builtins: `no_commit_to_branch`, `fix_smart_quotes`, `detect_private_key`, `check_added_large_files`, etc.
+- `mise.toml` — Tool versions (hk, pkl, hadolint, shellcheck, actionlint, pinact, agnix, etc.)
 - `.github/workflows/ci.yml` — Lint → contract-preflight → build → smoke-test
 - `scripts/benchmark-docker.sh` — Docker runtime A/B benchmarking
 
@@ -38,6 +42,12 @@ Registry: `ghcr.io/sortakool/dotfiles-devcontainer`
 - Bake targets: `dev` (CI push), `dev-load` (local), `cpp`, `cpp-load`
 - `IMAGE_REF` variable (`${DEFAULT_REGISTRY}/${IMAGE}`) consolidates registry+image for tags and cache refs
 - `docker-metadata-action` bake target provides default tags locally; CI overrides with SHA/latest/PR tags via metadata-action bake file
+- lint job caches `~/.local/share/mise` keyed on `mise.lock` and uploads `mise.lock` as an artifact
+- lint job validates agent documentation via `agnix --target claude-code --strict .`
+- lint job runs `mise doctor --json` for environment health check
+- build job includes diagnostics step: `docker buildx bake --print` + known warnings table
+- All GHA actions SHA-pinned via pinact (`mise run pin-actions` to verify)
+- contract-preflight and smoke-test use Python 3.14, `actions/setup-python@v6`, `astral-sh/setup-uv@v8`
 
 ## Open Issues
 - **HIGH**: `devcontainer.json` image reference uses wrong registry: `ghcr.io/ray-manaloto/dotfiles-devcontainer:dev` → must be `ghcr.io/sortakool/dotfiles-devcontainer:dev` (pulls nonexistent image)
@@ -48,10 +58,9 @@ pytest tests/ -x -q                # All tests
 pytest tests/test_audit.py -x -q   # Single file
 ```
 
-### Smoke Test Roadmap
-Current CI smoke test (inline bash) is identified as too thin (debate 2026-03-29).
-Priority: adopt structured Python-driven verification with named test suites.
-Cherry-pick verification patterns from cpp-playground; skip its full CI architecture.
+### Smoke Test & Verification
+Structured Python-driven verification now in place via `python/verification/suites.toml` (contract-preflight).
+CI smoke-test validates clang, AI CLIs, sanitizers, and backend policies against the built image.
 
 ## Phase 2 (Future Work)
 Full design spec: `docs/ultrapowers/specs/2026-03-29-devcontainer-host-user-migration-design.md`

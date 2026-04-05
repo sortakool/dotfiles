@@ -426,7 +426,7 @@ class DevContainerManager:
         logger.info("Pulling published base image %s...", self.base_image)
         docker = self._get_bin("docker")
         subprocess.run(
-            [docker, "pull", self.base_image],
+            [docker, "pull", "--platform", "linux/amd64", self.base_image],
             check=True,
             text=True,
             env=os.environ.copy(),
@@ -439,6 +439,8 @@ class DevContainerManager:
                 str(self.project_root),
                 "--image-name",
                 self.image_name,
+                "--platform",
+                "linux/amd64",
             ]
         )
 
@@ -456,9 +458,30 @@ class DevContainerManager:
         )
 
     def down(self) -> None:
-        """Stop the local devcontainer."""
+        """Stop and remove the local devcontainer."""
         logger.info("Bringing devcontainer down...")
-        self._run_cli(["down", "--workspace-folder", str(self.project_root)])
+        docker = self._get_bin("docker")
+        # Ensure project_root is absolute for label matching
+        abs_root = str(Path(self.project_root).resolve())
+        filter_label = f"label=devcontainer.local_folder={abs_root}"
+        
+        # Identify container IDs matching this project (including exited ones)
+        result = subprocess.run(
+            [docker, "ps", "-a", "-q", "--filter", filter_label],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        container_ids = result.stdout.strip().splitlines()
+        
+        if not container_ids:
+            logger.info("No active or exited devcontainers found for this project.")
+            return
+
+        for container_id in container_ids:
+            logger.info("Stopping and removing container %s...", container_id)
+            subprocess.run([docker, "stop", container_id], check=False)
+            subprocess.run([docker, "rm", "-f", container_id], check=False)
 
     def test(self) -> None:
         """Run the functional verification suite inside the container."""

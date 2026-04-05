@@ -22,6 +22,19 @@ __pycache__/
 .idea/
 .vscode/
 
+# mise auto-generated state
+.mise/
+
+# OMC/OMG plugin state
+.omg/
+.omc/state/
+
+# Codex CLI temporary state
+.codex/
+
+# Logging
+.logging/
+
 # Maestro Session State (Keep plans, ignore active state)
 docs/maestro/state/active-session.md
 docs/maestro/state/archive/

@@ -1,7 +1,54 @@
 {
+  "prefersReducedMotion": true,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | jq -re '.command // empty' | grep -qw 'npx'; then echo 'BLOCKED: Do not use npx. Use the mise-installed binary directly (e.g., agnix not npx agnix). All tools should be in mise.toml.' >&2; exit 1; fi"
+          }
+        ]
+      }
+    ]
+  },
   "enabledPlugins": {
-    "guide@claude-community": false,
-    "mcp2cli@claude-community": true,
-    "context7-plugin@context7-marketplace": true
+    "ultrapowers@ultrapowers": false,
+    "ultrapowers-dev@ultrapowers": false,
+    "code-review@claude-plugins-official": true,
+    "code-simplifier@claude-plugins-official": true,
+    "feature-dev@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": false,
+    "claude-md-management@claude-plugins-official": true,
+    "commit-commands@claude-plugins-official": true,
+    "skill-creator@claude-plugins-official": true,
+    "claude-code-setup@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": false,
+    "pyright@claude-code-lsps": false,
+    "explanatory-output-style@claude-plugins-official": true,
+    "plugin-dev@claude-plugins-official": false,
+    "hookify@claude-plugins-official": true,
+    "learning-output-style@claude-plugins-official": true,
+    "gopls-lsp@claude-plugins-official": false,
+    "csharp-lsp@claude-plugins-official": false,
+    "rust-analyzer-lsp@claude-plugins-official": false,
+    "php-lsp@claude-plugins-official": false,
+    "jdtls-lsp@claude-plugins-official": false,
+    "clangd-lsp@claude-plugins-official": false,
+    "swift-lsp@claude-plugins-official": false,
+    "kotlin-lsp@claude-plugins-official": false,
+    "lua-lsp@claude-plugins-official": false,
+    "ruby-lsp@claude-plugins-official": false,
+    "octo@nyldn-plugins": false,
+    "claude-mem@thedotmack": false,
+    "chrome-devtools-mcp@chrome-devtools-plugins": false,
+    "discord@claude-plugins-official": false,
+    "pskoett-ai-skills@claude-community": false,
+    "auto-memory@claude-community": false,
+    "guide@claude-code-guide": false,
+    "codex@openai-codex": false,
+    "astral@astral-sh": true,
+    "gitbutler@gitbutler-tools": true
   }
 }

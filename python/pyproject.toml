@@ -2,7 +2,7 @@
 name = "dotfiles-setup"
 version = "0.1.0"
 description = "Python orchestration library for dotfiles setup"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = []
 
 [project.scripts]
@@ -14,7 +14,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.ruff]
 line-length = 88
-target-version = "py313"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -31,7 +31,7 @@ convention = "google"
 max-complexity = 10
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
@@ -44,6 +44,9 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
+
+[tool.ty]
+python-version = "3.14"
 
 [tool.pylint.MASTER]
 load-plugins = [

@@ -1,26 +1,30 @@
 # syntax=docker/dockerfile:1.7
+# check=error=true
 
 ARG BASE_IMAGE=ubuntu:25.10
-ARG MISE_VERSION=v2026.3.18
+ARG MISE_VERSION=v2026.4.4
 
 FROM ${BASE_IMAGE} AS devcontainer
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG MISE_VERSION
 
-ENV DEBIAN_FRONTEND=${DEBIAN_FRONTEND} \
-    LANG=C.UTF-8 \
-    LC_ALL=C.UTF-8 \
+# Only PATH and mise directory layout stay as Docker ENV.
+# All other vars (locale, platform hints, tool config) live in
+# .devcontainer/mise-system.toml [env] so mise owns them.
+ENV MISE_DATA_DIR=/opt/mise \
+    MISE_CONFIG_DIR=/etc/mise \
     MISE_INSTALL_PATH=/usr/local/bin/mise \
-    MISE_TRUSTED_CONFIG_PATHS=/root/.config/mise \
-    CONDA_SUBDIR=linux-64 \
-    MISE_HTTP_TIMEOUT=120 \
-    npm_config_update_notifier=false
+    MISE_TRUSTED_CONFIG_PATHS=/etc/mise:/workspaces/dotfiles \
+    CARGO_HOME=/opt/cargo \
+    RUSTUP_HOME=/opt/rustup \
+    PATH="/usr/local/bin:/opt/mise/shims:/opt/cargo/bin:${PATH}"
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    export DEBIAN_FRONTEND=noninteractive && \
     sed -i '/^path-exclude=\/usr\/share\/man\/\*$/d' /etc/dpkg/dpkg.cfg.d/excludes && \
     apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -39,22 +43,60 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
-COPY .chezmoiroot /tmp/dotfiles/.chezmoiroot
-COPY .chezmoiversion /tmp/dotfiles/.chezmoiversion
-COPY docs /tmp/dotfiles/docs
-COPY home /tmp/dotfiles/home
-COPY install.sh /tmp/dotfiles/install.sh
+# Install mise globally (pinned version to prevent stale CDN cache issues)
+RUN curl -fsSL "https://mise.jdx.dev/${MISE_VERSION}/mise-${MISE_VERSION}-linux-x64" > /usr/local/bin/mise && \
+    chmod +x /usr/local/bin/mise
 
-RUN --mount=type=cache,id=mise-cache,target=/root/.cache/mise,sharing=locked \
+# System-wide mise config and data structure
+RUN groupadd --gid 2000 mise && \
+    mkdir -p /etc/mise /opt/mise /opt/cargo /opt/rustup && \
+    chown -R :mise /opt/mise /opt/cargo /opt/rustup && \
+    chmod -R 775 /opt/mise /opt/cargo /opt/rustup
+
+# Copy dedicated system config — no chezmoi dependency, no sed stripping
+COPY .devcontainer/mise-system.toml /etc/mise/config.toml
+
+# Pre-install tools globally via mise
+# Known cosmetic warnings during install:
+# - rustup "existing settings file": rustup-init creates settings.toml then
+#   check_existence_of_settings_file() warns about its own file. Fixed via
+#   RUSTUP_INIT_SKIP_EXISTENCE_CHECKS=yes (undocumented env var, see
+#   rust-lang/rustup/src/cli/self_update.rs). RUSTUP_INIT_SKIP_PATH_CHECK
+#   in mise-system.toml [env] is a different check (PATH validation).
+# - bun "add the global bin folder to $PATH": bun checks if its bin output
+#   directory exists on $PATH at install time. During Docker RUN, PATH only
+#   includes /opt/mise/shims — not bun's per-package bin dirs. At runtime,
+#   mise shims intercept all lookups so the warning is cosmetic. No bun env
+#   var (BUN_QUIET, BUN_LOG_LEVEL) suppresses this — it's hardcoded in bun's
+#   install reporter. Unfixable: fundamental mismatch between bun's PATH-based
+#   assumptions and mise's shim resolution model.
+RUN --mount=type=cache,id=mise-cache,target=/opt/mise/cache,sharing=locked \
     --mount=type=cache,id=uv-cache,target=/root/.cache/uv,sharing=locked \
     --mount=type=secret,id=github_token \
     export MISE_VERSION="${MISE_VERSION}" && \
     export MISE_INSTALL_MODE=system && \
     export UV_LINK_MODE=copy && \
+    export LANG=C.UTF-8 && \
+    export LC_ALL=C.UTF-8 && \
+    export RUSTUP_INIT_SKIP_EXISTENCE_CHECKS=yes && \
     if [ -f /run/secrets/github_token ]; then \
-      export GITHUB_TOKEN="$(cat /run/secrets/github_token)"; \
+      GITHUB_TOKEN="$(cat /run/secrets/github_token)" && \
+      export GITHUB_TOKEN && \
       export MISE_GITHUB_TOKEN="$GITHUB_TOKEN"; \
     fi && \
-    cd /tmp/dotfiles && ./install.sh
+    mise install -y && \
+    chmod -R 777 /opt/mise /etc/mise /opt/cargo /opt/rustup
+
+# Reshim to ensure all shims are present (aqua tools may include doc-file
+# shims like LICENSE, README — these are harmless and must not be deleted
+# or mise doctor will report them as missing)
+RUN mise reshim -f
+
+# Final global permissions check
+RUN chmod -R 777 /opt/mise /etc/mise /opt/cargo /opt/rustup
+
+# Ensure mise is activated for all users
+RUN echo "eval \"\$(/usr/local/bin/mise activate bash)\"" > /etc/profile.d/mise.sh && \
+    echo "eval \"\$(/usr/local/bin/mise activate zsh)\"" > /etc/profile.d/mise.zsh
 
 WORKDIR /workspaces

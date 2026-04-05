@@ -1,4 +1,4 @@
-amends "package://github.com/jdx/hk/releases/download/v1.39.0/hk@1.39.0#/Config.pkl"
+amends "package://github.com/jdx/hk/releases/download/v1.40.0/hk@1.40.0#/Config.pkl"
 
 // Zero-skip policy: fail_fast=false to report ALL issues, not just the first
 fail_fast = false
@@ -15,6 +15,7 @@ hooks {
       ["trailing_whitespace"] {}
       ["newlines"] {}
       ["mixed_line_ending"] {}
+      ["fix_smart_quotes"] {}
 
       // --- Safety builtins ---
       ["detect_private_key"] {}
@@ -24,6 +25,19 @@ hooks {
       ["check_symlinks"] {}
       ["check_executables_have_shebangs"] {}
       ["check_byte_order_marker"] {}
+      ["no_commit_to_branch"] {}
+
+      // --- Style & Consistency ---
+      ["editorconfig-checker"] {}
+      ["prettier"] {
+        batch = true
+      }
+
+      // --- Security ---
+      ["gitleaks"] {
+        batch = true
+      }
+      // betterleaks: not in mise tool registry for linux-x64
 
       // --- Typo detection ---
       ["typos"] {
@@ -40,13 +54,25 @@ hooks {
         batch = true
         check_first = true
       }
+      ["python_check_ast"] {
+        glob = List("python/src/**/*.py", "tests/**/*.py")
+        batch = true
+      }
+      ["python_debug_statements"] {
+        glob = List("python/src/**/*.py", "tests/**/*.py")
+        batch = true
+      }
       ["ty"] {
         glob = List("python/src/**/*.py", "tests/**/*.py")
       }
 
-      // --- Dockerfile (keep glob — only lint our Dockerfile, not random ones) ---
+      // --- Dockerfile & Bake ---
       ["hadolint"] {
         glob = List(".devcontainer/Dockerfile")
+      }
+      ["docker_bake_check"] {
+        glob = List("docker-bake.hcl", ".devcontainer/Dockerfile")
+        check = "devcontainer read-configuration --workspace-folder ."
       }
 
       // --- TOML ---
@@ -111,6 +137,12 @@ hooks {
       ["zizmor"] {
         glob = List(".github/workflows/*.yml")
       }
+      ["pinact"] {
+        glob = List(".github/workflows/*.yml")
+      }
+      ["pinact_update"] {
+        glob = List(".github/workflows/*.yml")
+      }
 
       // --- HCL ---
       ["hclfmt"] {
@@ -121,6 +153,13 @@ hooks {
       ["mise"] {
         glob = List("**/mise.toml")
       }
+
+      // --- Agent documentation ---
+      ["agnix"] {
+        check = "agnix ."
+        glob = List("CLAUDE.md", "AGENTS.md", ".claude/**/*.md", ".agnix.toml")
+      }
+
     }
   }
 
