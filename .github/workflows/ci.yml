@@ -158,7 +158,7 @@ jobs:
             ${{ steps.meta.outputs.bake-file-labels }}
           set: |
             *.secrets=id=github_token,src=/tmp/github_token
-            *.output=type=cacheonly
+            ${{ (github.ref != 'refs/heads/main' && github.event_name != 'schedule') && '*.output=type=cacheonly' || '' }}
 
       - name: Build performance summary
         if: always()
