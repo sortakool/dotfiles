@@ -6,7 +6,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | jq -re '.command // empty' | grep -qw 'npx'; then echo 'BLOCKED: Do not use npx. Use the mise-installed binary directly (e.g., agnix not npx agnix). All tools should be in mise.toml.' >&2; exit 1; fi",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | jq -re '.command // empty' | grep -qw 'npx'; then echo 'BLOCKED: Do not use npx. Use the mise-installed binary directly (e.g., agnix not npx agnix). All tools should be in mise.toml. See .claude/rules/ci-local-parity.md.' >&2; exit 1; fi",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | jq -re '.command // empty' | grep -qE '\\bchezmoi[[:space:]]+(apply|update)\\b'; then echo 'BLOCKED: chezmoi apply/update on host. Mac integration is not yet started; chezmoi may only run inside the devcontainer (where chezmoi.os == \"linux\" renders the container-only mise overlay correctly). Read-only commands (diff, managed, doctor, source-path, init --apply=false, execute-template) remain allowed for inspection. Remove this guard once Mac integration ships. See .claude/rules/use-tool-builtins.md and memory feedback_devcontainer_only_mise_overlay.md.' >&2; exit 1; fi",
             "timeout": 5
           }
         ]

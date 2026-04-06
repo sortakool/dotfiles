@@ -20,28 +20,45 @@ chezmoi verify --verbose 2>&1 | head -20
 chezmoi diff
 ```
 
-## Template Variables
+## Multi-machine discrimination — use the built-in `chezmoi.os` fact
 
-This project defines these data variables in `.chezmoi.toml.tmpl`:
+This repo targets **Mac host** and **Linux devcontainer** only. The canonical
+discriminator per the chezmoi docs
+(<https://www.chezmoi.io/user-guide/manage-machine-to-machine-differences/>)
+is the **built-in `chezmoi.os` runtime fact**:
+
+| Environment | `chezmoi.os` | Renders mise overlay? |
+|-------------|--------------|-----------------------|
+| Mac host    | `darwin`     | NO (gated out by `.chezmoiignore`) |
+| Devcontainer / Linux runner | `linux` | YES |
+
+Do **not** introduce a custom `is_container` data variable or env-var-based
+detection. We tried that and it caused real bugs — see
+`.claude/rules/use-tool-builtins.md` and memory `feedback_use_tool_builtins.md`.
+
+## Template Variables (custom user-defined)
+
+`.chezmoi.toml.tmpl` defines these custom data variables (no built-in chezmoi
+equivalent exists for them):
 
 | Variable | Type | Source | Default |
 |----------|------|--------|---------|
-| `is_dev_computer` | bool | Interactive prompt / `true` in containers | `false` |
-| `is_personal` | bool | Interactive prompt | `false` |
-| `is_ephemeral` | bool | Interactive prompt / `true` in containers+CI | `false` |
-| `is_container` | bool | Auto-detected from `REMOTE_CONTAINERS`, `CODESPACES`, `DEVCONTAINER` env | `false` |
-| `is_ci` | bool | Auto-detected from `CI` env | `false` |
+| `is_dev_computer` | bool | Interactive prompt on darwin / `true` on linux | `false` |
+| `is_personal` | bool | Interactive prompt on darwin | `false` |
+| `is_ephemeral` | bool | Interactive prompt on darwin / `true` on linux+CI | `eq .chezmoi.os "linux"` |
+| `is_ci` | bool | Auto-detected from `CI` env var | `false` |
 
-## Environment Detection
+`is_container` was **removed** in the C10 refactor — use `eq .chezmoi.os "linux"`
+directly instead.
 
-Templates use this precedence for environment detection:
+## Interactive vs non-interactive
+
+Templates skip prompts when not interactive. Precedence:
 ```
-Container: REMOTE_CONTAINERS || CODESPACES || DEVCONTAINER
-CI: CI env var
-Interactive: not container AND not CI AND stdinIsATTY
+Interactive: chezmoi.os == "darwin" AND not CI AND stdinIsATTY
 ```
 
-When `isInteractive` is false, prompts are skipped and safe defaults are used.
+On non-interactive runs (CI, devcontainer, scripted): no prompts, safe defaults.
 
 ## Full Validation Workflow
 
@@ -58,7 +75,11 @@ done
 chezmoi managed --include=externals 2>&1
 
 # 3. Check for undefined variables (grep for .chezmoi.data references)
-grep -rn '\.chezmoi\.data\.' home/*.tmpl | grep -v 'is_dev_computer\|is_personal\|is_ephemeral\|is_container\|is_ci'
+grep -rn '\.chezmoi\.data\.' home/*.tmpl | grep -v 'is_dev_computer\|is_personal\|is_ephemeral\|is_ci'
+
+# 3a. Sanity-check: NO references to the removed is_container variable.
+# If anything turns up, replace with `eq .chezmoi.os "linux"` per use-tool-builtins.md.
+grep -rn 'is_container' home/ && echo "FAIL: is_container reintroduced" || echo "OK"
 
 # 4. Verify platform-specific blocks reference valid chezmoi functions
 grep -rn 'eq .chezmoi.os' home/*.tmpl

@@ -51,9 +51,15 @@ Tier 4 (CLion remote toolchain) is manual.
 
 2. **Never render the chezmoi mise overlay on the Mac host.**
    `home/dot_config/mise/config.toml.tmpl` is gated by `home/.chezmoiignore`
-   on `.is_container`. The CI lint job has an "Assert chezmoiignore mise
+   on the **built-in `chezmoi.os` fact**: `{{ if ne .chezmoi.os "linux" }}`.
+   This is the canonical chezmoi pattern for multi-machine differences (see
+   `.claude/rules/use-tool-builtins.md`). Do **not** reintroduce a custom
+   `is_container` data variable or env-var detection — that was reverted in
+   the C10 refactor. The CI lint job has an "Assert chezmoiignore mise
    overlay hard gate" step that machine-checks this on every PR — do not
-   weaken it. See memory `feedback_devcontainer_only_mise_overlay.md`.
+   weaken it. Belt-and-suspenders: `.claude/settings.json` blocks
+   `chezmoi apply`/`chezmoi update` on the host until Mac integration ships.
+   See memory `feedback_devcontainer_only_mise_overlay.md`.
 
 3. **Tool installs go in `.devcontainer/mise-system.toml` (image build) only.**
    `home/.chezmoiscripts/` was deleted in the devcontainer-build refactor —
