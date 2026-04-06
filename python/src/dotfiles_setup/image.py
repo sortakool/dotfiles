@@ -17,7 +17,9 @@ logger = logging.getLogger(__name__)
 
 
 def _project_root() -> Path:
-    return Path(__file__).parent.parent.parent.parent
+    from dotfiles_setup import _project_root as _root
+
+    return _root()
 
 
 def _run(

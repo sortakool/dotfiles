@@ -82,12 +82,10 @@ def fail(reason: str) -> None:
 
 
 def _project_root() -> Path:
-    """Return the project root directory.
+    """Return the project root directory."""
+    from dotfiles_setup import _project_root as _root
 
-    Resolves relative to the package location:
-    src/dotfiles_setup/verify.py -> python/ -> project root.
-    """
-    return Path(__file__).parent.parent.parent.parent
+    return _root()
 
 
 def _resolve_paths(entry: dict[str, Any]) -> list[Path]:

@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "python" / "src"))
 
 from dotfiles_setup.ghcr import GhcrCheckError, _parse_scopes, validate_ghcr_prereqs
 
