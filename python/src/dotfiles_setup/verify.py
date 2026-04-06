@@ -10,6 +10,8 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+from dotfiles_setup import _project_root
+
 logger = logging.getLogger(__name__)
 
 
@@ -79,13 +81,6 @@ def fail(reason: str) -> None:
         VerificationError: Always raised with the given reason.
     """
     raise VerificationError(reason)
-
-
-def _project_root() -> Path:
-    """Return the project root directory."""
-    from dotfiles_setup import _project_root as _root
-
-    return _root()
 
 
 def _resolve_paths(entry: dict[str, Any]) -> list[Path]:
