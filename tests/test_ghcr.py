@@ -1,5 +1,11 @@
-from pathlib import Path
+"""Tests for GHCR prerequisite validation and scope parsing."""
+
+from __future__ import annotations
+
+import subprocess
 import sys
+from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -9,6 +15,7 @@ from dotfiles_setup.ghcr import GhcrCheckError, _parse_scopes, validate_ghcr_pre
 
 
 def test_parse_scopes_extracts_all_scopes() -> None:
+    """Verify _parse_scopes extracts all token scopes from status text."""
     text = "Token scopes: 'repo', 'read:org', 'workflow', 'write:packages'"
     scopes = _parse_scopes(text)
 
@@ -19,22 +26,22 @@ def test_validate_ghcr_prereqs_requires_packages_write_scope(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """Verify validation fails when write:packages scope is missing."""
     workflow_path = tmp_path / ".github" / "workflows"
     workflow_path.mkdir(parents=True)
     (workflow_path / "ci.yml").write_text("permissions:\n  packages: write\n")
 
-    monkeypatch.setattr("dotfiles_setup.ghcr.which", lambda name: "/usr/bin/gh")
+    monkeypatch.setattr("dotfiles_setup.ghcr.which", lambda _name: "/usr/bin/gh")
 
-    def fake_run(args: list[str], *, cwd: Path):  # type: ignore[no-untyped-def]
-        class Result:
-            def __init__(self, returncode: int, stdout: str, stderr: str = ""):
-                self.returncode = returncode
-                self.stdout = stdout
-                self.stderr = stderr
-
+    def fake_run(
+        args: list[str], *, cwd: Path
+    ) -> subprocess.CompletedProcess[str]:
+        _ = cwd  # unused but required by _run signature
         if args == ["gh", "auth", "status"]:
-            return Result(0, "", "Token scopes: 'repo', 'read:org', 'workflow'")
-        return Result(0, "[]")
+            return subprocess.CompletedProcess(
+                args, 0, "", "Token scopes: 'repo', 'read:org', 'workflow'"
+            )
+        return subprocess.CompletedProcess(args, 0, "[]")
 
     monkeypatch.setattr("dotfiles_setup.ghcr._run", fake_run)
 
@@ -51,21 +58,20 @@ def test_validate_ghcr_prereqs_passes_when_inputs_are_valid(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """Verify validation passes with all required scopes and valid config."""
     workflow_path = tmp_path / ".github" / "workflows"
     workflow_path.mkdir(parents=True)
     (workflow_path / "ci.yml").write_text("permissions:\n  packages: write\n")
 
-    monkeypatch.setattr("dotfiles_setup.ghcr.which", lambda name: "/usr/bin/gh")
+    monkeypatch.setattr("dotfiles_setup.ghcr.which", lambda _name: "/usr/bin/gh")
 
-    def fake_run(args: list[str], *, cwd: Path):  # type: ignore[no-untyped-def]
-        class Result:
-            def __init__(self, returncode: int, stdout: str, stderr: str = ""):
-                self.returncode = returncode
-                self.stdout = stdout
-                self.stderr = stderr
-
+    def fake_run(
+        args: list[str], *, cwd: Path
+    ) -> subprocess.CompletedProcess[str]:
+        _ = cwd  # unused but required by _run signature
         if args == ["gh", "auth", "status"]:
-            return Result(
+            return subprocess.CompletedProcess(
+                args,
                 0,
                 "",
                 "Token scopes: 'repo', 'read:org', 'workflow', 'write:packages'",
@@ -75,10 +81,13 @@ def test_validate_ghcr_prereqs_passes_when_inputs_are_valid(
             "api",
             "/orgs/ray-manaloto/packages/container/dotfiles-devcontainer/versions?per_page=20",
         ]:
-            return Result(0, "[]")
-        return Result(0, "{}")
+            return subprocess.CompletedProcess(args, 0, "[]")
+        return subprocess.CompletedProcess(args, 0, "{}")
 
-    def fake_run_gh_json(args: list[str], *, cwd: Path):  # type: ignore[no-untyped-def]
+    def fake_run_gh_json(
+        args: list[str], *, cwd: Path
+    ) -> dict[str, Any]:
+        _ = cwd  # unused but required by _run_gh_json signature
         if args[:3] == ["repo", "view", "ray-manaloto/dotfiles"]:
             return {
                 "nameWithOwner": "ray-manaloto/dotfiles",
@@ -89,7 +98,8 @@ def test_validate_ghcr_prereqs_passes_when_inputs_are_valid(
             return {"enabled": True}
         if args == ["api", "repos/ray-manaloto/dotfiles/actions/permissions/workflow"]:
             return {"default_workflow_permissions": "read"}
-        if args == ["api", "/orgs/ray-manaloto/packages/container/dotfiles-devcontainer"]:
+        ghcr_api = "/orgs/ray-manaloto/packages/container/dotfiles-devcontainer"
+        if args == ["api", ghcr_api]:
             return {
                 "name": "dotfiles-devcontainer",
                 "visibility": "private",

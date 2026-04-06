@@ -35,7 +35,7 @@ show_prepare_stale = true
 postinstall = "hk install --mise"
 
 [env]
-HK_PKL_BACKEND = "pklr"
+HK_PKL_BACKEND = "pkl"  # "pkl" (not pklr) required for import/spread in hk-common.pkl
 HK_MISE = "1"
 
 [prepare.python]

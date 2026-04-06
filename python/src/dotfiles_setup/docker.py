@@ -15,25 +15,38 @@ import time
 from contextlib import suppress
 from pathlib import Path
 
+from dotfiles_setup.config import (
+    CONTAINER_HOST_STATE_DIR,
+    CONTAINER_SSH_PROXY_PID_FILE,
+    CONTAINER_SSH_PROXY_SOCKET,
+    DotfilesConfig,
+)
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_HOST_STATE_DIR = Path.home() / ".local" / "state" / "dotfiles"
-CONTAINER_HOST_STATE_DIR = Path("/tmp/dotfiles-host-state")  # noqa: S108
 HOST_PROXY_HOST = "host.docker.internal"
 HOST_AUTHORIZED_KEYS_FILE = "authorized_keys"
 HOST_SSH_PROXY_PID_FILE = "ssh-agent-proxy.pid"
 HOST_SSH_PROXY_PORT_FILE = "ssh-agent-port"
 HOST_SSH_PROXY_TARGET_FILE = "ssh-agent.target"
-CONTAINER_SSH_PROXY_SOCKET = Path("/tmp/dotfiles-ssh-agent.sock")  # noqa: S108
-CONTAINER_SSH_PROXY_PID_FILE = Path("/tmp/dotfiles-ssh-agent-proxy.pid")  # noqa: S108
 
 
-def host_state_dir() -> Path:
-    """Resolve the devcontainer runtime state directory."""
+def host_state_dir(config: DotfilesConfig | None = None) -> Path:
+    """Resolve the devcontainer runtime state directory.
+
+    Args:
+        config: Optional config; defaults to env-var lookup for backward compat.
+    """
+    if config is not None and config.container.host_state_dir is not None:
+        return config.container.host_state_dir
     raw_dir = os.environ.get("DOTFILES_HOST_STATE_DIR")
     if raw_dir:
         return Path(raw_dir)
-    if os.environ.get("DEVCONTAINER") == "true":
+    is_devcontainer = (config is not None and config.devcontainer) or os.environ.get(
+        "DEVCONTAINER"
+    ) == "true"
+    if is_devcontainer:
         return CONTAINER_HOST_STATE_DIR
     return DEFAULT_HOST_STATE_DIR
 
@@ -246,9 +259,7 @@ def initialize_host_ssh_runtime() -> dict[str, str]:
     )
     if current_target == target_socket and current_port.isdigit():
         raw_pid = (
-            pid_file.read_text(encoding="utf-8").strip()
-            if pid_file.exists()
-            else ""
+            pid_file.read_text(encoding="utf-8").strip() if pid_file.exists() else ""
         )
         if raw_pid.isdigit():
             try:
@@ -324,9 +335,7 @@ def ensure_container_ssh_proxy() -> str:
     state_dir = host_state_dir()
     port_file = state_dir / HOST_SSH_PROXY_PORT_FILE
     proxy_port = (
-        port_file.read_text(encoding="utf-8").strip()
-        if port_file.exists()
-        else ""
+        port_file.read_text(encoding="utf-8").strip() if port_file.exists() else ""
     )
     if not proxy_port.isdigit():
         return ""
@@ -380,18 +389,23 @@ class DevContainerManager:
     DEFAULT_IMAGE_NAME = "dotfiles-dev-local"
     DEFAULT_BASE_IMAGE = "ghcr.io/ray-manaloto/dotfiles-devcontainer:dev"
 
-    def __init__(self, project_root: Path, image_name: str | None = None) -> None:
-        """Initialize the devcontainer manager."""
+    def __init__(
+        self,
+        project_root: Path,
+        image_name: str | None = None,
+        config: DotfilesConfig | None = None,
+    ) -> None:
+        """Initialize the devcontainer manager.
+
+        Args:
+            project_root: The project root path.
+            image_name: Optional image name override.
+            config: Optional config; defaults to a fresh DotfilesConfig.
+        """
         self.project_root = project_root
-        self.image_name = (
-            image_name
-            or os.environ.get("DOTFILES_IMAGE")
-            or self.DEFAULT_IMAGE_NAME
-        )
-        self.base_image = os.environ.get(
-            "DOTFILES_BASE_IMAGE",
-            self.DEFAULT_BASE_IMAGE,
-        )
+        self.config = config if config is not None else DotfilesConfig()
+        self.image_name = image_name or self.config.container.image
+        self.base_image = self.config.container.base_image
 
     def _get_bin(self, name: str) -> str:
         path = shutil.which(name)
@@ -464,7 +478,7 @@ class DevContainerManager:
         # Ensure project_root is absolute for label matching
         abs_root = str(Path(self.project_root).resolve())
         filter_label = f"label=devcontainer.local_folder={abs_root}"
-        
+
         # Identify container IDs matching this project (including exited ones)
         result = subprocess.run(
             [docker, "ps", "-a", "-q", "--filter", filter_label],
@@ -473,7 +487,7 @@ class DevContainerManager:
             check=False,
         )
         container_ids = result.stdout.strip().splitlines()
-        
+
         if not container_ids:
             logger.info("No active or exited devcontainers found for this project.")
             return
@@ -486,7 +500,7 @@ class DevContainerManager:
     def test(self) -> None:
         """Run the functional verification suite inside the container."""
         logger.info("Running functional tests inside container...")
-        ssh_port = os.environ.get("DOTFILES_SSH_PORT", "4444")
+        ssh_port = str(self.config.container.ssh_port)
         test_cmd = (
             "bash -lc '"
             f"export DOTFILES_SSH_PORT={ssh_port} && "

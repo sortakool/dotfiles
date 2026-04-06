@@ -1,0 +1,39 @@
+// Image-specific hk config for Docker devcontainer smoke-test validation.
+//
+// This config validates the built image — not the project source.
+// It imports shared checks from hk-common.pkl and adds image-relevant
+// checks only. No Python, Docker, GHA, or project-specific steps.
+//
+// Installed to /etc/hk/hk.pkl in the image via:
+//   COPY hk-common.pkl /etc/hk/hk-common.pkl
+//   COPY hk-image.pkl /etc/hk/hk.pkl
+
+amends "package://github.com/jdx/hk/releases/download/v1.40.0/hk@1.40.0#/Config.pkl"
+
+import "hk-common.pkl" as common
+
+fail_fast = false
+
+hooks {
+  ["pre-commit"] {
+    fix = true
+    steps {
+      // --- Shared checks (from hk-common.pkl) ---
+      ...common.hygiene
+      ...common.safety
+      ...common.security
+      ...common.typos
+
+      // --- Image-specific: shell scripts installed in the image ---
+      ["shellcheck"] {
+        types = List("shell")
+        batch = true
+      }
+      ["shfmt"] {
+        types = List("shell")
+        batch = true
+        check_first = true
+      }
+    }
+  }
+}

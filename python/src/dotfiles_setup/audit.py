@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 from typing import Any, ClassVar
 
+from dotfiles_setup.config import DotfilesConfig
 from dotfiles_setup.docker import ensure_container_ssh_proxy, host_authorized_keys
 
 logger = logging.getLogger(__name__)
@@ -105,7 +106,7 @@ class ToolManager:
         # Find all tool = "version" lines
         # This regex handles both tool = "version" and "tool" = "version"
         tool_pattern = re.compile(
-            r'^(\"?[a-zA-Z0-9:@/._-]+\"?) = \"([0-9.]+)\"', re.MULTILINE
+            r"^(\"?[a-zA-Z0-9:@/._-]+\"?) = \"([0-9.]+)\"", re.MULTILINE
         )
 
         for match in tool_pattern.finditer(tools_section):
@@ -140,11 +141,16 @@ class ToolManager:
         config_path.write_text(new_content)
         logger.info("Mise config template updated successfully.")
 
-    def install(self) -> None:
+    def install(self, config: DotfilesConfig | None = None) -> None:
         """Execute toolchain installation.
 
         Uses mise for general tools, bun for Node/NPM, and uv/pixi for Python.
+
+        Args:
+            config: Optional config; defaults to a fresh DotfilesConfig.
         """
+        if config is None:
+            config = DotfilesConfig()
         # Enforce Mise strictness
         os.environ["MISE_STRICT"] = "1"
 
@@ -165,6 +171,9 @@ class DevEnvironmentAuditor:
 
     Checks identity (UID/GID/Username), toolchain status, and SSH agent
     reachability.
+
+    Args:
+        config: Optional config; defaults to a fresh DotfilesConfig.
     """
 
     MANAGED_PREFIXES: ClassVar[list[str]] = [
@@ -174,15 +183,31 @@ class DevEnvironmentAuditor:
         str(Path.home() / ".cargo" / "bin"),
     ]
 
+    def __init__(self, config: DotfilesConfig | None = None) -> None:
+        """Initialize the auditor with configuration.
+
+        Args:
+            config: Optional config; defaults to a fresh DotfilesConfig.
+        """
+        self.config = config if config is not None else DotfilesConfig()
+
     def audit_identity(self) -> dict[str, Any]:
         """Check UID, GID, and Username.
 
         Returns:
             A dictionary containing identity information.
         """
-        expected_user = os.environ.get("EXPECTED_USER")
-        expected_uid = os.environ.get("EXPECTED_UID")
-        expected_gid = os.environ.get("EXPECTED_GID")
+        expected_user = self.config.expected_user or os.environ.get("EXPECTED_USER")
+        expected_uid_raw = (
+            str(self.config.expected_uid)
+            if self.config.expected_uid is not None
+            else os.environ.get("EXPECTED_UID")
+        )
+        expected_gid_raw = (
+            str(self.config.expected_gid)
+            if self.config.expected_gid is not None
+            else os.environ.get("EXPECTED_GID")
+        )
 
         if sys.platform != "win32":
             current_user = os.environ.get("USER") or getpass.getuser()
@@ -199,8 +224,16 @@ class DevEnvironmentAuditor:
         sole_non_root_user = len(non_root_users) == 1 and current_user in non_root_users
 
         identity: dict[str, dict[str, Any]] = {
-            "uid": {"current": current_uid, "expected": expected_uid, "match": True},
-            "gid": {"current": current_gid, "expected": expected_gid, "match": True},
+            "uid": {
+                "current": current_uid,
+                "expected": expected_uid_raw,
+                "match": True,
+            },
+            "gid": {
+                "current": current_gid,
+                "expected": expected_gid_raw,
+                "match": True,
+            },
             "username": {
                 "current": current_user,
                 "expected": expected_user,
@@ -215,9 +248,9 @@ class DevEnvironmentAuditor:
 
         if expected_user and current_user != expected_user:
             identity["username"]["match"] = False
-        if expected_uid and str(current_uid) != str(expected_uid):
+        if expected_uid_raw and str(current_uid) != str(expected_uid_raw):
             identity["uid"]["match"] = False
-        if expected_gid and str(current_gid) != str(expected_gid):
+        if expected_gid_raw and str(current_gid) != str(expected_gid_raw):
             identity["gid"]["match"] = False
 
         all_match = all(v["match"] for v in identity.values())
@@ -261,7 +294,7 @@ class DevEnvironmentAuditor:
                 check=True,
             )
             capability = "ok"
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except subprocess.CalledProcessError, FileNotFoundError:
             capability = "failed"
 
         return {
@@ -285,9 +318,16 @@ class DevEnvironmentAuditor:
         path = os.environ.get("PATH", "")
         path_list = path.split(os.pathsep)
 
+        mise_shell_set = (
+            self.config.mise.shell is not None
+            or os.environ.get("MISE_SHELL") is not None
+        )
+        mise_strict_set = (
+            self.config.mise.strict or os.environ.get("MISE_STRICT") == "1"
+        )
         results = {
-            "MISE_SHELL": os.environ.get("MISE_SHELL") is not None,
-            "MISE_STRICT": os.environ.get("MISE_STRICT") == "1",
+            "MISE_SHELL": mise_shell_set,
+            "MISE_STRICT": mise_strict_set,
             "PATH_managed": all(p in path_list for p in managed_paths),
             "SHELL": os.environ.get("SHELL") is not None,
         }
@@ -322,7 +362,7 @@ class DevEnvironmentAuditor:
                 logger.info("%s: ok", name)
             except SystemExit:
                 results[name] = "failed"
-                logger.error("%s: failed", name)  # noqa: TRY400
+                logger.warning("%s: failed", name)
 
         # High-rigor smoke tests
         smoke_tests = [
@@ -366,7 +406,7 @@ class DevEnvironmentAuditor:
         ssh_dir = Path.home() / ".ssh"
         ssh_dir.mkdir(mode=0o700, exist_ok=True)
 
-        if os.environ.get("DEVCONTAINER") == "true":
+        if self.config.devcontainer or os.environ.get("DEVCONTAINER") == "true":
             proxy_socket = ensure_container_ssh_proxy()
             if proxy_socket:
                 os.environ["SSH_AUTH_SOCK"] = proxy_socket
@@ -431,7 +471,11 @@ class DevEnvironmentAuditor:
         Returns:
             A dictionary containing SSH status.
         """
-        ssh_auth_sock = os.environ.get("SSH_AUTH_SOCK")
+        ssh_auth_sock = (
+            str(self.config.ssh_auth_sock)
+            if self.config.ssh_auth_sock is not None
+            else os.environ.get("SSH_AUTH_SOCK")
+        )
         results = {
             "ssh_auth_sock": ssh_auth_sock is not None,
             "agent_keys": False,
@@ -471,10 +515,10 @@ class DevEnvironmentAuditor:
                 results["connectivity"] = True
                 logger.info("SSH connectivity: ok")
             else:
-                logger.error("SSH connectivity: failed (exit code %s)", e.code)  # noqa: TRY400
+                logger.warning("SSH connectivity: failed (exit code %s)", e.code)
 
         # Round-trip check to localhost (configurable port)
-        ssh_port = os.environ.get("DOTFILES_SSH_PORT", "4444")
+        ssh_port = str(self.config.container.ssh_port)
         try:
             ToolManager.run_command(
                 [
@@ -494,7 +538,7 @@ class DevEnvironmentAuditor:
             logger.info("SSH round-trip (port %s): ok", ssh_port)
         except SystemExit:
             results["round_trip"] = False
-            logger.error("SSH round-trip (port %s): failed", ssh_port)  # noqa: TRY400
+            logger.warning("SSH round-trip (port %s): failed", ssh_port)
 
         return results
 
@@ -526,7 +570,7 @@ class DevEnvironmentAuditor:
                 logger.info("claude: ok")
                 return {"claude_version": version, "claude_auth": "ok"}
         except SystemExit:
-            logger.error("claude: failed")  # noqa: TRY400
+            logger.warning("claude: failed")
             return {"claude_version": "failed", "claude_auth": "failed"}
 
     def _audit_codex(self) -> dict[str, str]:
@@ -549,7 +593,7 @@ class DevEnvironmentAuditor:
                 logger.warning("codex: not logged in")
                 return {"codex_version": version, "codex_auth": "failed"}
         except SystemExit:
-            logger.error("codex: failed")  # noqa: TRY400
+            logger.warning("codex: failed")
             return {"codex_version": "failed", "codex_auth": "failed"}
 
     def _audit_gemini(self) -> dict[str, str]:
@@ -578,7 +622,7 @@ class DevEnvironmentAuditor:
                 logger.info("gemini: ok")
                 return {"gemini_version": version, "gemini_auth": "ok"}
         except SystemExit:
-            logger.error("gemini: failed")  # noqa: TRY400
+            logger.warning("gemini: failed")
             return {"gemini_version": "failed", "gemini_auth": "failed"}
 
     def audit_ai_agents(self) -> dict[str, Any]:
@@ -599,7 +643,7 @@ class DevEnvironmentAuditor:
             logger.info("gh_auth: ok")
         except SystemExit:
             results["gh_auth"] = "failed"
-            logger.error("gh_auth: failed")  # noqa: TRY400
+            logger.warning("gh_auth: failed")
 
         return results
 
@@ -617,7 +661,7 @@ class DevEnvironmentAuditor:
             logger.info("bash_login_mise: ok")
         except SystemExit:
             results["bash_login_mise"] = "failed"
-            logger.error("bash_login_mise: failed")  # noqa: TRY400
+            logger.warning("bash_login_mise: failed")
 
         try:
             ToolManager.run_command(
@@ -627,7 +671,7 @@ class DevEnvironmentAuditor:
             logger.info("bash_login_chezmoi: ok")
         except SystemExit:
             results["bash_login_chezmoi"] = "failed"
-            logger.error("bash_login_chezmoi: failed")  # noqa: TRY400
+            logger.warning("bash_login_chezmoi: failed")
 
         # Simulate a login shell to verify .zshrc/.zprofile logic
         try:
@@ -636,7 +680,7 @@ class DevEnvironmentAuditor:
             logger.info("zsh_login_mise: ok")
         except SystemExit:
             results["zsh_login_mise"] = "failed"
-            logger.error("zsh_login_mise: failed")  # noqa: TRY400
+            logger.warning("zsh_login_mise: failed")
 
         try:
             ToolManager.run_command(
@@ -646,7 +690,7 @@ class DevEnvironmentAuditor:
             logger.info("zsh_login_chezmoi: ok")
         except SystemExit:
             results["zsh_login_chezmoi"] = "failed"
-            logger.error("zsh_login_chezmoi: failed")  # noqa: TRY400
+            logger.warning("zsh_login_chezmoi: failed")
 
         return results
 
@@ -682,11 +726,7 @@ class DevEnvironmentAuditor:
                 if isinstance(v, dict) and "match" in v:
                     if v["match"]:
                         passed += 1
-                elif (
-                    v == "ok"
-                    or v is True
-                    or (isinstance(v, str) and v != "failed")
-                ):
+                elif v == "ok" or v is True or (isinstance(v, str) and v != "failed"):
                     passed += 1
 
             summary[name] = (passed, total)
@@ -703,8 +743,12 @@ class DevEnvironmentAuditor:
         return all_ok
 
 
-def main() -> None:
-    """CLI entry point for the audit module."""
+def main(config: DotfilesConfig | None = None) -> None:
+    """CLI entry point for the audit module.
+
+    Args:
+        config: Optional config; defaults to a fresh DotfilesConfig.
+    """
     logging.basicConfig(
         level=logging.INFO,
         format="%(levelname)s: %(message)s",
@@ -714,7 +758,7 @@ def main() -> None:
     parser.add_argument("--all", action="store_true", help="Run all audit checks")
     parser.parse_args()
 
-    auditor = DevEnvironmentAuditor()
+    auditor = DevEnvironmentAuditor(config=config)
     if not auditor.run_all():
         sys.exit(1)
 

@@ -13,8 +13,10 @@ from typing import Any, ClassVar
 
 from dotfiles_setup.ai import AIOrchestrator
 from dotfiles_setup.audit import DevEnvironmentAuditor, ToolManager
+from dotfiles_setup.config import DotfilesConfig
 from dotfiles_setup.docker import DevContainerManager, parse_host_port, serve_proxy
 from dotfiles_setup.ghcr import validate_ghcr_prereqs
+from dotfiles_setup.image import ImageCommand
 from dotfiles_setup.image import main as image_main
 from dotfiles_setup.verify import main as verify_main
 
@@ -27,54 +29,32 @@ class EnvironmentValidator:
     SUPPORTED_PLATFORMS: ClassVar[list[str]] = ["linux", "darwin"]
 
     @classmethod
-    def validate(cls) -> None:
-        """Check if current environment meets project standards."""
+    def validate(cls, config: DotfilesConfig | None = None) -> None:
+        """Check if current environment meets project standards.
+
+        Args:
+            config: Optional config; defaults to env-var lookup.
+        """
         current_os = platform.system().lower()
         if current_os not in cls.SUPPORTED_PLATFORMS:
             msg = f"Platform {current_os} is not supported"
             raise RuntimeError(msg)
 
-        if os.environ.get("MISE_STRICT") != "1":
+        mise_strict = (
+            config.mise.strict if config is not None else False
+        ) or os.environ.get("MISE_STRICT") == "1"
+        if not mise_strict:
             logger.warning("MISE_STRICT is not set to 1. This is not recommended.")
 
 
-def setup_parser() -> argparse.ArgumentParser:  # noqa: PLR0915
-    """Configure the argument parser."""
-    parser = argparse.ArgumentParser(description="Reproducible Dotfiles Orchestrator")
-    subparsers = parser.add_subparsers(dest="command", help="Commands")
+def _add_docker_subcommands(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Register docker subcommands on the given subparsers action.
 
-    # validate command
-    subparsers.add_parser(
-        "validate", help="Check if environment meets project standards"
-    )
-
-    # audit command
-    audit_parser = subparsers.add_parser("audit", help="Audit development environment")
-    audit_parser.add_argument("--all", action="store_true", help="Run all audit checks")
-
-    # ensure-ssh command
-    subparsers.add_parser(
-        "ensure-ssh", help="Synchronize SSH authorization and ensure sshd is running"
-    )
-
-    # ai-setup command
-    subparsers.add_parser("ai-setup", help="Install Claude Code and AI extensions")
-
-    # query-latest command
-    query_parser = subparsers.add_parser(
-        "query-latest", help="Query latest version of a tool"
-    )
-    query_parser.add_argument("tool", help="Tool name")
-
-    # sync-versions command
-    subparsers.add_parser(
-        "sync-versions", help="Sync tool versions from config to pyproject.toml"
-    )
-
-    # install command
-    subparsers.add_parser("install", help="Execute toolchain installation")
-
-    # docker subcommands
+    Args:
+        subparsers: The parent subparsers action to attach docker commands to.
+    """
     docker_parser = subparsers.add_parser(
         "docker", help="Manage devcontainer for validation"
     )
@@ -98,7 +78,15 @@ def setup_parser() -> argparse.ArgumentParser:  # noqa: PLR0915
     proxy_parser.add_argument("--target-unix")
     proxy_parser.add_argument("--target-tcp")
 
-    # verify command
+
+def _add_verify_subcommands(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Register verify subcommands on the given subparsers action.
+
+    Args:
+        subparsers: The parent subparsers action to attach verify commands to.
+    """
     verify_parser = subparsers.add_parser("verify", help="Run verification suites")
     verify_sub = verify_parser.add_subparsers(
         dest="verify_command", help="Verify commands"
@@ -122,7 +110,15 @@ def setup_parser() -> argparse.ArgumentParser:  # noqa: PLR0915
         help="Filter by category (repeatable)",
     )
 
-    # image subcommands
+
+def _add_image_subcommands(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Register image subcommands on the given subparsers action.
+
+    Args:
+        subparsers: The parent subparsers action to attach image commands to.
+    """
     image_parser = subparsers.add_parser("image", help="Image operations")
     image_sub = image_parser.add_subparsers(dest="image_command", help="Image commands")
     smoke_parser = image_sub.add_parser("smoke", help="Run smoke tests on an image")
@@ -158,6 +154,47 @@ def setup_parser() -> argparse.ArgumentParser:  # noqa: PLR0915
         help="Candidate JSON path",
     )
 
+
+def setup_parser() -> argparse.ArgumentParser:
+    """Configure the argument parser."""
+    parser = argparse.ArgumentParser(description="Reproducible Dotfiles Orchestrator")
+    subparsers = parser.add_subparsers(dest="command", help="Commands")
+
+    # validate command
+    subparsers.add_parser(
+        "validate", help="Check if environment meets project standards"
+    )
+
+    # audit command
+    audit_parser = subparsers.add_parser("audit", help="Audit development environment")
+    audit_parser.add_argument("--all", action="store_true", help="Run all audit checks")
+
+    # ensure-ssh command
+    subparsers.add_parser(
+        "ensure-ssh", help="Synchronize SSH authorization and ensure sshd is running"
+    )
+
+    # ai-setup command
+    subparsers.add_parser("ai-setup", help="Install Claude Code and AI extensions")
+
+    # query-latest command
+    query_parser = subparsers.add_parser(
+        "query-latest", help="Query latest version of a tool"
+    )
+    query_parser.add_argument("tool", help="Tool name")
+
+    # sync-versions command
+    subparsers.add_parser(
+        "sync-versions", help="Sync tool versions from config to pyproject.toml"
+    )
+
+    # install command
+    subparsers.add_parser("install", help="Execute toolchain installation")
+
+    _add_docker_subcommands(subparsers)
+    _add_verify_subcommands(subparsers)
+    _add_image_subcommands(subparsers)
+
     ghcr_parser = subparsers.add_parser(
         "ghcr-check",
         help="Validate local GHCR publish prerequisites exposed via GitHub CLI",
@@ -180,14 +217,19 @@ def setup_parser() -> argparse.ArgumentParser:  # noqa: PLR0915
     return parser
 
 
-def handle_docker(args: argparse.Namespace, project_root: Path) -> None:
+def handle_docker(
+    args: argparse.Namespace,
+    project_root: Path,
+    config: DotfilesConfig | None = None,
+) -> None:
     """Handle docker subcommands.
 
     Args:
         args: The parsed arguments.
         project_root: The project root path.
+        config: Optional config; defaults to a fresh DotfilesConfig.
     """
-    docker_manager = DevContainerManager(project_root)
+    docker_manager = DevContainerManager(project_root, config=config)
     if args.docker_command == "build":
         docker_manager.build()
     elif args.docker_command == "up":
@@ -207,18 +249,27 @@ def handle_docker(args: argparse.Namespace, project_root: Path) -> None:
         )
 
 
-def handle_audit() -> None:
-    """Handle audit command."""
-    auditor = DevEnvironmentAuditor()
+def handle_audit(config: DotfilesConfig | None = None) -> None:
+    """Handle audit command.
+
+    Args:
+        config: Optional config; defaults to a fresh DotfilesConfig.
+    """
+    auditor = DevEnvironmentAuditor(config=config)
     if not auditor.run_all():
         raise SystemExit(1)
 
 
-def handle_install(project_root: Path) -> None:
-    """Handle toolchain commands."""
+def handle_install(project_root: Path, config: DotfilesConfig | None = None) -> None:
+    """Handle toolchain commands.
+
+    Args:
+        project_root: The project root path.
+        config: Optional config; defaults to a fresh DotfilesConfig.
+    """
     manager = ToolManager()
-    EnvironmentValidator.validate()
-    manager.install()
+    EnvironmentValidator.validate(config=config)
+    manager.install(config=config)
     manager.sync_versions(project_root)
 
 
@@ -254,34 +305,32 @@ def handle_image(args: argparse.Namespace) -> None:
         args: The parsed arguments.
     """
     if args.image_command == "smoke":
-        sys.exit(image_main(args.image_ref, platform=args.platform))
+        cmd = ImageCommand(args.image_ref, platform=args.platform)
+        sys.exit(image_main(cmd))
     if args.image_command == "size-report":
-        sys.exit(
-            image_main(
-                args.image_ref,
-                platform=args.platform,
-                command="size-report",
-            )
+        cmd = ImageCommand(
+            args.image_ref,
+            platform=args.platform,
+            command="size-report",
         )
+        sys.exit(image_main(cmd))
     if args.image_command == "benchmark":
         output_path = Path(args.output_path) if args.output_path else None
-        sys.exit(
-            image_main(
-                args.image_ref,
-                platform=args.platform,
-                command="benchmark",
-                output_path=output_path,
-            )
+        cmd = ImageCommand(
+            args.image_ref,
+            platform=args.platform,
+            command="benchmark",
+            output_path=output_path,
         )
+        sys.exit(image_main(cmd))
     if args.image_command == "metrics-compare":
-        sys.exit(
-            image_main(
-                "",
-                command="metrics-compare",
-                baseline_path=Path(args.baseline),
-                candidate_path=Path(args.candidate),
-            )
+        cmd = ImageCommand(
+            "",
+            command="metrics-compare",
+            baseline_path=Path(args.baseline),
+            candidate_path=Path(args.candidate),
         )
+        sys.exit(image_main(cmd))
 
 
 def handle_ghcr_check(args: argparse.Namespace, project_root: Path) -> None:
@@ -298,27 +347,29 @@ def handle_ghcr_check(args: argparse.Namespace, project_root: Path) -> None:
 def _build_command_handlers(
     args: argparse.Namespace,
     project_root: Path,
+    config: DotfilesConfig,
 ) -> dict[str, Any]:
     """Build a dispatch table of command handlers.
 
     Args:
         args: The parsed arguments.
         project_root: The project root path.
+        config: The resolved DotfilesConfig instance.
 
     Returns:
         Mapping from command name to a callable handler.
     """
 
     def _validate() -> None:
-        EnvironmentValidator.validate()
+        EnvironmentValidator.validate(config=config)
         logger.info("Environment is valid.")
 
     def _ensure_ssh() -> None:
-        EnvironmentValidator.validate()
-        DevEnvironmentAuditor().ensure_ssh()
+        EnvironmentValidator.validate(config=config)
+        DevEnvironmentAuditor(config=config).ensure_ssh()
 
     def _ai_setup() -> None:
-        EnvironmentValidator.validate()
+        EnvironmentValidator.validate(config=config)
         AIOrchestrator().run_all()
 
     def _version() -> None:
@@ -326,12 +377,12 @@ def _build_command_handlers(
 
     return {
         "validate": _validate,
-        "audit": handle_audit,
+        "audit": lambda: handle_audit(config=config),
         "ensure-ssh": _ensure_ssh,
         "ai-setup": _ai_setup,
-        "docker": lambda: handle_docker(args, project_root),
+        "docker": lambda: handle_docker(args, project_root, config=config),
         "version": _version,
-        "install": lambda: handle_install(project_root),
+        "install": lambda: handle_install(project_root, config=config),
         "verify": lambda: handle_verify(args),
         "image": lambda: handle_image(args),
         "ghcr-check": lambda: handle_ghcr_check(args, project_root),
@@ -339,9 +390,21 @@ def _build_command_handlers(
     }
 
 
-def run_command(args: argparse.Namespace, project_root: Path) -> None:
-    """Execute the specified command."""
-    handlers = _build_command_handlers(args, project_root)
+def run_command(
+    args: argparse.Namespace,
+    project_root: Path,
+    config: DotfilesConfig | None = None,
+) -> None:
+    """Execute the specified command.
+
+    Args:
+        args: The parsed arguments.
+        project_root: The project root path.
+        config: Optional config; defaults to a fresh DotfilesConfig.
+    """
+    if config is None:
+        config = DotfilesConfig()
+    handlers = _build_command_handlers(args, project_root, config)
     handler = handlers.get(args.command)
     if handler is not None:
         handler()
@@ -357,10 +420,11 @@ def main() -> None:
     parser = setup_parser()
     args = parser.parse_args()
     project_root = Path(__file__).parent.parent.parent.parent
+    config = DotfilesConfig()
 
     try:
-        run_command(args, project_root)
-    except (RuntimeError, SystemExit):
+        run_command(args, project_root, config=config)
+    except RuntimeError, SystemExit:
         raise
     except Exception:
         logger.exception("Unexpected command failure")

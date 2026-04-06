@@ -1,5 +1,7 @@
 amends "package://github.com/jdx/hk/releases/download/v1.40.0/hk@1.40.0#/Config.pkl"
 
+import "hk-common.pkl" as common
+
 // Zero-skip policy: fail_fast=false to report ALL issues, not just the first
 fail_fast = false
 
@@ -11,36 +13,15 @@ hooks {
     fix = true
     stash = "git"
     steps {
-      // --- File hygiene builtins (auto-detected by step name) ---
-      ["trailing_whitespace"] {}
-      ["newlines"] {}
-      ["mixed_line_ending"] {}
-      ["fix_smart_quotes"] {}
-
-      // --- Safety builtins ---
-      ["detect_private_key"] {}
-      ["check_added_large_files"] {}
-      ["check_merge_conflict"] {}
-      ["check_case_conflict"] {}
-      ["check_symlinks"] {}
-      ["check_executables_have_shebangs"] {}
-      ["check_byte_order_marker"] {}
-      ["no_commit_to_branch"] {}
+      // --- Shared checks (imported from hk-common.pkl) ---
+      ...common.hygiene
+      ...common.safety
+      ...common.security
+      ...common.typos
 
       // --- Style & Consistency ---
       ["editorconfig-checker"] {}
       ["prettier"] {
-        batch = true
-      }
-
-      // --- Security ---
-      ["gitleaks"] {
-        batch = true
-      }
-      // betterleaks: not in mise tool registry for macos-arm64
-
-      // --- Typo detection ---
-      ["typos"] {
         batch = true
       }
 
@@ -64,6 +45,12 @@ hooks {
       }
       ["ty"] {
         glob = List("python/src/**/*.py", "tests/**/*.py")
+      }
+
+      // --- Zero inline lint suppressions (enforces zero-skip policy) ---
+      ["no_lint_skip"] {
+        glob = List("python/src/**/*.py", "tests/**/*.py")
+        check = "! grep -rn 'noqa\\|type: ignore\\|pylint: disable\\|nosec' python/src/ tests/"
       }
 
       // --- Dockerfile & Bake ---
@@ -183,7 +170,7 @@ hooks {
       }
       ["test"] {
         exclusive = true
-        check = "uv run pytest tests/ -x -q"
+        check = "uv run --directory python pytest \"$PWD/tests\" -x -q"
       }
     }
   }

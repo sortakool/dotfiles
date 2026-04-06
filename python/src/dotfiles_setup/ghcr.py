@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import re
 import subprocess
-from pathlib import Path
 from shutil import which
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class GhcrCheckError(RuntimeError):
@@ -42,9 +44,11 @@ def _run_gh_json(
     try:
         data = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        raise GhcrCheckError(f"Unable to parse JSON from gh {' '.join(args)}") from exc
+        msg = f"Unable to parse JSON from gh {' '.join(args)}"
+        raise GhcrCheckError(msg) from exc
     if not isinstance(data, dict):
-        raise GhcrCheckError(f"Unexpected JSON shape from gh {' '.join(args)}")
+        msg = f"Unexpected JSON shape from gh {' '.join(args)}"
+        raise GhcrCheckError(msg)
     return data
 
 
@@ -60,11 +64,13 @@ def _parse_scopes(auth_output: str) -> set[str]:
 def _require_workflow_permissions(ci_workflow_path: Path) -> None:
     """Ensure the CI workflow explicitly requests package write access."""
     if not ci_workflow_path.exists():
-        raise GhcrCheckError(f"Workflow file not found: {ci_workflow_path}")
+        msg = f"Workflow file not found: {ci_workflow_path}"
+        raise GhcrCheckError(msg)
     text = ci_workflow_path.read_text()
     if "packages: write" not in text:
+        msg = f"{ci_workflow_path} must explicitly request packages: write"
         raise GhcrCheckError(
-            f"{ci_workflow_path} must explicitly request packages: write",
+            msg,
         )
 
 
@@ -77,20 +83,20 @@ def validate_ghcr_prereqs(
 ) -> dict[str, Any]:
     """Validate GHCR publish prerequisites that are observable via `gh`."""
     if which("gh") is None:
-        raise GhcrCheckError("gh is not installed or not on PATH")
+        msg = "gh is not installed or not on PATH"
+        raise GhcrCheckError(msg)
 
     auth_result = _run(["gh", "auth", "status"], cwd=repo_root)
     if auth_result.returncode != 0:
         message = (auth_result.stderr or auth_result.stdout).strip()
         raise GhcrCheckError(message or "gh auth status failed")
 
-    scopes = _parse_scopes("\n".join((auth_result.stdout, auth_result.stderr)))
+    scopes = _parse_scopes(f"{auth_result.stdout}\n{auth_result.stderr}")
     required_scopes = {"repo", "read:org", "workflow", "write:packages"}
     missing_scopes = sorted(required_scopes - scopes)
     if missing_scopes:
         raise GhcrCheckError(
-            "gh auth token is missing required scopes: "
-            + ", ".join(missing_scopes),
+            "gh auth token is missing required scopes: " + ", ".join(missing_scopes),
         )
 
     repo_info = _run_gh_json(
@@ -104,14 +110,16 @@ def validate_ghcr_prereqs(
         cwd=repo_root,
     )
     if repo_info.get("nameWithOwner") != f"{owner}/{repo}":
-        raise GhcrCheckError("Resolved GitHub repo does not match expected owner/repo")
+        msg = "Resolved GitHub repo does not match expected owner/repo"
+        raise GhcrCheckError(msg)
 
     actions_permissions = _run_gh_json(
         ["api", f"repos/{owner}/{repo}/actions/permissions"],
         cwd=repo_root,
     )
     if not actions_permissions.get("enabled", False):
-        raise GhcrCheckError("GitHub Actions is disabled for this repository")
+        msg = "GitHub Actions is disabled for this repository"
+        raise GhcrCheckError(msg)
 
     workflow_permissions = _run_gh_json(
         ["api", f"repos/{owner}/{repo}/actions/permissions/workflow"],
@@ -123,11 +131,13 @@ def validate_ghcr_prereqs(
         cwd=repo_root,
     )
     if package_info.get("name") != package_name:
+        msg = "Resolved GHCR package does not match expected package name"
         raise GhcrCheckError(
-            "Resolved GHCR package does not match expected package name",
+            msg,
         )
     if package_info.get("owner", {}).get("login") != owner:
-        raise GhcrCheckError("GHCR package owner does not match expected organization")
+        msg = "GHCR package owner does not match expected organization"
+        raise GhcrCheckError(msg)
 
     _require_workflow_permissions(repo_root / ".github" / "workflows" / "ci.yml")
 
@@ -140,7 +150,9 @@ def validate_ghcr_prereqs(
         cwd=repo_root,
     )
     if package_versions_result.returncode != 0:
-        message = (package_versions_result.stderr or package_versions_result.stdout).strip()
+        message = (
+            package_versions_result.stderr or package_versions_result.stdout
+        ).strip()
         raise GhcrCheckError(message or "Unable to inspect GHCR package versions")
 
     return {

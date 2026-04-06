@@ -63,7 +63,7 @@ def run_suite(
         result.setdefault("status", "passed")
     except VerificationError as exc:
         return {"name": name, "status": "failed", "reason": str(exc)}
-    except Exception as exc:  # noqa: BLE001
+    except (TypeError, ValueError, KeyError, OSError, RuntimeError) as exc:
         return {"name": name, "status": "failed", "reason": f"Unexpected: {exc}"}
     else:
         return result
@@ -417,7 +417,7 @@ def main(
         Exit code: 0 if all passed, 1 if any failed.
     """
     if manifest_path is None:
-        # Resolve relative to package: src/dotfiles_setup/verify.py -> python/verification/
+        # Resolve relative to package location -> python/verification/
         manifest_path = (
             Path(__file__).parent.parent.parent / "verification" / "suites.toml"
         )

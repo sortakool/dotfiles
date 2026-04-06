@@ -60,13 +60,13 @@ jobs:
       - name: Validate hk config
         run: hk validate
         env:
-          HK_PKL_BACKEND: pklr
+          HK_PKL_BACKEND: pkl
           HK_LOG: debug
 
       - name: Run hk checks
         run: hk run pre-commit --all
         env:
-          HK_PKL_BACKEND: pklr
+          HK_PKL_BACKEND: pkl
 
       - name: Check for outdated tools
         run: mise outdated || true

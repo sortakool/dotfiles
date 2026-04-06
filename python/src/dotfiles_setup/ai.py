@@ -56,7 +56,9 @@ class AIOrchestrator:
         """
         logger.info("Verifying AI CLIs are available...")
         for tool in ("claude", "codex", "gemini"):
-            self.tool_manager.run_command(["bash", "-lc", f"command -v {tool}"], capture=False)
+            self.tool_manager.run_command(
+                ["bash", "-lc", f"command -v {tool}"], capture=False
+            )
 
     def setup_extensions(self) -> None:
         """Install AI-related extensions.

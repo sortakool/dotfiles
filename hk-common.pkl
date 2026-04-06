@@ -1,0 +1,45 @@
+// Shared hk check definitions for reuse across project and image configs.
+//
+// Exports Mapping<String, Config.Step> values that can be spread into a
+// Config.pkl `steps {}` block via the `...` operator.
+//
+// Usage in an hk.pkl that amends Config.pkl:
+//   import "package://github.com/jdx/hk/releases/download/v1.40.0/hk@1.40.0#/Config.pkl"
+//   import "hk-common.pkl" as common
+//   hooks { ["pre-commit"] { steps { ...common.hygiene ...common.safety } } }
+
+import "package://github.com/jdx/hk/releases/download/v1.40.0/hk@1.40.0#/Config.pkl"
+
+// File hygiene builtins — whitespace, line endings, encoding fixes.
+hygiene: Mapping<String, Config.Step> = new {
+  ["trailing_whitespace"] {}
+  ["newlines"] {}
+  ["mixed_line_ending"] {}
+  ["fix_smart_quotes"] {}
+}
+
+// Safety builtins — catch accidental secrets, conflicts, large files.
+safety: Mapping<String, Config.Step> = new {
+  ["detect_private_key"] {}
+  ["check_added_large_files"] {}
+  ["check_merge_conflict"] {}
+  ["check_case_conflict"] {}
+  ["check_symlinks"] {}
+  ["check_executables_have_shebangs"] {}
+  ["check_byte_order_marker"] {}
+  ["no_commit_to_branch"] {}
+}
+
+// Security scanning — secret detection via gitleaks.
+security: Mapping<String, Config.Step> = new {
+  ["gitleaks"] {
+    batch = true
+  }
+}
+
+// Typo detection across all file types.
+typos: Mapping<String, Config.Step> = new {
+  ["typos"] {
+    batch = true
+  }
+}

@@ -114,7 +114,7 @@ missing_tools = "always"
 CC = "gcc"
 CXX = "g++"
 # Hook runner
-HK_PKL_BACKEND = "pklr"
+HK_PKL_BACKEND = "pkl"  # "pkl" (not pklr) required for import/spread in hk-common.pkl
 HK_MISE = "1"
 # Locale (set here so all mise-activated shells inherit)
 LANG = "C.UTF-8"

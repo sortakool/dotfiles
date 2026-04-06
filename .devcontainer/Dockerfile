@@ -95,8 +95,11 @@ RUN mise reshim -f
 # Final global permissions check
 RUN chmod -R 777 /opt/mise /etc/mise /opt/cargo /opt/rustup
 
-# Copy hk config for smoke-test validation (hk validate)
-COPY hk.pkl /etc/hk/hk.pkl
+# Copy image-specific hk config + shared checks for smoke-test validation.
+# hk-image.pkl imports hk-common.pkl — both must be in /etc/hk/ for pkl
+# relative import resolution. hk-image.pkl is renamed to hk.pkl (hk default).
+COPY hk-common.pkl /etc/hk/hk-common.pkl
+COPY hk-image.pkl /etc/hk/hk.pkl
 
 # Ensure mise is activated for all users
 RUN echo "eval \"\$(/usr/local/bin/mise activate bash)\"" > /etc/profile.d/mise.sh && \

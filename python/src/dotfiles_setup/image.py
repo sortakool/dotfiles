@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import re
@@ -113,7 +114,9 @@ echo "=== All smoke checks passed ==="
 """
 
 
-def build_smoke_docker_cmd(image_ref: str, *, platform: str = "linux/amd64") -> list[str]:
+def build_smoke_docker_cmd(
+    image_ref: str, *, platform: str = "linux/amd64"
+) -> list[str]:
     """Build the docker command used for smoke validation."""
     script = build_smoke_script()
     return [
@@ -159,7 +162,9 @@ def _gzip_size_for_image(image_ref: str) -> int:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    assert save_proc.stdout is not None
+    if save_proc.stdout is None:
+        msg = "docker image save returned no stdout"
+        raise RuntimeError(msg)
     compressor = zlib.compressobj(wbits=31)
     compressed_size = 0
     while chunk := save_proc.stdout.read(1024 * 1024):
@@ -241,7 +246,9 @@ def benchmark(
 ) -> dict[str, Any]:
     """Benchmark smoke and size-report timings for an image."""
     if output_path is None:
-        output_path = _project_root() / "artifacts" / "build" / "devcontainer-metrics.json"
+        output_path = (
+            _project_root() / "artifacts" / "build" / "devcontainer-metrics.json"
+        )
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     started = time.time()
@@ -265,7 +272,9 @@ def benchmark(
         "top_layers": report["top_layers"],
         "result": smoke_result["result"].lower(),
     }
-    output_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    output_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return payload
 
 
@@ -276,43 +285,63 @@ def metrics_compare(baseline_path: Path, candidate_path: Path) -> dict[str, Any]
     return {
         "baseline": str(baseline_path),
         "candidate": str(candidate_path),
-        "image_size_delta": candidate["image_size_bytes"] - baseline["image_size_bytes"],
-        "compressed_size_delta": candidate["compressed_size_bytes"] - baseline["compressed_size_bytes"],
-        "smoke_wall_delta": candidate["timings_s"]["smoke_wall"] - baseline["timings_s"]["smoke_wall"],
-        "total_wall_delta": candidate["timings_s"]["total_wall"] - baseline["timings_s"]["total_wall"],
+        "image_size_delta": candidate["image_size_bytes"]
+        - baseline["image_size_bytes"],
+        "compressed_size_delta": candidate["compressed_size_bytes"]
+        - baseline["compressed_size_bytes"],
+        "smoke_wall_delta": candidate["timings_s"]["smoke_wall"]
+        - baseline["timings_s"]["smoke_wall"],
+        "total_wall_delta": candidate["timings_s"]["total_wall"]
+        - baseline["timings_s"]["total_wall"],
     }
 
 
-def main(
-    image_ref: str,
-    *,
-    platform: str = "linux/amd64",
-    command: str = "smoke",
-    output_path: Path | None = None,
-    baseline_path: Path | None = None,
-    candidate_path: Path | None = None,
-) -> int:
+@dataclasses.dataclass(frozen=True)
+class ImageCommand:
+    """Parsed image CLI command parameters."""
+
+    image_ref: str
+    platform: str = "linux/amd64"
+    command: str = "smoke"
+    output_path: Path | None = None
+    baseline_path: Path | None = None
+    candidate_path: Path | None = None
+
+
+def main(cmd: ImageCommand) -> int:
     """CLI entry point for image operations."""
-    if command == "smoke":
-        result = smoke(image_ref, platform=platform)
+    if cmd.command == "smoke":
+        result = smoke(cmd.image_ref, platform=cmd.platform)
         if result["result"] == "FAIL":
-            sys.stderr.write(f"FAIL: {image_ref}\n")
+            sys.stderr.write(f"FAIL: {cmd.image_ref}\n")
             sys.stderr.write(result.get("stderr", ""))
             return 1
-        sys.stderr.write(f"PASS: {image_ref}\n")
+        sys.stderr.write(f"PASS: {cmd.image_ref}\n")
         return 0
-    if command == "size-report":
-        payload = size_report(image_ref, platform=platform)
-        sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    if cmd.command == "size-report":
+        payload = size_report(cmd.image_ref, platform=cmd.platform)
+        sys.stdout.write(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        )
         return 0
-    if command == "benchmark":
-        payload = benchmark(image_ref, platform=platform, output_path=output_path)
-        sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    if cmd.command == "benchmark":
+        payload = benchmark(
+            cmd.image_ref,
+            platform=cmd.platform,
+            output_path=cmd.output_path,
+        )
+        sys.stdout.write(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        )
         return 0
-    if command == "metrics-compare":
-        if baseline_path is None or candidate_path is None:
-            raise ValueError("baseline_path and candidate_path are required for metrics-compare")
-        payload = metrics_compare(baseline_path, candidate_path)
-        sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    if cmd.command == "metrics-compare":
+        if cmd.baseline_path is None or cmd.candidate_path is None:
+            msg = "baseline_path and candidate_path are required"
+            raise ValueError(msg)
+        payload = metrics_compare(cmd.baseline_path, cmd.candidate_path)
+        sys.stdout.write(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        )
         return 0
-    raise ValueError(f"Unsupported command: {command}")
+    msg = f"Unsupported command: {cmd.command}"
+    raise ValueError(msg)

@@ -64,7 +64,7 @@ missing_tools = "always"
 # Build toolchain
 CC = "gcc"
 CXX = "g++"
-HK_PKL_BACKEND = "pklr"
+HK_PKL_BACKEND = "pkl"  # "pkl" (not pklr) required for import/spread in hk-common.pkl
 HK_MISE = "1"
 # rustup warns during non-interactive installs unless PATH checking is explicitly skipped
 RUSTUP_INIT_SKIP_PATH_CHECK = "yes"
