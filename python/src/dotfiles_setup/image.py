@@ -37,12 +37,10 @@ def build_smoke_script() -> str:
     """Build the inline smoke test script."""
     return """\
 set -euo pipefail
+MISE_CFG="${MISE_CONFIG_DIR:-/etc/mise}/config.toml"
 echo "=== hk validate ==="
-cd /tmp/dotfiles
-mise trust .
-HK_FILE=hk.pkl hk validate
+HK_FILE=/etc/hk/hk.pkl hk validate
 echo "=== mise ls (check no missing — system config only) ==="
-cd "$HOME"
 mise_output=$(mise ls 2>&1)
 missing=$(echo "$mise_output" | grep -c "(missing)" || true)
 echo "Missing tools: $missing"
@@ -50,7 +48,6 @@ if [ "$missing" -gt 0 ]; then
   echo "$mise_output" | grep "(missing)"
   exit 1
 fi
-cd /tmp/dotfiles
 echo "=== shell integration ==="
 command -v zsh || { echo "FAIL: zsh not found"; exit 1; }
 command -v git || { echo "FAIL: git not found"; exit 1; }
@@ -75,16 +72,16 @@ if [ ! -d /opt/mise/installs ]; then
   echo "FAIL: /opt/mise/installs missing"; exit 1
 fi
 echo "=== backend policy checks ==="
-grep -q 'npm.package_manager = "bun"' "${MISE_CONFIG_DIR:-$HOME/.config/mise}/config.toml" || {
+grep -q 'npm.package_manager = "bun"' "$MISE_CFG" || {
   echo "FAIL: bun package manager policy missing"; exit 1;
 }
-grep -q 'pipx.uvx = true' "${MISE_CONFIG_DIR:-$HOME/.config/mise}/config.toml" || {
+grep -q 'pipx.uvx = true' "$MISE_CFG" || {
   echo "FAIL: uvx policy missing"; exit 1;
 }
-grep -q 'cargo.binstall = true' "${MISE_CONFIG_DIR:-$HOME/.config/mise}/config.toml" || {
+grep -q 'cargo.binstall = true' "$MISE_CFG" || {
   echo "FAIL: cargo-binstall policy missing"; exit 1;
 }
-grep -q 'python.uv_venv_auto = "source"' "${MISE_CONFIG_DIR:-$HOME/.config/mise}/config.toml" || {
+grep -q 'python.uv_venv_auto = "source"' "$MISE_CFG" || {
   echo "FAIL: python uv venv policy missing"; exit 1;
 }
 echo "=== clang tooling checks ==="
@@ -125,8 +122,6 @@ def build_smoke_docker_cmd(image_ref: str, *, platform: str = "linux/amd64") -> 
         "--rm",
         "--platform",
         platform,
-        "--volume",
-        f"{_project_root()}:/tmp/dotfiles:ro",
         "--entrypoint",
         "/bin/bash",
         image_ref,

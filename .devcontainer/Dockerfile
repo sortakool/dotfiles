@@ -95,6 +95,9 @@ RUN mise reshim -f
 # Final global permissions check
 RUN chmod -R 777 /opt/mise /etc/mise /opt/cargo /opt/rustup
 
+# Copy hk config for smoke-test validation (hk validate)
+COPY hk.pkl /etc/hk/hk.pkl
+
 # Ensure mise is activated for all users
 RUN echo "eval \"\$(/usr/local/bin/mise activate bash)\"" > /etc/profile.d/mise.sh && \
     echo "eval \"\$(/usr/local/bin/mise activate zsh)\"" > /etc/profile.d/mise.zsh

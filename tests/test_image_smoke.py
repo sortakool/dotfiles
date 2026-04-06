@@ -13,15 +13,13 @@ from dotfiles_setup.image import (
 def test_smoke_script_pins_hk_file() -> None:
     script = build_smoke_script()
 
-    assert "HK_FILE=hk.pkl hk validate" in script
+    assert "HK_FILE=/etc/hk/hk.pkl hk validate" in script
 
 
-def test_smoke_docker_cmd_mounts_repo_checkout() -> None:
+def test_smoke_docker_cmd_no_volume_mount() -> None:
     cmd = build_smoke_docker_cmd("ghcr.io/ray-manaloto/dotfiles-devcontainer:test")
 
-    assert "--volume" in cmd
-    mount = cmd[cmd.index("--volume") + 1]
-    assert mount.endswith(":/tmp/dotfiles:ro")
+    assert "--volume" not in cmd
 
 
 def test_smoke_script_does_not_require_llvm_symbolizer() -> None:
