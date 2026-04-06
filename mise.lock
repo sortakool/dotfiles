@@ -34,6 +34,38 @@ checksum = "sha256:5b44c3bc2255115c9b69e30efc0fecdf498fdb63c5d58e17084fd5f16324c
 url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_darwin_amd64.tar.gz"
 provenance = "github-attestations"
 
+[[tools.chezmoi]]
+version = "2.70.0"
+backend = "aqua:twpayne/chezmoi"
+
+[tools.chezmoi."platforms.linux-arm64"]
+checksum = "sha256:c65fb55bee4fb2bc14362998e2ce0cf1b1688bce0abfd7dd48cbac6448d6fc75"
+url = "https://github.com/twpayne/chezmoi/releases/download/v2.70.0/chezmoi_2.70.0_linux_arm64.tar.gz"
+
+[tools.chezmoi."platforms.linux-arm64-musl"]
+checksum = "sha256:c65fb55bee4fb2bc14362998e2ce0cf1b1688bce0abfd7dd48cbac6448d6fc75"
+url = "https://github.com/twpayne/chezmoi/releases/download/v2.70.0/chezmoi_2.70.0_linux_arm64.tar.gz"
+
+[tools.chezmoi."platforms.linux-x64"]
+checksum = "sha256:32dbc87a4db7163d0f8c3156b631e3ee1cc6fed400f43ff467eca4211f2905e7"
+url = "https://github.com/twpayne/chezmoi/releases/download/v2.70.0/chezmoi_2.70.0_linux_amd64.tar.gz"
+
+[tools.chezmoi."platforms.linux-x64-musl"]
+checksum = "sha256:32dbc87a4db7163d0f8c3156b631e3ee1cc6fed400f43ff467eca4211f2905e7"
+url = "https://github.com/twpayne/chezmoi/releases/download/v2.70.0/chezmoi_2.70.0_linux_amd64.tar.gz"
+
+[tools.chezmoi."platforms.macos-arm64"]
+checksum = "sha256:87142ac0465e9b1cd04a71c06c5164867fded7778c3c098f8efbea3ee9df1ade"
+url = "https://github.com/twpayne/chezmoi/releases/download/v2.70.0/chezmoi_2.70.0_darwin_arm64.tar.gz"
+
+[tools.chezmoi."platforms.macos-x64"]
+checksum = "sha256:8d8abb5da0805ce6fa4d387cf3d9615281ad5b26007bf4d469af603ab3c237af"
+url = "https://github.com/twpayne/chezmoi/releases/download/v2.70.0/chezmoi_2.70.0_darwin_amd64.tar.gz"
+
+[tools.chezmoi."platforms.windows-x64"]
+checksum = "sha256:bd75e4892ed22d5ab767c06242fc72c23c5848ad5b1aea27fd95aec03c10c777"
+url = "https://github.com/twpayne/chezmoi/releases/download/v2.70.0/chezmoi_2.70.0_windows_amd64.zip"
+
 [[tools.colima]]
 version = "0.10.1"
 backend = "aqua:abiosoft/colima"
