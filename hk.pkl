@@ -166,11 +166,11 @@ hooks {
     steps {
       ["ghcr_publish_prereqs"] {
         exclusive = true
-        check = "uv run --directory python dotfiles-setup ghcr-check"
+        check = "uv run --project python dotfiles-setup ghcr-check"
       }
       ["test"] {
         exclusive = true
-        check = "uv run --directory python pytest tests/ -x -q"
+        check = "uv run --project python pytest tests/ -x -q"
       }
     }
   }

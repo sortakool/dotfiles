@@ -55,7 +55,7 @@ depends = ["lint", "test"]
 
 [tasks.test]
 description = "Run Python test suite"
-run = "uv run --directory python pytest tests/ -x -q"
+run = "uv run --project python pytest tests/ -x -q"
 
 [tasks.up]
 description = "Bring the devcontainer up"
