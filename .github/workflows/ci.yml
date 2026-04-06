@@ -72,6 +72,35 @@ jobs:
         env:
           HK_PKL_BACKEND: pkl
 
+      - name: Assert chezmoiignore mise overlay hard gate
+        # Machine-checks the .chezmoiignore devcontainer-only gate from
+        # commit 5fc1b75 in both modes. Prevents future edits from silently
+        # breaking the Mac-pollution defense. See ralplan-consensus R2 #1.
+        run: |
+          set -euo pipefail
+          SRC="$PWD/home"
+          # Host mode: mise overlay MUST be ignored (NOT in `chezmoi managed`)
+          T1=$(mktemp -d)
+          env -u REMOTE_CONTAINERS -u CODESPACES -u DEVCONTAINER \
+            HOME="$T1" chezmoi init --source "$SRC" --apply=false >/dev/null
+          if env -u REMOTE_CONTAINERS -u CODESPACES -u DEVCONTAINER HOME="$T1" \
+             chezmoi --source "$SRC" managed | grep -qE '^\.config/mise/config\.toml$'; then
+            echo "FAIL: .chezmoiignore regression — mise overlay NOT gated on host" >&2
+            exit 1
+          fi
+          rm -rf "$T1"
+          # Container mode: mise overlay MUST render (IS in `chezmoi managed`)
+          T2=$(mktemp -d)
+          DEVCONTAINER=1 HOME="$T2" \
+            chezmoi init --source "$SRC" --apply=false >/dev/null
+          if ! DEVCONTAINER=1 HOME="$T2" \
+               chezmoi --source "$SRC" managed | grep -qE '^\.config/mise/config\.toml$'; then
+            echo "FAIL: .chezmoiignore regression — mise overlay WRONGLY gated in container" >&2
+            exit 1
+          fi
+          rm -rf "$T2"
+          echo "OK: .chezmoiignore hard gate verified in both modes"
+
       - name: Check for outdated tools
         run: mise outdated || true
 
@@ -243,6 +272,28 @@ jobs:
           uv run --directory python dotfiles-setup image benchmark \
             --image-ref ${{ env.CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.smoke-tag.outputs.tag }} \
             --output-path artifacts/build/devcontainer-metrics.json > /tmp/devcontainer-metrics.stdout.json
+
+      - name: Install mise (for devcontainer CLI)
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+
+      - name: Devcontainer up + tier 1-3 smoke
+        env:
+          BASE_IMAGE: ${{ env.CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.smoke-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          start_ts=$(date +%s)
+          devcontainer up --workspace-folder .
+          end_ts=$(date +%s)
+          startup_seconds=$((end_ts - start_ts))
+          echo "startup_seconds=$startup_seconds"
+          # Merge startup_seconds into the existing benchmark metrics file
+          # without dropping any preserved fields.
+          tmp=$(mktemp)
+          jq --argjson s "$startup_seconds" '. + {startup_seconds: $s}' \
+            artifacts/build/devcontainer-metrics.json > "$tmp"
+          mv "$tmp" artifacts/build/devcontainer-metrics.json
+          # Tier 1-3 smoke checks via the shared script.
+          scripts/devcontainer-smoke.sh
 
       - name: Upload build metrics artifact
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
