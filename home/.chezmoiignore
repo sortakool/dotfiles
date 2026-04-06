@@ -26,3 +26,29 @@ Library/**
 .ssh/config
 .gnupg/**
 {{ end }}
+
+{{/*
+  Devcontainer-only mise overlay gate. HARD GATE — DO NOT REMOVE.
+  Uses the built-in `chezmoi.os` fact (darwin = Mac host, linux = devcontainer).
+  This is the canonical chezmoi pattern per
+  https://www.chezmoi.io/user-guide/manage-machine-to-machine-differences/
+
+  Previously this gated on a custom `.is_container` data variable derived
+  from REMOTE_CONTAINERS / CODESPACES / DEVCONTAINER env detection. That
+  was reinvention — chezmoi.os is a runtime fact that's always correct,
+  never depends on env vars or stale ~/.config/chezmoi/chezmoi.toml. See
+  memory feedback_use_tool_builtins.md.
+
+  Rationale: home/dot_config/mise/config.toml.tmpl is the user-scoped mise
+  overlay for INSIDE the devcontainer only. Rendering it on the Mac host
+  would overwrite ~/.config/mise/config.toml with container-only tooling,
+  polluting the host. See memory feedback_devcontainer_only_mise_overlay.md.
+
+  Verification: a CI assertion in .github/workflows/ci.yml runs
+  `chezmoi init --apply=false` on the linux runner and asserts the file
+  IS in `chezmoi managed`. The darwin path is the inverse and is verified
+  locally on Mac via `chezmoi --source ./home managed | grep mise`.
+*/}}
+{{ if ne .chezmoi.os "linux" }}
+.config/mise/config.toml
+{{ end }}

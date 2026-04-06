@@ -294,7 +294,7 @@ class DevEnvironmentAuditor:
                 check=True,
             )
             capability = "ok"
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except subprocess.CalledProcessError, FileNotFoundError:
             capability = "failed"
 
         return {

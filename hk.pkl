@@ -71,6 +71,15 @@ hooks {
         check = "devcontainer read-configuration --workspace-folder ."
       }
 
+      // --- Thin host-user overlay invariant (Principle 1 of devcontainer-build refactor)
+      //     Dockerfile.host-user MUST stay <= baseline (79) + 10 = 89 lines.
+      //     New capabilities go into Devcontainer Features or devcontainer.json
+      //     mounts, NOT new RUN steps in the overlay.
+      ["dockerfile_host_user_thin_overlay"] {
+        glob = List(".devcontainer/Dockerfile.host-user")
+        check = "lines=$(wc -l < .devcontainer/Dockerfile.host-user); [ \"$lines\" -le 89 ] || { echo \"Dockerfile.host-user is $lines lines, cap is 89 (baseline 79 + 10). Add capabilities via Features or devcontainer.json mounts, not RUN steps.\"; exit 1; }"
+      }
+
       // --- TOML ---
       ["taplo_format"] {
         types = List("toml")

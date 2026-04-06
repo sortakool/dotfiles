@@ -223,7 +223,7 @@ description = "mise env must disable rustup PATH checks during non-interactive i
 category = "build"
 check_type = "static"
 handler = "require_tokens"
-paths = ["home/dot_config/mise/config.toml.tmpl"]
+paths = [".devcontainer/mise-system.toml"]
 tokens = ['RUSTUP_INIT_SKIP_PATH_CHECK = "yes"']
 
 # =============================================================================
@@ -441,7 +441,7 @@ description = "npm-backed installs must use bun via mise settings"
 category = "architecture"
 check_type = "static"
 handler = "require_tokens"
-paths = ["home/dot_config/mise/config.toml.tmpl"]
+paths = [".devcontainer/mise-system.toml"]
 tokens = ["npm.package_manager = \"bun\""]
 
 [[suite]]
@@ -450,26 +450,17 @@ description = "pipx-backed installs must use uvx via mise settings"
 category = "architecture"
 check_type = "static"
 handler = "require_tokens"
-paths = ["home/dot_config/mise/config.toml.tmpl"]
+paths = [".devcontainer/mise-system.toml"]
 tokens = ["pipx.uvx = true"]
 
 [[suite]]
 name = "arch.cargo-uses-binstall"
-description = "cargo-backed installs must prefer cargo-binstall"
+description = "cargo-backed installs must prefer cargo-binstall (enforced in devcontainer system mise config)"
 category = "architecture"
 check_type = "static"
 handler = "require_tokens"
-paths = ["home/dot_config/mise/config.toml.tmpl"]
+paths = [".devcontainer/mise-system.toml"]
 tokens = ["cargo.binstall = true"]
-
-[[suite]]
-name = "arch.chezmoiscripts-lifecycle"
-description = "Chezmoi lifecycle scripts must exist (run_once_before + run_onchange_after)"
-category = "architecture"
-check_type = "static"
-handler = "require_tokens"
-paths = ["home/.chezmoiscripts/run_once_before_01_install_mise.sh", "home/.chezmoiscripts/run_onchange_after_10_mise_install.sh.tmpl"]
-tokens = ["mise"]
 
 # =============================================================================
 # Policy Constraints (~4) — Human-only, not automatable

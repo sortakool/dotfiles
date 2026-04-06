@@ -424,7 +424,7 @@ def main() -> None:
 
     try:
         run_command(args, project_root, config=config)
-    except (RuntimeError, SystemExit):
+    except RuntimeError, SystemExit:
         raise
     except Exception:
         logger.exception("Unexpected command failure")
