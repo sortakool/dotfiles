@@ -25,15 +25,22 @@ hooks {
         batch = true
       }
 
-      // --- Python: ruff + ty (keep glob — types would match .py.tmpl templates) ---
-      ["ruff_format"] {
+      // --- Python: ruff + ty invoked directly via uv so hk uses
+      //     python/pyproject.toml config verbatim. Replaces the hk builtin
+      //     steps, which silently dropped rules (see Issue #45). ruff + ty
+      //     are pinned via python/uv.lock (dev dependency-group).
+      //     Order per Astral ruff docs: `ruff check --fix` BEFORE `ruff format`
+      //     (lint fixes reorder imports; format then cleans up). ---
+      ["py_ruff"] {
         glob = List("python/src/**/*.py", "tests/**/*.py")
-        batch = true
+        check = "uv run --project python ruff check python/src tests"
+        fix = "uv run --project python ruff check --fix python/src tests"
       }
-      ["ruff"] {
+      ["py_ruff_format"] {
         glob = List("python/src/**/*.py", "tests/**/*.py")
-        batch = true
-        check_first = true
+        check = "uv run --project python ruff format --check python/src tests"
+        fix = "uv run --project python ruff format python/src tests"
+        depends = List("py_ruff")
       }
       ["python_check_ast"] {
         glob = List("python/src/**/*.py", "tests/**/*.py")
@@ -43,14 +50,16 @@ hooks {
         glob = List("python/src/**/*.py", "tests/**/*.py")
         batch = true
       }
-      ["ty"] {
+      ["py_ty"] {
         glob = List("python/src/**/*.py", "tests/**/*.py")
+        check = "uv run --project python ty check python/src tests"
       }
 
       // --- Zero inline lint suppressions (enforces zero-skip policy) ---
+      // Covers: ruff `noqa`, mypy `type: ignore`, ty `ty: ignore`, pylint, bandit `nosec`
       ["no_lint_skip"] {
         glob = List("python/src/**/*.py", "tests/**/*.py")
-        check = "! grep -rn 'noqa\\|type: ignore\\|pylint: disable\\|nosec' python/src/ tests/"
+        check = "! grep -rn 'noqa\\|type: ignore\\|ty: ignore\\|pylint: disable\\|nosec' python/src/ tests/"
       }
 
       // --- Dockerfile & Bake ---

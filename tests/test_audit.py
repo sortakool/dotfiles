@@ -55,6 +55,4 @@ def test_audit_exit_code() -> None:
         check=False,
     )
     # Exit 0 = all passed, 1 = some failed. Both valid.
-    assert result.returncode in [0, 1], (
-        f"Unexpected exit code: {result.returncode}"
-    )
+    assert result.returncode in [0, 1], f"Unexpected exit code: {result.returncode}"

@@ -95,4 +95,10 @@ enable_all = true
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    # Linter/formatter and type-checker invoked directly by hk.pkl via
+    # `uv run --project python` so hk uses pyproject.toml config with no
+    # builtin-step rule dropouts (see Issue #45). Unpinned → `uv lock`
+    # resolves latest; bump via `uv lock --upgrade-package ruff --upgrade-package ty`.
+    "ruff",
+    "ty",
 ]

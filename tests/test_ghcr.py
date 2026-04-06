@@ -33,9 +33,7 @@ def test_validate_ghcr_prereqs_requires_packages_write_scope(
 
     monkeypatch.setattr("dotfiles_setup.ghcr.which", lambda _name: "/usr/bin/gh")
 
-    def fake_run(
-        args: list[str], *, cwd: Path
-    ) -> subprocess.CompletedProcess[str]:
+    def fake_run(args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
         _ = cwd  # unused but required by _run signature
         if args == ["gh", "auth", "status"]:
             return subprocess.CompletedProcess(
@@ -65,9 +63,7 @@ def test_validate_ghcr_prereqs_passes_when_inputs_are_valid(
 
     monkeypatch.setattr("dotfiles_setup.ghcr.which", lambda _name: "/usr/bin/gh")
 
-    def fake_run(
-        args: list[str], *, cwd: Path
-    ) -> subprocess.CompletedProcess[str]:
+    def fake_run(args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
         _ = cwd  # unused but required by _run signature
         if args == ["gh", "auth", "status"]:
             return subprocess.CompletedProcess(
@@ -84,9 +80,7 @@ def test_validate_ghcr_prereqs_passes_when_inputs_are_valid(
             return subprocess.CompletedProcess(args, 0, "[]")
         return subprocess.CompletedProcess(args, 0, "{}")
 
-    def fake_run_gh_json(
-        args: list[str], *, cwd: Path
-    ) -> dict[str, Any]:
+    def fake_run_gh_json(args: list[str], *, cwd: Path) -> dict[str, Any]:
         _ = cwd  # unused but required by _run_gh_json signature
         if args[:3] == ["repo", "view", "ray-manaloto/dotfiles"]:
             return {
