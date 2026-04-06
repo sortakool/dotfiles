@@ -55,9 +55,6 @@ Registry: `ghcr.io/sortakool/dotfiles-devcontainer`
 - Use `uv run --project python` (not `--directory python`) when pytest runs from repo root — `--directory` changes cwd, breaking relative test paths
 - hk caches pkl-evaluated configs at `~/Library/Caches/hk/configs/` — clear after editing hk.pkl if changes don't take effect
 
-## Open Issues
-- **HIGH**: `devcontainer.json` image reference uses wrong registry — update to `ghcr.io/sortakool/dotfiles-devcontainer:dev`
-
 ## Testing
 ```bash
 uv run --project python pytest tests/ -x -q                # All 65 tests
