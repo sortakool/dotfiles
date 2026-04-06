@@ -52,6 +52,8 @@ Registry: `ghcr.io/sortakool/dotfiles-devcontainer`
 - build job includes diagnostics step: `docker buildx bake --print` + known warnings table
 - All GHA actions SHA-pinned via pinact (`mise run pin-actions` to verify)
 - contract-preflight and smoke-test use Python 3.14, `actions/setup-python@v6`, `astral-sh/setup-uv@v8`
+- Use `uv run --project python` (not `--directory python`) when pytest runs from repo root — `--directory` changes cwd, breaking relative test paths
+- hk caches pkl-evaluated configs at `~/Library/Caches/hk/configs/` — clear after editing hk.pkl if changes don't take effect
 
 ## Open Issues
 - **HIGH**: `devcontainer.json` image reference uses wrong registry — update to `ghcr.io/sortakool/dotfiles-devcontainer:dev`

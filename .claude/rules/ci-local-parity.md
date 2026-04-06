@@ -35,7 +35,24 @@ For tools in mise.toml, use the binary name directly:
 
 npx bypasses mise, re-downloads in CI, and may resolve a different version.
 
-## Rule 4: Test new hk steps locally before committing
+## Rule 4: Use `--project` not `--directory` for uv commands from repo root
+
+When running Python tools (pytest, dotfiles-setup) from the repo root:
+- YES: `uv run --project python pytest tests/ -x -q`
+- NO: `uv run --directory python pytest tests/ -x -q`
+
+`--directory` changes cwd, breaking relative paths. `--project` resolves
+deps without changing cwd. This applies to hk.pkl steps and mise tasks.
+
+## Rule 5: Clear hk cache after editing hk.pkl
+
+hk caches pkl-evaluated configs at `~/Library/Caches/hk/configs/`.
+After editing `hk.pkl`, clear the cache: `rm -rf ~/Library/Caches/hk/configs/`
+Otherwise hk may serve stale config silently. After clearing, ensure
+`HK_PKL_BACKEND=pkl` is set (mise provides this) — without it, hk
+falls back to pklr which cannot handle import/spread syntax.
+
+## Rule 6: Test new hk steps locally before committing
 
 When adding a new step to hk.pkl:
 1. `hk validate` — verify config syntax
