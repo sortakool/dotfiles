@@ -41,7 +41,8 @@ echo "=== hk validate ==="
 cd /tmp/dotfiles
 mise trust .
 HK_FILE=hk.pkl hk validate
-echo "=== mise ls (check no missing) ==="
+echo "=== mise ls (check no missing — system config only) ==="
+cd "$HOME"
 mise_output=$(mise ls 2>&1)
 missing=$(echo "$mise_output" | grep -c "(missing)" || true)
 echo "Missing tools: $missing"
@@ -49,6 +50,7 @@ if [ "$missing" -gt 0 ]; then
   echo "$mise_output" | grep "(missing)"
   exit 1
 fi
+cd /tmp/dotfiles
 echo "=== shell integration ==="
 command -v zsh || { echo "FAIL: zsh not found"; exit 1; }
 command -v git || { echo "FAIL: git not found"; exit 1; }
