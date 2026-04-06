@@ -9,12 +9,18 @@ Chezmoi-managed dotfiles with devcontainer support. Two build types:
 ```bash
 mise install                          # Install all tools
 hk run pre-commit --all               # Run lint checks
-docker buildx bake dev-load           # Build devcontainer locally
+mise run build                        # Build devcontainer locally (= docker buildx bake dev-load)
+mise run up                           # Bring up devcontainer (devcontainer CLI v0.85.0)
+mise run down                         # Tear down devcontainer (alias of `mise run stop`)
 uv run --project python pytest tests/ -x -q  # Run tests
 mise run pin-actions                  # Verify GHA actions are SHA-pinned
 mise run lint-docs                    # Validate agent documentation
 mise run lock                         # Regenerate mise.lock
 ```
+
+The devloop is `mise run up` → work inside the container → `mise run down`.
+The legacy `dotfiles-setup docker {up,down}` wrapper has been replaced by
+the official `@devcontainers/cli` (pinned in `mise.toml`).
 
 ## Architecture
 - `.devcontainer/Dockerfile` — Multi-stage devcontainer (mise bootstrap, known cosmetic warnings documented in comment block)
