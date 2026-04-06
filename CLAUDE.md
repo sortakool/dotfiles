@@ -44,7 +44,7 @@ Use native `colima` buildx driver, not `colima-builder` (QEMU).
 Benchmarks: `docs/research/trail/findings/docker-benchmarks/`
 
 ## CI Pipeline
-Registry: `ghcr.io/sortakool/dotfiles-devcontainer`
+Registry: `ghcr.io/ray-manaloto/dotfiles-devcontainer`
 - `CONTAINER_REGISTRY` env var (not `REGISTRY` — avoids HCL collision)
 - GitHub token passed via BuildKit secret mount (`uid=1000` for vscode user)
 - `DEVCONTAINER_USERNAME=vscode` (UID 1000) — debate-confirmed correct for VS Code usage; host-user passthrough is low-priority future work

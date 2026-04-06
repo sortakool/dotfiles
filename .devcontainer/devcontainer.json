@@ -7,7 +7,7 @@
     ],
     "args": {
       "DEVCONTAINER_USERNAME": "${localEnv:USER}",
-      "BASE_IMAGE": "dotfiles-devcontainer:dev"
+      "BASE_IMAGE": "${localEnv:BASE_IMAGE}"
     }
   },
   "remoteUser": "${localEnv:USER}",

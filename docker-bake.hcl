@@ -77,7 +77,7 @@ target "dev" {
 target "dev-load" {
   inherits = ["dev"]
   output   = ["type=docker"]
-  tags     = ["${IMAGE_REF}:${TAG}", "${IMAGE}:${TAG}"]
+  tags     = ["${IMAGE_REF}:${TAG}"]
 }
 
 # Validation target (dry-run mode)

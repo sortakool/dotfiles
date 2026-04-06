@@ -400,13 +400,31 @@ paths = [".devcontainer/devcontainer.json"]
 tokens = ["${localEnv:USER}"]
 
 [[suite]]
-name = "arch.base-image-dotfiles-devcontainer"
-description = "Host-user overlay must use dotfiles-devcontainer as base image"
+name = "arch.base-image-dockerfile-host-user"
+description = "Host-user overlay Dockerfile must use the fully-qualified ghcr.io base image tag"
 category = "architecture"
 check_type = "static"
 handler = "require_tokens"
-paths = [".devcontainer/Dockerfile.host-user", ".devcontainer/devcontainer.json"]
+paths = [".devcontainer/Dockerfile.host-user"]
 tokens = ["ghcr.io/ray-manaloto/dotfiles-devcontainer:dev"]
+
+[[suite]]
+name = "arch.devcontainer-json-base-image-localenv"
+description = "devcontainer.json must pass BASE_IMAGE via localEnv so CI can inject SHA-pinned tags while local dev uses the mise-provided default"
+category = "architecture"
+check_type = "static"
+handler = "require_tokens"
+paths = [".devcontainer/devcontainer.json"]
+tokens = ["${localEnv:BASE_IMAGE}"]
+
+[[suite]]
+name = "arch.devcontainer-json-no-bare-image-tag"
+description = "devcontainer.json must not hardcode a bare (unqualified) dotfiles-devcontainer tag — that would shadow the mise/CI BASE_IMAGE override and pull from Docker Hub in CI"
+category = "architecture"
+check_type = "static"
+handler = "regex_forbid"
+paths = [".devcontainer/devcontainer.json"]
+pattern = "\"dotfiles-devcontainer:"
 
 [[suite]]
 name = "arch.update-remote-user-uid-disabled"

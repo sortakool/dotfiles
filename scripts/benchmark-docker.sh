@@ -10,6 +10,7 @@ set -euo pipefail
 #          ./scripts/benchmark-docker.sh colima
 
 RUNTIME="${1:?Usage: benchmark-docker.sh <runtime-name>}"
+IMAGE_REF="${IMAGE_REF:-ghcr.io/ray-manaloto/dotfiles-devcontainer:dev}"
 RESULTS_DIR="docs/research/trail/findings/docker-benchmarks"
 TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 DATE_SHORT="$(date +%Y-%m-%d)"
@@ -62,17 +63,17 @@ WARM_BUILD_TIME=$(time_cmd "docker buildx bake dev-load ${BAKE_SECRET}")
 echo "Warm build: ${WARM_BUILD_TIME}s"
 
 # Get image size
-IMAGE_SIZE="$(docker images dotfiles-devcontainer:dev --format '{{.Size}}' 2>/dev/null | head -1 || echo 'unknown')"
+IMAGE_SIZE="$(docker images "${IMAGE_REF}" --format '{{.Size}}' 2>/dev/null | head -1 || echo 'unknown')"
 echo "Image size: ${IMAGE_SIZE}"
 
 # F3: Container startup time
 echo "--- F3: Container Startup ---"
-STARTUP_TIME=$(time_cmd "docker run --rm --platform linux/amd64 dotfiles-devcontainer:dev true")
+STARTUP_TIME=$(time_cmd "docker run --rm --platform linux/amd64 ${IMAGE_REF} true")
 echo "Startup: ${STARTUP_TIME}s"
 
 # F4: AMD64 correctness
 echo "--- F4: AMD64 Correctness ---"
-UNAME_ARCH="$(docker run --rm --platform linux/amd64 dotfiles-devcontainer:dev uname -m 2>/dev/null || echo 'FAILED')"
+UNAME_ARCH="$(docker run --rm --platform linux/amd64 "${IMAGE_REF}" uname -m 2>/dev/null || echo 'FAILED')"
 echo "uname -m: ${UNAME_ARCH}"
 AMD64_CORRECT="false"
 if [ "$UNAME_ARCH" = "x86_64" ]; then
@@ -84,13 +85,13 @@ fi
 
 # F5: Filesystem I/O (write 100MB, read it back)
 echo "--- F5: Filesystem I/O ---"
-FS_WRITE_TIME=$(time_cmd "docker run --rm --platform linux/amd64 dotfiles-devcontainer:dev bash -c 'dd if=/dev/zero of=/tmp/testfile bs=1M count=100 2>/dev/null'")
-FS_READ_TIME=$(time_cmd "docker run --rm --platform linux/amd64 dotfiles-devcontainer:dev bash -c 'dd if=/dev/zero of=/tmp/testfile bs=1M count=100 2>/dev/null && dd if=/tmp/testfile of=/dev/null bs=1M 2>/dev/null'")
+FS_WRITE_TIME=$(time_cmd "docker run --rm --platform linux/amd64 ${IMAGE_REF} bash -c 'dd if=/dev/zero of=/tmp/testfile bs=1M count=100 2>/dev/null'")
+FS_READ_TIME=$(time_cmd "docker run --rm --platform linux/amd64 ${IMAGE_REF} bash -c 'dd if=/dev/zero of=/tmp/testfile bs=1M count=100 2>/dev/null && dd if=/tmp/testfile of=/dev/null bs=1M 2>/dev/null'")
 echo "Write 100MB: ${FS_WRITE_TIME}s, Read 100MB: ${FS_READ_TIME}s"
 
 # F6: Memory usage (idle container)
 echo "--- F6: Memory Usage ---"
-CONTAINER_ID=$(docker run -d --rm --platform linux/amd64 dotfiles-devcontainer:dev sleep 30)
+CONTAINER_ID=$(docker run -d --rm --platform linux/amd64 "${IMAGE_REF}" sleep 30)
 sleep 2
 MEM_USAGE="$(docker stats --no-stream --format '{{.MemUsage}}' "$CONTAINER_ID" 2>/dev/null || echo 'unknown')"
 docker stop "$CONTAINER_ID" 2>/dev/null || true
@@ -98,7 +99,7 @@ echo "Idle memory: ${MEM_USAGE}"
 
 # F7: Tool validation (mise tools installed)
 echo "--- F7: Tool Validation ---"
-TOOLS_CHECK="$(docker run --rm --platform linux/amd64 dotfiles-devcontainer:dev bash -lc 'mise ls 2>&1 | grep -c "(missing)" || echo 0' 2>/dev/null | tail -1)"
+TOOLS_CHECK="$(docker run --rm --platform linux/amd64 "${IMAGE_REF}" bash -lc 'mise ls 2>&1 | grep -c "(missing)" || echo 0' 2>/dev/null | tail -1)"
 echo "Missing tools: ${TOOLS_CHECK}"
 TOOLS_PASS="false"
 if [ "$TOOLS_CHECK" = "0" ]; then
@@ -110,18 +111,18 @@ fi
 
 # F8: hk validate
 echo "--- F8: hk Validate ---"
-HK_RESULT="$(docker run --rm --platform linux/amd64 dotfiles-devcontainer:dev bash -lc 'cd ~/.local/share/chezmoi && HK_FILE=hk.pkl hk validate >/dev/null 2>&1' && echo 'PASS' || echo 'FAIL')"
+HK_RESULT="$(docker run --rm --platform linux/amd64 "${IMAGE_REF}" bash -lc 'cd ~/.local/share/chezmoi && HK_FILE=hk.pkl hk validate >/dev/null 2>&1' && echo 'PASS' || echo 'FAIL')"
 echo "hk validate: ${HK_RESULT}"
 
 # F9: Bind mount performance
 echo "--- F9: Bind Mount I/O ---"
-BIND_WRITE_TIME=$(time_cmd "docker run --rm --platform linux/amd64 -v '${REPO_ROOT}:/workspace' dotfiles-devcontainer:dev bash -c 'dd if=/dev/zero of=/workspace/.benchtemp bs=1M count=50 2>/dev/null'")
+BIND_WRITE_TIME=$(time_cmd "docker run --rm --platform linux/amd64 -v '${REPO_ROOT}:/workspace' ${IMAGE_REF} bash -c 'dd if=/dev/zero of=/workspace/.benchtemp bs=1M count=50 2>/dev/null'")
 rm -f "${REPO_ROOT}/.benchtemp"
 echo "Bind mount write 50MB: ${BIND_WRITE_TIME}s"
 
 # F10: C++ compilation proxy (compute-intensive test)
 echo "--- F10: Compute Benchmark ---"
-COMPUTE_TIME=$(time_cmd "docker run --rm --platform linux/amd64 dotfiles-devcontainer:dev bash -c 'echo \"#include <stdio.h>
+COMPUTE_TIME=$(time_cmd "docker run --rm --platform linux/amd64 ${IMAGE_REF} bash -c 'echo \"#include <stdio.h>
 int main() { long long s=0; for(long long i=0;i<100000000;i++) s+=i; printf(\\\"%lld\\\n\\\",s); return 0; }\" > /tmp/bench.c && gcc -O2 -o /tmp/bench /tmp/bench.c && /tmp/bench'")
 echo "Compute (gcc compile+run): ${COMPUTE_TIME}s"
 
