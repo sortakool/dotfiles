@@ -170,7 +170,7 @@ hooks {
       }
       ["test"] {
         exclusive = true
-        check = "uv run --directory python pytest \"$PWD/tests\" -x -q"
+        check = "uv run --directory python pytest tests/ -x -q"
       }
     }
   }
