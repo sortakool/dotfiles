@@ -40,10 +40,6 @@ postinstall = "hk install --mise"
 [env]
 HK_PKL_BACKEND = "pkl"  # "pkl" (not pklr) required for import/spread in hk-common.pkl
 HK_MISE = "1"
-# Default devcontainer base image. Override with e.g.
-#   BASE_IMAGE=ghcr.io/ray-manaloto/dotfiles-devcontainer:latest mise run up
-# or pin to a specific SHA tag. CI sets this per-step to the just-built SHA.
-BASE_IMAGE = "ghcr.io/ray-manaloto/dotfiles-devcontainer:dev"
 
 [prepare.python]
 auto = true
@@ -65,7 +61,12 @@ description = "Run Python test suite"
 run = "uv run --project python pytest tests/ -x -q"
 
 [tasks.up]
-description = "Bring the devcontainer up via the official @devcontainers/cli"
+description = "Bring the devcontainer up via the official @devcontainers/cli (Mac-local)"
+# BASE_IMAGE default is task-scoped (not global [env]) so it does not leak
+# into unrelated subprocesses. Override with e.g.
+#   BASE_IMAGE=ghcr.io/ray-manaloto/dotfiles-devcontainer:latest mise run up
+# or pin to a specific SHA tag.
+env = { BASE_IMAGE = "ghcr.io/ray-manaloto/dotfiles-devcontainer:dev" }
 run = "devcontainer up --workspace-folder ."
 
 [tasks.stop]
