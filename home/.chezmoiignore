@@ -26,3 +26,24 @@ Library/**
 .ssh/config
 .gnupg/**
 {{ end }}
+
+{{/*
+  Devcontainer-only mise overlay gate. HARD GATE — DO NOT REMOVE.
+  Uses .is_container (strict: REMOTE_CONTAINERS / CODESPACES / DEVCONTAINER env),
+  NOT .is_ephemeral (which is $isEphemeral OR $isCI per .chezmoi.toml.tmpl:23,
+  so would wrongly allow rendering on CI runners outside a devcontainer).
+  The existing .cargo/** block above uses .is_ephemeral for a different
+  purpose and intentionally stays as-is.
+
+  Rationale: home/dot_config/mise/config.toml.tmpl is the user-scoped mise
+  overlay for INSIDE the devcontainer only. Rendering it on the Mac host
+  would overwrite ~/.config/mise/config.toml with container-only tooling,
+  polluting the host. See memory feedback_devcontainer_only_mise_overlay.md.
+
+  Verification: a CI assertion in .github/workflows/ci.yml runs
+  `chezmoi execute-template --init` twice (host and container modes) and
+  fails the build if this gate is silently broken by a future edit.
+*/}}
+{{ if not .is_container }}
+.config/mise/config.toml
+{{ end }}
