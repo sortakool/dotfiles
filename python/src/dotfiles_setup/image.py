@@ -10,16 +10,14 @@ import subprocess
 import sys
 import time
 import zlib
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from dotfiles_setup import _project_root
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
-
-
-def _project_root() -> Path:
-    from dotfiles_setup import _project_root as _root
-
-    return _root()
 
 
 def _run(
