@@ -1,0 +1,33 @@
+# Dev Containers CLI
+
+## Docs
+
+- [devcontainer build](https://www.mintlify.com/devcontainers/cli/commands/build.md): Build a dev container image.
+- [devcontainer exec](https://www.mintlify.com/devcontainers/cli/commands/exec.md): Execute a command on a running dev container.
+- [devcontainer read-configuration](https://www.mintlify.com/devcontainers/cli/commands/read-configuration.md): Read and output the resolved dev container configuration.
+- [devcontainer run-user-commands](https://www.mintlify.com/devcontainers/cli/commands/run-user-commands.md): Run user commands on an existing dev container.
+- [devcontainer up](https://www.mintlify.com/devcontainers/cli/commands/up.md): Create and run a dev container.
+- [Advanced Configuration](https://www.mintlify.com/devcontainers/cli/configuration/advanced.md): GPU support, multi-container setups with Docker Compose, secrets, mounts, BuildKit caching, and lockfiles.
+- [devcontainer.json](https://www.mintlify.com/devcontainers/cli/configuration/devcontainer-json.md): Configure your dev container with the devcontainer.json file.
+- [Dotfiles](https://www.mintlify.com/devcontainers/cli/configuration/dotfiles.md): Automatically personalize your dev container with your dotfiles repository.
+- [Lifecycle Scripts](https://www.mintlify.com/devcontainers/cli/configuration/lifecycle-scripts.md): Run commands at specific stages of the dev container lifecycle.
+- [Generating Feature documentation](https://www.mintlify.com/devcontainers/cli/features/generate-docs.md): Auto-generate markdown documentation for your Dev Container Features.
+- [Dev Container Features](https://www.mintlify.com/devcontainers/cli/features/overview.md): Add tools, runtimes, and utilities to any dev container using Features.
+- [Packaging and Publishing Features](https://www.mintlify.com/devcontainers/cli/features/package-publish.md): Package and publish Dev Container Features to an OCI registry.
+- [Testing Features](https://www.mintlify.com/devcontainers/cli/features/test.md): Use the built-in test framework to validate your Dev Container Features.
+- [Installation](https://www.mintlify.com/devcontainers/cli/installation.md): Install the Dev Containers CLI via npm, the standalone install script, or build from source.
+- [Introduction](https://www.mintlify.com/devcontainers/cli/introduction.md): What the Dev Containers CLI is and how it fits into the Dev Containers ecosystem.
+- [Quickstart](https://www.mintlify.com/devcontainers/cli/quickstart.md): Spin up your first dev container in under five minutes.
+- [devcontainer build](https://www.mintlify.com/devcontainers/cli/reference/build.md): Complete reference for the devcontainer build command.
+- [devcontainer.json properties](https://www.mintlify.com/devcontainers/cli/reference/devcontainer-json-properties.md): Complete reference for all supported devcontainer.json properties.
+- [Environment variables](https://www.mintlify.com/devcontainers/cli/reference/environment-variables.md): Environment variables available inside dev containers and how to configure them.
+- [devcontainer exec](https://www.mintlify.com/devcontainers/cli/reference/exec.md): Complete reference for the devcontainer exec command.
+- [devcontainer features](https://www.mintlify.com/devcontainers/cli/reference/features-commands.md): Complete reference for all devcontainer features subcommands.
+- [devcontainer templates](https://www.mintlify.com/devcontainers/cli/reference/templates-commands.md): Complete reference for all devcontainer templates subcommands.
+- [devcontainer up](https://www.mintlify.com/devcontainers/cli/reference/up.md): Complete reference for the devcontainer up command.
+- [Applying templates](https://www.mintlify.com/devcontainers/cli/templates/apply.md): Apply a Dev Container Template to scaffold a new project.
+- [Dev Container Templates](https://www.mintlify.com/devcontainers/cli/templates/overview.md): Bootstrap new projects with pre-configured Dev Container Templates.
+- [Publishing templates](https://www.mintlify.com/devcontainers/cli/templates/publish.md): Package and publish Dev Container Templates to an OCI registry.
+
+
+Built with [Mintlify](https://mintlify.com).

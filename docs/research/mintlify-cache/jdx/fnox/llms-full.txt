@@ -1,0 +1,6084 @@
+# CI/CD Integration
+Source: https://www.mintlify.com/jdx/fnox/guides/ci-cd
+
+Run fnox in GitHub Actions and other CI pipelines to securely inject secrets at deploy time.
+
+fnox works well in CI/CD pipelines. The same `fnox.toml` you use locally handles secret injection in CI — no separate secrets management tool required.
+
+## Core concepts for CI
+
+**Profile selection** — use `FNOX_PROFILE` or `--profile` to select the right environment:
+
+```bash theme={null}
+fnox exec --profile production -- ./deploy.sh
+# or
+FNOX_PROFILE=production fnox exec -- ./deploy.sh
+```
+
+**Strict mode** — set `FNOX_IF_MISSING=error` so the pipeline fails immediately if any secret is missing rather than running with incomplete configuration:
+
+```bash theme={null}
+FNOX_IF_MISSING=error fnox exec --profile production -- ./deploy.sh
+```
+
+**Age key via CI secret** — for encrypted inline secrets, provide the decryption key through your CI provider's secret store:
+
+```bash theme={null}
+# In GitHub Actions:
+env:
+  FNOX_AGE_KEY: ${{ secrets.FNOX_AGE_KEY }}
+```
+
+## Installing fnox in CI
+
+The recommended approach is via [mise](https://mise.jdx.dev/), which reads the project's `mise.toml` or `.tool-versions` to install the correct fnox version:
+
+```yaml theme={null}
+- uses: jdx/mise-action@v3
+```
+
+## GitHub Actions
+
+### Testing with encrypted secrets
+
+For a test job that uses age-encrypted development secrets committed to the repository:
+
+```yaml theme={null}
+# .github/workflows/ci.yml
+name: CI
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v3
+
+      - name: Run tests
+        env:
+          FNOX_AGE_KEY: ${{ secrets.FNOX_AGE_KEY }}
+        run: fnox exec -- npm test
+```
+
+<Note>
+  For pull requests from forks, GitHub Actions does not expose secrets. Use `FNOX_IF_MISSING=ignore` or `FNOX_IF_MISSING=warn` in those jobs so tests that don't need real secrets still run.
+</Note>
+
+### Staging deployment (age-encrypted)
+
+```yaml theme={null}
+# .github/workflows/deploy.yml
+  deploy-staging:
+    if: github.ref == 'refs/heads/develop'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v3
+
+      - name: Deploy to staging
+        env:
+          FNOX_AGE_KEY: ${{ secrets.FNOX_AGE_KEY }}
+        run: fnox exec --profile staging -- ./deploy.sh
+```
+
+### Production deployment (AWS Secrets Manager)
+
+```yaml theme={null}
+  deploy-production:
+    if: github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v3
+
+      - name: Deploy to production
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION:            us-east-1
+          FNOX_IF_MISSING:       error
+        run: fnox exec --profile production -- ./deploy.sh
+```
+
+### Complete example workflow
+
+```yaml theme={null}
+# .github/workflows/deploy.yml
+name: Deploy
+on:
+  push:
+    branches: [main, develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v3
+      - name: Run tests
+        env:
+          FNOX_AGE_KEY: ${{ secrets.FNOX_AGE_KEY }}
+        run: fnox exec -- npm test
+
+  deploy-staging:
+    if: github.ref == 'refs/heads/develop'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v3
+      - name: Deploy to staging
+        env:
+          FNOX_AGE_KEY: ${{ secrets.FNOX_AGE_KEY }}
+        run: fnox exec --profile staging -- ./deploy.sh
+
+  deploy-production:
+    if: github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v3
+      - name: Deploy to production
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION:            us-east-1
+          FNOX_IF_MISSING:       error
+        run: fnox exec --profile production -- ./deploy.sh
+```
+
+## Setting up CI secrets in GitHub
+
+1. Go to your repository → **Settings** → **Secrets and variables** → **Actions**
+2. Add `FNOX_AGE_KEY` — the age private key for the CI recipient:
+   ```bash theme={null}
+   # Copy the CI age secret key
+   cat ~/.config/fnox/ci-age.txt | grep "AGE-SECRET-KEY"
+   ```
+3. Add `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` for the production deployment IAM user (or use OIDC for keyless auth)
+
+<Tip>
+  Create a dedicated CI age key (`age-keygen -o ~/.config/fnox/ci-age.txt`) and add its public key to the `recipients` list in `fnox.toml`. Re-encrypt all secrets with `fnox reencrypt -p age` after adding the new recipient.
+</Tip>
+
+## Handling fork pull requests
+
+Pull requests from forks do not have access to repository secrets. Use `FNOX_IF_MISSING=ignore` so those jobs don't fail when secrets are unavailable:
+
+```yaml theme={null}
+- name: Run tests (secrets unavailable in forks)
+  env:
+    FNOX_IF_MISSING: ignore
+  run: fnox exec -- npm test
+```
+
+## Tips
+
+* **Always use strict mode for deployments** — `FNOX_IF_MISSING=error` catches misconfigured secrets before they cause silent failures.
+* **Use profiles explicitly** — pass `--profile production` rather than relying on `FNOX_PROFILE` to make the intent clear in the workflow file.
+* **Avoid storing plaintext secrets in CI environment variables** — let fnox fetch them from AWS Secrets Manager or decrypt them from the committed ciphertext.
+* **Use GitHub environment protection rules** — pair `environment: production` with required reviewers or branch restrictions to gate production deployments.
+* **For cloud providers, prefer OIDC** — GitHub Actions supports keyless authentication to AWS, GCP, and Azure via OIDC, eliminating the need for long-lived `AWS_ACCESS_KEY_ID` secrets entirely.
+
+## Next steps
+
+<CardGroup>
+  <Card title="Profiles" icon="layers" href="/guides/profiles">
+    Configure per-environment secrets for use in CI.
+  </Card>
+
+  <Card title="Real-world example" icon="rocket" href="/guides/real-world-example">
+    See a complete setup including a CI/CD workflow.
+  </Card>
+
+  <Card title="Credential leases" icon="clock" href="/guides/leases">
+    Vend short-lived cloud credentials instead of storing static keys.
+  </Card>
+</CardGroup>
+
+
+# Hierarchical Configuration
+Source: https://www.mintlify.com/jdx/fnox/guides/hierarchical-config
+
+Merge fnox.toml files across parent directories for monorepos and multi-service projects.
+
+fnox searches parent directories for `fnox.toml` (or `.fnox.toml`) files and merges them. This makes it natural to share common secrets at the root of a monorepo while letting each service add its own.
+
+## How it works
+
+fnox builds its configuration by merging multiple sources in a fixed order, starting with the global config and working down to the current directory.
+
+Given this structure:
+
+```
+project/
+├── fnox.toml              # root config
+├── fnox.local.toml        # root local overrides (optional)
+└── services/
+    ├── api/
+    │   ├── fnox.toml      # API config
+    │   └── fnox.local.toml
+    └── worker/
+        ├── fnox.toml      # worker config
+        └── fnox.local.toml
+```
+
+When you run fnox from `project/services/api/`, the merge order is (lowest to highest priority):
+
+1. `~/.config/fnox/config.toml` — global config
+2. `project/fnox.toml` — root/parent config
+3. `project/fnox.local.toml` — root local overrides
+4. `project/services/api/fnox.toml` — current directory config
+5. `project/services/api/fnox.local.toml` — current directory local overrides
+
+Child configs override parent configs. Local configs override main configs at the same level.
+
+<Info>
+  The global config (`~/.config/fnox/config.toml`) is always loaded, even when `root = true` stops parent directory recursion.
+</Info>
+
+## Example setup
+
+### Root config — common secrets
+
+```toml theme={null}
+# project/fnox.toml
+
+[providers]
+age = { type = "age", recipients = ["age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p"] }
+
+[secrets]
+LOG_LEVEL   = { default = "info" }
+ENVIRONMENT = { default = "development" }
+JWT_SECRET  = { provider = "age", value = "encrypted-shared-jwt..." }
+```
+
+### API service config
+
+```toml theme={null}
+# project/services/api/fnox.toml
+
+[secrets]
+API_PORT     = { default = "3000" }
+DATABASE_URL = { provider = "age", value = "encrypted-api-db..." }
+LOG_LEVEL    = { default = "debug" }  # override — more verbose during development
+```
+
+### Worker service config
+
+```toml theme={null}
+# project/services/worker/fnox.toml
+
+[secrets]
+QUEUE_URL           = { provider = "age", value = "encrypted-queue-url..." }
+WORKER_CONCURRENCY  = { default = "4" }
+```
+
+### Resulting secrets
+
+<CodeGroup>
+  ```bash From project/services/api/ theme={null}
+  fnox list
+  # ENVIRONMENT=development       (from root)
+  # JWT_SECRET=***                (from root)
+  # LOG_LEVEL=debug               (from api — overrides root)
+  # API_PORT=3000                 (from api)
+  # DATABASE_URL=***              (from api)
+  ```
+
+  ```bash From project/services/worker/ theme={null}
+  fnox list
+  # ENVIRONMENT=development       (from root)
+  # JWT_SECRET=***                (from root)
+  # LOG_LEVEL=info                (from root)
+  # QUEUE_URL=***                 (from worker)
+  # WORKER_CONCURRENCY=4          (from worker)
+  ```
+</CodeGroup>
+
+## Local overrides
+
+Use `fnox.local.toml` for user-specific overrides that should not be committed to version control:
+
+```bash theme={null}
+# Add to .gitignore
+echo "fnox.local.toml" >> .gitignore
+```
+
+```toml theme={null}
+# fnox.local.toml (gitignored)
+
+[secrets]
+DATABASE_URL = { default = "postgresql://localhost/mylocal" }
+DEBUG_MODE   = { default = "true" }
+```
+
+**Common uses:**
+
+* Override team secrets for a personal local database
+* Personal API keys and tokens
+* Machine-specific configuration
+* Testing with a different provider locally
+
+<Tip>
+  Commit a `fnox.local.toml.example` file (with placeholder values) so teammates know what overrides are available.
+</Tip>
+
+<Warning>
+  `fnox sync --local-file` only supports `fnox.toml` and `.fnox.toml`. Other filenames are rejected because adjacent local override files would not be loaded automatically.
+</Warning>
+
+## Profile-specific config files
+
+You can place profile overrides in a separate file named `fnox.<profile>.toml` (e.g., `fnox.production.toml`). fnox loads this file after `fnox.toml` when that profile is active.
+
+This keeps profile-specific settings out of the main config file and makes git history easier to read.
+
+## Stopping recursion with `root = true`
+
+If you want fnox to stop walking parent directories at a specific level, set `root = true` in that directory's `fnox.toml`:
+
+```toml theme={null}
+# project/fnox.toml
+root = true  # do not search further up the directory tree
+
+[providers]
+age = { type = "age", recipients = ["age1..."] }
+```
+
+The global config is still loaded regardless of `root = true`.
+
+## Importing other config files
+
+Use `import` for explicit cross-cutting concerns that don't fit the directory hierarchy:
+
+```toml theme={null}
+# Explicit file imports
+import = ["./shared/secrets.toml", "./envs/dev.toml"]
+```
+
+**Hierarchy vs imports:**
+
+| Method                | When to use                                        |
+| --------------------- | -------------------------------------------------- |
+| Hierarchy (automatic) | Location-based config in a monorepo                |
+| Imports (explicit)    | Shared secret bundles used across many directories |
+
+## Global configuration
+
+Machine-wide secrets that should be available in every project go in the global config:
+
+```bash theme={null}
+# Initialize global config
+fnox init --global
+
+# Add secrets to global config
+fnox set GITHUB_TOKEN "ghp_..." --global
+fnox set NPM_TOKEN "npm_..." --global
+
+# Add a provider to global config
+fnox provider add age age --global
+```
+
+**Location:** `~/.config/fnox/config.toml` (override with `FNOX_CONFIG_DIR`)
+
+**Use cases:** personal API tokens, machine-specific credentials, a default encryption provider available everywhere.
+
+## Tips
+
+* Keep the root config minimal — only shared providers and secrets that every service needs.
+* Put service-specific secrets in each service's own subdirectory.
+* Use `fnox.local.toml` for personal development overrides.
+* Use the global config for tokens like `GITHUB_TOKEN` that belong to you, not the project.
+* Profile inheritance works at every hierarchy level — each directory can define profile-specific overrides.
+* `.fnox.toml` is equivalent to `fnox.toml` (the same applies to `.fnox.local.toml`, `.fnox.staging.toml`, etc.) if you prefer dotfiles.
+
+## Next steps
+
+<CardGroup>
+  <Card title="Profiles" icon="layers" href="/guides/profiles">
+    Multi-environment management within a single config file.
+  </Card>
+
+  <Card title="Real-world example" icon="rocket" href="/guides/real-world-example">
+    See hierarchical config in a complete project setup.
+  </Card>
+</CardGroup>
+
+
+# How It Works
+Source: https://www.mintlify.com/jdx/fnox/guides/how-it-works
+
+Understand fnox's two storage modes, secret resolution order, and execution flow.
+
+fnox uses a single TOML config file (`fnox.toml`) that you check into git. Secrets are either encrypted directly inside that file or referenced by name from a remote provider — fnox handles the rest at runtime.
+
+## Two storage modes
+
+### Encrypted inline
+
+The encrypted ciphertext lives directly in the config file. This is safe to commit because only recipients with the corresponding private key can decrypt it.
+
+```toml theme={null}
+[providers]
+age = { type = "age", recipients = ["age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p"] }
+
+[secrets]
+DATABASE_URL = { provider = "age", value = "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHNjcnlwdC4uLg==" }
+# ↑ encrypted ciphertext — safe to commit
+```
+
+**Supported providers for inline encryption:** `age`, `aws-kms`, `azure-kms`, `gcp-kms`
+
+### Remote references
+
+The config contains only a logical name pointing to a secret stored in an external system. The plaintext value never touches your repository.
+
+```toml theme={null}
+[providers]
+aws = { type = "aws-sm", region = "us-east-1", prefix = "myapp/" }
+
+[secrets]
+DATABASE_URL = { provider = "aws", value = "database-url" }
+# ↑ just a reference — actual secret lives in AWS Secrets Manager
+```
+
+**Supported providers for remote storage:** `aws-sm`, `azure-sm`, `gcp-sm`, `vault`, `1password`, `bitwarden`, `keychain`
+
+## Secret resolution order
+
+When fnox resolves a secret, it checks sources in this priority order. The first match wins.
+
+| Priority | Source               | Example                                      |
+| -------- | -------------------- | -------------------------------------------- |
+| 1        | Encrypted value      | `provider = "age"`, `value = "encrypted..."` |
+| 2        | Provider reference   | `provider = "aws"`, `value = "secret-name"`  |
+| 3        | Environment variable | Already set in the shell                     |
+| 4        | Default value        | `default = "fallback"`                       |
+
+<Info>
+  An environment variable already present in the shell takes precedence over a `default` value, but not over an explicitly configured provider reference.
+</Info>
+
+## Example config
+
+A typical `fnox.toml` might combine multiple modes:
+
+```toml theme={null}
+# Provider definitions
+[providers]
+age = { type = "age", recipients = ["age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p"] }
+aws = { type = "aws-sm", region = "us-east-1" }
+
+[secrets]
+JWT_SECRET   = { provider = "age", value = "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHNjcnlwdC4uLg==" }  # encrypted in git
+DATABASE_URL = { provider = "aws", value = "prod-database-url" }                                    # remote in AWS
+NODE_ENV     = { default = "development" }                                                           # fallback value
+```
+
+## Execution flow
+
+When you run `fnox exec -- <command>`:
+
+<Steps>
+  <Step title="Locate config">
+    fnox reads `fnox.toml` from the current directory, then walks up parent directories until it finds all relevant config files (or hits `root = true`).
+  </Step>
+
+  <Step title="Determine active profile">
+    fnox checks `--profile` flag, then `FNOX_PROFILE` env var. Falls back to `default`.
+  </Step>
+
+  <Step title="Resolve secrets">
+    Each secret is resolved according to the priority order above. Encrypted secrets are decrypted; remote secrets are fetched from their provider.
+  </Step>
+
+  <Step title="Export environment">
+    All resolved secrets are set as environment variables in a subprocess environment. Nothing is written to disk or your current shell.
+  </Step>
+
+  <Step title="Execute command">
+    Your command runs with those environment variables available. When it exits, the subprocess environment is discarded.
+  </Step>
+</Steps>
+
+<Note>
+  fnox never modifies your current shell's environment directly (except when using shell integration). Secrets exist only for the lifetime of the subprocess.
+</Note>
+
+## Next steps
+
+<CardGroup>
+  <Card title="Profiles" icon="layers" href="/guides/profiles">
+    Manage secrets for development, staging, and production in one file.
+  </Card>
+
+  <Card title="Shell integration" icon="terminal" href="/guides/shell-integration">
+    Auto-load secrets when you cd into a project directory.
+  </Card>
+
+  <Card title="Hierarchical config" icon="folder-tree" href="/guides/hierarchical-config">
+    Organize secrets across directories in a monorepo.
+  </Card>
+
+  <Card title="Credential leases" icon="clock" href="/guides/leases">
+    Vend short-lived cloud credentials on demand.
+  </Card>
+</CardGroup>
+
+
+# Credential Leases
+Source: https://www.mintlify.com/jdx/fnox/guides/leases
+
+Vend short-lived cloud credentials from AWS, GCP, Azure, Vault, and more using fnox leases.
+
+Credential leases let fnox create temporary, short-lived credentials from cloud providers like AWS, GCP, Azure, and HashiCorp Vault. Instead of storing long-lived access keys in your environment, fnox requests credentials on demand, caches them until they near expiry, and injects them into subprocesses automatically.
+
+## Why leases?
+
+Long-lived credentials are a persistent security risk. If they leak, an attacker has access until someone notices and rotates them. Leases flip this model: credentials are created on demand, last minutes to hours, and expire on their own with no manual cleanup required.
+
+fnox supports three approaches depending on your security requirements:
+
+<CardGroup>
+  <Card title="Stored master credentials" icon="key">
+    Keep long-lived credentials in a provider (1Password, keychain, age). fnox creates leases automatically.
+  </Card>
+
+  <Card title="Hardware-protected" icon="shield">
+    Encrypt master credentials on disk. A physical security key (YubiKey / FIDO2) is required to decrypt them.
+  </Card>
+
+  <Card title="Prompt-based" icon="hand">
+    Never store master credentials on the machine. Paste them in when needed; fnox discards them after creating the lease.
+  </Card>
+</CardGroup>
+
+## Approach 1: Stored master credentials
+
+Store the long-lived credentials in any fnox provider and let fnox use them to create short-lived leases via `fnox exec`. The choice of provider determines how much friction is involved:
+
+* **1Password / Bitwarden** — requires authentication (password, biometric, or service account token). Best when you want a gate on every session.
+* **OS keychain** — unlocked at login. Convenient, but macOS may prompt for Touch ID on first access.
+* **Age / KMS** — encrypted in git. Good for CI and shared team setups.
+
+### Example: AWS STS with 1Password
+
+```toml theme={null}
+# fnox.toml
+
+[providers.op]
+type  = "1password"
+vault = "Development"
+
+# Long-lived IAM credentials stored in 1Password
+[secrets]
+AWS_ACCESS_KEY_ID     = { provider = "op", value = "AWS IAM/access key" }
+AWS_SECRET_ACCESS_KEY = { provider = "op", value = "AWS IAM/secret key" }
+
+# Lease: use those credentials to assume a role and get temp creds
+[leases.aws]
+type      = "aws-sts"
+region    = "us-east-1"
+role_arn  = "arn:aws:iam::123456789012:role/dev-role"
+duration  = "1h"
+```
+
+```bash theme={null}
+# fnox exec automatically:
+# 1. Retrieves AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY from 1Password
+#    (prompts to authenticate if needed)
+# 2. Calls sts:AssumeRole to get temporary credentials
+# 3. Injects AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN
+#    (the short-lived ones) into your subprocess
+fnox exec -- aws s3 ls
+```
+
+Using the OS keychain instead of 1Password:
+
+```toml theme={null}
+[providers.keychain]
+type = "keychain"
+
+[secrets]
+AWS_ACCESS_KEY_ID     = { provider = "keychain" }
+AWS_SECRET_ACCESS_KEY = { provider = "keychain" }
+```
+
+```bash theme={null}
+fnox set AWS_ACCESS_KEY_ID "AKIA..."
+fnox set AWS_SECRET_ACCESS_KEY "wJalr..."
+```
+
+### Example: GCP IAM
+
+```toml theme={null}
+# fnox.toml
+
+[providers.op]
+type  = "1password"
+vault = "Development"
+
+[secrets]
+GOOGLE_APPLICATION_CREDENTIALS = { provider = "op", value = "GCP Service Account/key file", as_file = true }
+
+[leases.gcp]
+type                  = "gcp-iam"
+service_account_email = "my-sa@my-project.iam.gserviceaccount.com"
+duration              = "1h"
+```
+
+```bash theme={null}
+# fnox exec writes the key file to a temp path, creates a short-lived OAuth2 token
+fnox exec -- gcloud storage ls
+```
+
+### Example: HashiCorp Vault
+
+```toml theme={null}
+# fnox.toml
+
+[providers.op]
+type  = "1password"
+vault = "Infrastructure"
+
+[secrets]
+VAULT_TOKEN = { provider = "op", value = "Vault/token" }
+
+[leases.vault-aws]
+type        = "vault"
+address     = "https://vault.example.com:8200"
+secret_path = "aws/creds/my-role"
+duration    = "1h"
+
+[leases.vault-aws.env_map]
+access_key     = "AWS_ACCESS_KEY_ID"
+secret_key     = "AWS_SECRET_ACCESS_KEY"
+security_token = "AWS_SESSION_TOKEN"
+```
+
+### Example: Azure
+
+```toml theme={null}
+# fnox.toml
+
+[providers.op]
+type  = "1password"
+vault = "Development"
+
+[secrets]
+AZURE_CLIENT_ID     = { provider = "op", value = "Azure SP/client id" }
+AZURE_CLIENT_SECRET = { provider = "op", value = "Azure SP/client secret" }
+AZURE_TENANT_ID     = { provider = "op", value = "Azure SP/tenant id" }
+
+[leases.azure]
+type  = "azure-token"
+scope = "https://management.azure.com/.default"
+```
+
+## Approach 2: Hardware-protected master credentials
+
+This approach stores master credentials encrypted on disk, requiring a physical security key for decryption. It combines the convenience of automatic lease creation with the strong security guarantee that decryption is physically impossible without the key present.
+
+fnox supports two hardware provider types:
+
+* **`yubikey`** — uses YubiKey HMAC-SHA1 challenge-response. Simple setup; works with any YubiKey with HMAC-SHA1 configured on a slot.
+* **`fido2`** — uses the FIDO2 hmac-secret extension. Works with any FIDO2-compatible key (YubiKey 5, SoloKeys, Nitrokey, etc.).
+
+Both derive an AES-256-GCM encryption key from the hardware device via HKDF-SHA256. Config is fully portable — move `fnox.local.toml` to any machine with the same key and it works.
+
+<Tip>
+  Put the hardware provider and master credential secrets in `fnox.local.toml` (gitignored) and keep only the lease backend config in `fnox.toml`.
+</Tip>
+
+### Setup (YubiKey)
+
+```toml theme={null}
+# fnox.local.toml (gitignored — personal provider + secrets)
+
+[providers.secure]
+type      = "yubikey"
+challenge = "a1b2c3..."  # auto-populated by `fnox provider add`
+slot      = "2"
+
+[secrets]
+AWS_ACCESS_KEY_ID     = { provider = "secure", env = false }
+AWS_SECRET_ACCESS_KEY = { provider = "secure", env = false }
+```
+
+```toml theme={null}
+# fnox.toml (committed — shared lease backend config)
+
+[leases.aws]
+type     = "aws-sts"
+region   = "us-east-1"
+role_arn = "arn:aws:iam::123456789012:role/dev-role"
+duration = "1h"
+```
+
+<Note>
+  `env = false` prevents the master credentials from being injected into subprocess environment variables. Only the short-lived assumed-role credentials are exposed.
+</Note>
+
+For FIDO2, replace the provider section:
+
+```toml theme={null}
+[providers.secure]
+type          = "fido2"
+credential_id = "a1b2c3..."  # auto-populated by `fnox provider add`
+salt          = "d4e5f6..."
+rp_id         = "fnox.secure"
+```
+
+### Initial setup
+
+```bash theme={null}
+# Create the hardware-backed provider (choose one)
+fnox provider add secure yubikey    # YubiKey HMAC-SHA1
+fnox provider add secure fido2      # Any FIDO2 key
+
+# Store master credentials (requires key tap)
+fnox set AWS_ACCESS_KEY_ID "AKIA..." --provider secure
+fnox set AWS_SECRET_ACCESS_KEY "wJalr..." --provider secure
+```
+
+### Daily workflow
+
+```bash theme={null}
+$ fnox exec -- aws s3 ls
+Tap your YubiKey...
+# → Derives encryption key from hardware device (one tap per session)
+# → Decrypts master creds
+# → Calls sts:AssumeRole
+# → Injects short-lived creds into subprocess
+# → Caches lease for reuse
+```
+
+The hardware tap happens once per `fnox exec` invocation, even when multiple secrets share the same provider. Subsequent calls reuse the cached lease without prompting until it nears expiry.
+
+## Approach 3: Prompt-based (no stored credentials)
+
+Ideal for remote machines, shared servers, or anywhere you don't want master credentials written to disk. You paste credentials in when `fnox lease create` prompts you; fnox uses them once to create the lease and then discards them.
+
+### Setup
+
+Configure only the lease backend — no secrets or providers needed:
+
+```toml theme={null}
+# fnox.toml
+
+[leases.aws]
+type     = "aws-sts"
+region   = "us-east-1"
+role_arn = "arn:aws:iam::123456789012:role/dev-role"
+duration = "1h"
+```
+
+### Daily workflow
+
+At the start of each session, create a lease interactively:
+
+```bash theme={null}
+$ fnox lease create aws -i
+AWS_ACCESS_KEY_ID (AWS access key): AKIA...
+AWS_SECRET_ACCESS_KEY (AWS secret key): wJalr...
+AWS_SESSION_TOKEN (AWS session token (optional)):
+
+Lease created (expires in 1h0m)
+
+AWS_ACCESS_KEY_ID         ASIA...F3YQ
+AWS_SECRET_ACCESS_KEY     wJal...EKEY
+AWS_SESSION_TOKEN         FwoG...==
+Expires                   2024-01-15T10:00:00+00:00
+```
+
+The credentials you paste are used once to call `sts:AssumeRole`, then discarded. Only the short-lived assumed-role credentials are cached. All subsequent `fnox exec` calls use the cache without prompting:
+
+```bash theme={null}
+fnox exec -- aws s3 ls
+fnox exec -- terraform plan
+```
+
+When the lease expires, run `fnox lease create aws -i` again.
+
+If you run `fnox exec` without a lease and without stored master credentials, fnox skips the lease gracefully and still runs the command with whatever other secrets are available:
+
+```
+Skipping lease 'aws': AWS credentials not found. Run 'aws sso login' or set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY.
+Run 'fnox lease create aws -i' to set up credentials interactively.
+```
+
+## Supported backends
+
+| Backend         | Type          | Max duration | Revocation              |
+| --------------- | ------------- | ------------ | ----------------------- |
+| AWS STS         | `aws-sts`     | 12 hours     | No-op (native TTL)      |
+| GCP IAM         | `gcp-iam`     | 1 hour       | No-op (native TTL)      |
+| Azure Token     | `azure-token` | \~1 hour     | No-op (native TTL)      |
+| HashiCorp Vault | `vault`       | 24 hours     | Vault lease revocation  |
+| Cloudflare      | `cloudflare`  | 24 hours     | Token deletion          |
+| GitHub App      | `github-app`  | 1 hour       | No-op (native TTL)      |
+| Custom command  | `command`     | 24 hours     | Optional revoke command |
+
+## Managing leases
+
+```bash theme={null}
+# List active leases
+fnox lease list --active
+
+# List expired leases
+fnox lease list --expired
+
+# Revoke a specific lease
+fnox lease revoke <lease-id>
+
+# Clean up all expired leases
+fnox lease cleanup
+```
+
+## How caching works
+
+fnox caches lease credentials in a per-project ledger file at `~/.local/state/fnox/leases/<hash>.toml`. A cached lease is reused until:
+
+* It is within 5 minutes of expiring
+* The backend configuration changes (e.g., you change the role ARN)
+* It is explicitly revoked with `fnox lease revoke`
+
+The ledger automatically prunes entries that have been expired or revoked for more than 24 hours.
+
+
+# MCP Server
+Source: https://www.mintlify.com/jdx/fnox/guides/mcp
+
+Use fnox as a session-scoped secret broker for AI agents via the Model Context Protocol.
+
+`fnox mcp` starts a [Model Context Protocol](https://modelcontextprotocol.io/) server over stdio. It lets AI agents like Claude Code access secrets without those secrets being present in the agent's environment as plain text.
+
+## Why use the MCP server?
+
+When you put `GITHUB_TOKEN` directly in an AI agent's environment, the agent can use it however it wants — without any audit trail. The fnox MCP server acts as a **session-scoped secret broker**: secrets are resolved on first access, cached in process memory, and cleared when the agent disconnects.
+
+## Quick setup
+
+<Steps>
+  <Step title="Configure secrets normally">
+    Your existing `fnox.toml` is all that's needed:
+
+    ```toml theme={null}
+    # fnox.toml
+    [providers]
+    age = { type = "age" }
+
+    [secrets]
+    GITHUB_TOKEN = { provider = "age", value = "AGE-SECRET-KEY-..." }
+    API_KEY      = { provider = "age", value = "AGE-SECRET-KEY-..." }
+    ```
+  </Step>
+
+  <Step title="Optionally restrict which tools and secrets are available">
+    By default both tools are enabled and all profile secrets are accessible. Override this in `fnox.toml`:
+
+    ```toml theme={null}
+    [mcp]
+    tools   = ["get_secret", "exec"]   # default: both enabled
+    secrets = ["GITHUB_TOKEN", "NPM_TOKEN"]  # only these are visible
+    ```
+
+    When `secrets` is set, unlisted secrets are never resolved — no unnecessary auth prompts and no accidental exposure.
+  </Step>
+
+  <Step title="Configure your AI agent">
+    Add fnox to your agent's MCP server list. For Claude Code, edit `.claude/settings.json`:
+
+    ```json theme={null}
+    {
+      "mcpServers": {
+        "fnox": {
+          "command": "fnox",
+          "args": ["mcp"]
+        }
+      }
+    }
+    ```
+
+    To use a specific profile:
+
+    ```json theme={null}
+    {
+      "mcpServers": {
+        "fnox": {
+          "command": "fnox",
+          "args": ["-P", "staging", "mcp"]
+        }
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Available tools
+
+### `get_secret`
+
+Retrieves a single secret by name. The agent provides the secret name (must match a key in your `fnox.toml` `[secrets]` section) and receives the resolved plaintext value.
+
+If a `secrets` allowlist is configured, names not on the list return "not found".
+
+### `exec`
+
+Executes a command with all allowed secrets injected as environment variables. The agent provides a command and arguments; the tool returns stdout and stderr.
+
+<Warning>
+  The agent controls which command is run, so it could execute `printenv` or `echo $SECRET` to read injected values. `exec` provides **audit visibility** — you can see what commands were run — not secret isolation. Use `tools = ["exec"]` with redaction enabled if you want to prevent raw secret retrieval while still allowing command execution.
+</Warning>
+
+## Secret allowlist
+
+Restrict which secrets the MCP server can access:
+
+```toml theme={null}
+[mcp]
+secrets = ["GITHUB_TOKEN", "NPM_TOKEN"]  # only these are available
+```
+
+When `secrets` is set:
+
+* `get_secret` can only retrieve listed secrets
+* `exec` only injects listed secrets as environment variables
+* Unlisted secrets are never resolved (no unnecessary auth prompts)
+
+When `secrets` is omitted, all profile secrets are available.
+
+## How it works
+
+<Steps>
+  <Step title="Server starts in non-interactive mode">
+    `fnox mcp` launches with stdin prompts disabled. This prevents provider authentication prompts from corrupting the JSON-RPC stream.
+  </Step>
+
+  <Step title="First tool call triggers batch resolution">
+    On the first call, all `env = true` profile secrets are resolved in a single batch. This amortizes the cost of YubiKey taps or SSO prompts across the session. Secrets with `env = false` are resolved on-demand when individually requested via `get_secret`.
+  </Step>
+
+  <Step title="Resolved secrets are cached in memory">
+    Subsequent tool calls use the in-memory cache. No disk writes occur (except for `as_file = true` secrets, which are written to ephemeral temp files and deleted when the command completes).
+  </Step>
+
+  <Step title="Session ends on disconnect">
+    When the agent disconnects (EOF), the process exits and all secrets are cleared from memory.
+  </Step>
+</Steps>
+
+## Security considerations
+
+* **Memory-only storage** — secrets live in process memory, not on disk (except ephemeral `as_file` temp files deleted after use).
+* **Output redaction** — the `exec` tool redacts resolved secret values from stdout/stderr before returning output to the agent. Commands like `printenv` or `echo $SECRET` return `[REDACTED]`. Redaction uses literal string matching and does not detect base64-encoded or transformed values.
+* **Output cap** — `exec` output is capped at 1 MiB to prevent unbounded memory usage.
+* **Tool visibility** — disabled tools are not advertised in `tools/list`. Agents only see tools they can actually call.
+* **Strict isolation with exec-only mode** — setting `tools = ["exec"]` with default redaction enabled prevents the agent from retrieving raw secret values through either tool.
+
+To disable redaction (not recommended):
+
+```toml theme={null}
+[mcp]
+redact_output = false
+```
+
+
+# Profiles
+Source: https://www.mintlify.com/jdx/fnox/guides/profiles
+
+Manage secrets for multiple environments in a single fnox.toml using profiles.
+
+Profiles let you store secrets for different environments — development, staging, production — in a single `fnox.toml` file. Each profile can define its own secrets, providers, and overrides while inheriting shared configuration from the top level.
+
+## Basic usage
+
+Define environment-specific secrets using `[profiles.<name>.secrets]`:
+
+```toml theme={null}
+# Default profile (development)
+[secrets]
+API_URL      = { default = "http://localhost:3000" }
+DATABASE_URL = { provider = "age", value = "encrypted-dev-db..." }
+
+# Staging profile
+[profiles.staging.secrets]
+API_URL      = { default = "https://staging.example.com" }
+DATABASE_URL = { provider = "age", value = "encrypted-staging-db..." }
+
+# Production profile
+[profiles.production.secrets]
+API_URL      = { default = "https://api.example.com" }
+DATABASE_URL = { provider = "aws", value = "prod-database-url" }
+```
+
+## Using profiles
+
+<Tabs>
+  <Tab title="CLI flag">
+    Pass `--profile` to any command:
+
+    ```bash theme={null}
+    fnox get API_URL --profile staging
+    fnox exec --profile production -- ./deploy.sh
+    ```
+  </Tab>
+
+  <Tab title="Environment variable">
+    Set `FNOX_PROFILE` once for the session:
+
+    ```bash theme={null}
+    export FNOX_PROFILE=production
+
+    fnox get DATABASE_URL   # uses production profile
+    fnox exec -- node server.js
+    ```
+  </Tab>
+
+  <Tab title="Shell integration">
+    With shell integration enabled, changing `FNOX_PROFILE` reloads secrets automatically on the next prompt:
+
+    ```bash theme={null}
+    eval "$(fnox activate bash)"
+
+    export FNOX_PROFILE=production
+    cd my-app
+    # fnox: +3 DATABASE_URL, API_KEY, JWT_SECRET (from production profile)
+
+    export FNOX_PROFILE=staging
+    # fnox detects the change on the next prompt automatically
+    # fnox: -3 +3 DATABASE_URL, API_KEY, JWT_SECRET (from staging profile)
+    ```
+  </Tab>
+</Tabs>
+
+## Profile inheritance
+
+Profiles automatically inherit every secret defined at the top level. You only need to specify values that differ from the default:
+
+```toml theme={null}
+# Define once — all profiles inherit these
+[secrets]
+LOG_LEVEL    = { default = "info" }
+API_TIMEOUT  = { default = "30" }
+DATABASE_URL = { provider = "age", value = "encrypted-dev-db..." }
+
+# Staging inherits everything; no overrides needed
+[profiles.staging]
+
+# Production overrides two secrets, inherits the rest
+[profiles.production.secrets]
+DATABASE_URL = { provider = "aws", value = "prod-db" }  # overrides DATABASE_URL
+LOG_LEVEL    = { default = "warn" }                     # overrides LOG_LEVEL
+# API_TIMEOUT="30" still inherited from top level
+```
+
+This eliminates duplication for secrets that are the same across environments.
+
+## Profile-specific providers
+
+Each profile can bring its own provider definitions. This is useful when different environments use different secret backends:
+
+```toml theme={null}
+# Development uses age encryption
+[providers]
+age = { type = "age", recipients = ["age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p"] }
+
+# Production uses AWS Secrets Manager
+[profiles.production.providers]
+aws = { type = "aws-sm", region = "us-east-1", prefix = "myapp/" }
+
+[profiles.production.secrets]
+DATABASE_URL = { provider = "aws", value = "database-url" }
+```
+
+## Secret references in provider config
+
+Provider configuration fields can themselves reference secrets using `{ secret = "NAME" }`. This is useful for bootstrap scenarios where provider credentials are managed as secrets:
+
+```toml theme={null}
+[providers.age]
+type       = "age"
+recipients = ["age1..."]
+
+[providers.vault]
+type    = "vault"
+address = "http://vault.example.com:8200"
+token   = { secret = "VAULT_TOKEN" }  # resolved from secrets or env var
+
+[secrets]
+VAULT_TOKEN  = { provider = "age", value = "AGE-ENCRYPTED-TOKEN..." }
+DATABASE_URL = { provider = "vault", value = "database/creds/myapp" }
+```
+
+Resolution order for `{ secret = "NAME" }`: config secrets first, then environment variables. fnox detects circular dependencies and returns an error if found.
+
+## List profiles
+
+See all profiles defined in the current config:
+
+```bash theme={null}
+fnox profiles
+```
+
+```
+default (active)
+staging
+production
+```
+
+## Common patterns
+
+<AccordionGroup>
+  <Accordion title="Development + production">
+    Development secrets are encrypted in git with age; production reads from AWS Secrets Manager:
+
+    ```toml theme={null}
+    [providers]
+    age = { type = "age", recipients = ["age1..."] }
+
+    [secrets]
+    DATABASE_URL = { provider = "age", value = "encrypted..." }
+
+    [profiles.production.providers]
+    aws = { type = "aws-sm", region = "us-east-1" }
+
+    [profiles.production.secrets]
+    DATABASE_URL = { provider = "aws", value = "database-url" }
+    ```
+  </Accordion>
+
+  <Accordion title="Multi-region production">
+    Separate profiles per AWS region:
+
+    ```toml theme={null}
+    [profiles.production-us.providers]
+    aws = { type = "aws-sm", region = "us-east-1" }
+
+    [profiles.production-eu.providers]
+    aws = { type = "aws-sm", region = "eu-west-1" }
+    ```
+  </Accordion>
+
+  <Accordion title="Per-developer profiles">
+    Each developer gets their own database without changing shared config:
+
+    ```toml theme={null}
+    [profiles.alice.secrets]
+    DATABASE_URL = { default = "postgresql://localhost/alice_db" }
+
+    [profiles.bob.secrets]
+    DATABASE_URL = { default = "postgresql://localhost/bob_db" }
+    ```
+
+    ```bash theme={null}
+    export FNOX_PROFILE=alice
+    fnox exec -- npm start
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## CI/CD example
+
+Use the `--profile` flag to select environments in GitHub Actions workflows:
+
+```yaml theme={null}
+# .github/workflows/deploy.yml
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: fnox exec --profile staging -- ./deploy.sh
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - run: fnox exec --profile production -- ./deploy.sh
+```
+
+## Next steps
+
+<CardGroup>
+  <Card title="Hierarchical config" icon="folder-tree" href="/guides/hierarchical-config">
+    Organize configs across directories with local overrides.
+  </Card>
+
+  <Card title="Real-world example" icon="rocket" href="/guides/real-world-example">
+    See a complete multi-environment setup from scratch.
+  </Card>
+</CardGroup>
+
+
+# Real-World Example
+Source: https://www.mintlify.com/jdx/fnox/guides/real-world-example
+
+Build a complete multi-environment secret setup with age encryption, AWS Secrets Manager, shell integration, and CI/CD.
+
+This guide walks through a complete fnox setup for a typical web API with development, staging, and production environments.
+
+## The scenario
+
+You're building an API that needs:
+
+* Database URL
+* API keys (Stripe, SendGrid)
+* JWT secret
+
+**Requirements:**
+
+* **Development** — secrets encrypted in git with age so any team member can clone and run immediately
+* **Staging** — secrets also encrypted in git with different values
+* **Production** — secrets stored in AWS Secrets Manager, never in git
+
+## Step 1: Initialize
+
+```bash theme={null}
+cd my-api
+fnox init
+git init
+```
+
+## Step 2: Set up age encryption
+
+```bash theme={null}
+# Generate an age key
+age-keygen -o ~/.config/fnox/age.txt
+
+# Get your public key
+grep "public key:" ~/.config/fnox/age.txt
+# Output: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
+
+# For teams: collect everyone's public keys and add them all as recipients
+```
+
+Add the shared age provider to `fnox.toml`:
+
+```toml theme={null}
+[providers.age]
+type       = "age"
+recipients = [
+  "age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p",  # alice
+  "age1pr3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqabc123",  # bob
+  "age1zr3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqdxf456"   # ci
+]
+```
+
+Set the decryption key in your shell profile:
+
+```bash theme={null}
+# Add to ~/.bashrc or ~/.zshrc
+export FNOX_AGE_KEY=$(cat ~/.config/fnox/age.txt | grep "AGE-SECRET-KEY")
+```
+
+## Step 3: Add development secrets
+
+```bash theme={null}
+fnox set DATABASE_URL "postgresql://localhost/mydb" --provider age
+fnox set JWT_SECRET "$(openssl rand -hex 32)" --provider age
+fnox set STRIPE_KEY "sk_test_abc123" --provider age
+fnox set SENDGRID_KEY "SG.test123" --provider age
+```
+
+`fnox.toml` now contains encrypted ciphertext — commit it:
+
+```toml theme={null}
+[providers]
+age = { type = "age", recipients = ["age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p"] }
+
+[secrets]
+DATABASE_URL = { provider = "age", value = "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHNjcnlwdC..." }
+JWT_SECRET   = { provider = "age", value = "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHNjcnlwdC..." }
+STRIPE_KEY   = { provider = "age", value = "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHNjcnlwdC..." }
+SENDGRID_KEY = { provider = "age", value = "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHNjcnlwdC..." }
+```
+
+```bash theme={null}
+git add fnox.toml
+git commit -m "Add encrypted development secrets"
+```
+
+## Step 4: Add staging profile
+
+Encrypt staging-specific values into a profile:
+
+```bash theme={null}
+fnox set DATABASE_URL "postgresql://staging.db.example.com/mydb" \
+  --provider age --profile staging
+
+fnox set JWT_SECRET "$(openssl rand -hex 32)" \
+  --provider age --profile staging
+
+fnox set STRIPE_KEY "sk_test_staging_xyz" \
+  --provider age --profile staging
+
+fnox set SENDGRID_KEY "SG.staging456" \
+  --provider age --profile staging
+```
+
+`fnox.toml` now contains both the default and staging profiles:
+
+```toml theme={null}
+# Development (default profile)
+[secrets]
+DATABASE_URL = { provider = "age", value = "..." }
+JWT_SECRET   = { provider = "age", value = "..." }
+STRIPE_KEY   = { provider = "age", value = "..." }
+SENDGRID_KEY = { provider = "age", value = "..." }
+
+# Staging profile
+[profiles.staging.secrets]
+DATABASE_URL = { provider = "age", value = "..." }
+JWT_SECRET   = { provider = "age", value = "..." }
+STRIPE_KEY   = { provider = "age", value = "..." }
+SENDGRID_KEY = { provider = "age", value = "..." }
+```
+
+## Step 5: Add production profile (AWS Secrets Manager)
+
+Add the production provider and secret references to `fnox.toml`:
+
+```toml theme={null}
+[profiles.production.providers]
+aws = { type = "aws-sm", region = "us-east-1", prefix = "myapi/" }
+
+[profiles.production.secrets]
+DATABASE_URL = { provider = "aws", value = "database-url", if_missing = "error" }
+JWT_SECRET   = { provider = "aws", value = "jwt-secret",   if_missing = "error" }
+STRIPE_KEY   = { provider = "aws", value = "stripe-key",   if_missing = "error" }
+SENDGRID_KEY = { provider = "aws", value = "sendgrid-key", if_missing = "error" }
+```
+
+Create the secrets in AWS:
+
+```bash theme={null}
+aws secretsmanager create-secret \
+  --name "myapi/database-url" \
+  --secret-string "postgresql://prod.rds.amazonaws.com/mydb"
+
+aws secretsmanager create-secret \
+  --name "myapi/jwt-secret" \
+  --secret-string "$(openssl rand -base64 64)"
+
+aws secretsmanager create-secret \
+  --name "myapi/stripe-key" \
+  --secret-string "[REDACTED-STRIPE-DOCS-EXAMPLE]"
+
+aws secretsmanager create-secret \
+  --name "myapi/sendgrid-key" \
+  --secret-string "SG.REAL_KEY_HERE"
+```
+
+Commit the references (not the values):
+
+```bash theme={null}
+git add fnox.toml
+git commit -m "Add production profile (AWS Secrets Manager)"
+```
+
+## Step 6: Local overrides
+
+Create `.gitignore` and a personal override file:
+
+```bash theme={null}
+echo "fnox.local.toml" >> .gitignore
+```
+
+```toml theme={null}
+# fnox.local.toml (not committed)
+
+[secrets]
+DATABASE_URL = { default = "postgresql://localhost/alice_db" }  # personal local DB
+DEBUG_MODE   = { default = "true" }
+```
+
+## Step 7: Enable shell integration
+
+```bash theme={null}
+# Enable for the current session
+eval "$(fnox activate bash)"
+
+# Persist across sessions
+echo 'eval "$(fnox activate bash)"' >> ~/.bashrc
+```
+
+Now secrets load automatically:
+
+```bash theme={null}
+cd my-api
+# fnox: +4 DATABASE_URL, JWT_SECRET, STRIPE_KEY, SENDGRID_KEY
+
+npm run dev  # secrets are already in the environment
+```
+
+Or without shell integration:
+
+```bash theme={null}
+fnox exec -- npm run dev
+```
+
+To use staging or production locally:
+
+```bash theme={null}
+# Staging
+fnox exec --profile staging -- ./deploy.sh
+
+# Production (requires AWS credentials)
+export AWS_REGION=us-east-1
+fnox exec --profile production -- ./deploy.sh
+```
+
+## Step 8: CI/CD setup
+
+### GitHub Actions workflow
+
+```yaml theme={null}
+# .github/workflows/ci.yml
+name: CI
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v3
+
+      - name: Run tests
+        env:
+          FNOX_AGE_KEY: ${{ secrets.FNOX_AGE_KEY }}
+        run: fnox exec -- npm test
+
+  deploy-staging:
+    if: github.ref == 'refs/heads/develop'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v3
+
+      - name: Deploy to staging
+        env:
+          FNOX_AGE_KEY: ${{ secrets.FNOX_AGE_KEY }}
+        run: fnox exec --profile staging -- ./deploy.sh
+
+  deploy-production:
+    if: github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v3
+
+      - name: Deploy to production
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION:            us-east-1
+          FNOX_IF_MISSING:       error
+        run: fnox exec --profile production -- ./deploy.sh
+```
+
+### Set GitHub secrets
+
+1. Go to your repository → **Settings** → **Secrets and variables** → **Actions**
+2. Add `FNOX_AGE_KEY`:
+   ```bash theme={null}
+   # Copy the CI age secret key (from the CI recipient's age.txt)
+   cat ~/.config/fnox/ci-age.txt | grep "AGE-SECRET-KEY"
+   ```
+3. Add `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` for production
+
+## Step 9: Team onboarding
+
+When a new team member joins:
+
+```bash theme={null}
+# 1. Clone the repo
+git clone https://github.com/myorg/my-api
+cd my-api
+
+# 2. Install fnox (via mise)
+mise install
+
+# 3. Generate age key
+age-keygen -o ~/.config/fnox/age.txt
+
+# 4. Share public key with team lead
+grep "public key:" ~/.config/fnox/age.txt
+# → team lead adds the key to fnox.toml recipients
+
+# 5. Set decryption key
+echo 'export FNOX_AGE_KEY=$(cat ~/.config/fnox/age.txt | grep "AGE-SECRET-KEY")' >> ~/.bashrc
+source ~/.bashrc
+
+# 6. Enable shell integration
+echo 'eval "$(fnox activate bash)"' >> ~/.bashrc
+
+# 7. Team lead re-encrypts secrets to include the new recipient
+fnox reencrypt -p age
+
+# 8. Pull and run
+git pull
+cd my-api
+# fnox: +4 DATABASE_URL, JWT_SECRET, STRIPE_KEY, SENDGRID_KEY
+npm run dev  # just works
+```
+
+## File structure
+
+```
+my-api/
+├── .gitignore                 # fnox.local.toml, .env
+├── fnox.toml                  # committed (encrypted dev/staging + AWS refs for prod)
+├── fnox.local.toml            # gitignored (personal overrides)
+├── package.json
+├── src/
+└── .github/
+    └── workflows/
+        └── ci.yml
+```
+
+## Next steps
+
+<CardGroup>
+  <Card title="Profiles" icon="layers" href="/guides/profiles">
+    Deep dive into profile inheritance and patterns.
+  </Card>
+
+  <Card title="Shell integration" icon="terminal" href="/guides/shell-integration">
+    Advanced shell setup and output control.
+  </Card>
+
+  <Card title="Hierarchical config" icon="folder-tree" href="/guides/hierarchical-config">
+    Organize larger projects with monorepo-style config.
+  </Card>
+
+  <Card title="Credential leases" icon="clock" href="/guides/leases">
+    Replace static cloud credentials with short-lived leases.
+  </Card>
+</CardGroup>
+
+
+# Shell Integration
+Source: https://www.mintlify.com/jdx/fnox/guides/shell-integration
+
+Automatically load and unload secrets when you cd into and out of project directories.
+
+fnox can hook into your shell so secrets are loaded automatically when you enter a directory with a `fnox.toml` file, and unloaded when you leave.
+
+## Enable shell integration
+
+Add the activation line to your shell profile:
+
+<Tabs>
+  <Tab title="Bash">
+    ```bash theme={null}
+    # Add to ~/.bashrc or ~/.bash_profile
+    eval "$(fnox activate bash)"
+    ```
+  </Tab>
+
+  <Tab title="Zsh">
+    ```bash theme={null}
+    # Add to ~/.zshrc
+    eval "$(fnox activate zsh)"
+    ```
+  </Tab>
+
+  <Tab title="Fish">
+    ```fish theme={null}
+    # Add to ~/.config/fish/config.fish
+    fnox activate fish | source
+    ```
+  </Tab>
+
+  <Tab title="Nushell">
+    ```nu theme={null}
+    # Requires Nushell 0.96+
+    # Add to the end of your Nushell configuration
+    # (find it by running `$nu.config-path` in Nushell):
+    mkdir ($nu.data-dir | path join "vendor/autoload")
+    fnox activate nu | save -f ($nu.data-dir | path join "vendor/autoload/fnox.nu")
+    ```
+  </Tab>
+</Tabs>
+
+Restart your shell or source the config file to activate immediately.
+
+## How it works
+
+The shell hook fires on every prompt. When you enter a directory that contains `fnox.toml`, fnox resolves all secrets and exports them into your current shell:
+
+```
+~/projects $ cd my-app
+fnox: +3 DATABASE_URL, API_KEY, JWT_SECRET
+~/projects/my-app $
+```
+
+When you leave that directory, the secrets are removed from your shell:
+
+```
+~/projects/my-app $ cd ..
+fnox: -3 DATABASE_URL, API_KEY, JWT_SECRET
+~/projects $
+```
+
+<Note>
+  The hook runs on every prompt, not just on `cd`. It automatically detects changes to config files and to environment variables like `FNOX_PROFILE`.
+</Note>
+
+## Output control
+
+Control what fnox prints with the `FNOX_SHELL_OUTPUT` environment variable:
+
+```bash theme={null}
+# Silent — no output at all
+export FNOX_SHELL_OUTPUT=none
+
+# Normal — show count and key names (default)
+export FNOX_SHELL_OUTPUT=normal
+
+# Debug — verbose logging for troubleshooting
+export FNOX_SHELL_OUTPUT=debug
+```
+
+## Using profiles
+
+Set `FNOX_PROFILE` to switch which profile's secrets are loaded:
+
+```bash theme={null}
+# Load production secrets on cd
+export FNOX_PROFILE=production
+cd my-app
+# fnox: +3 DATABASE_URL, API_KEY, JWT_SECRET (from production profile)
+
+# Switch to staging — fnox detects the change on the next prompt
+export FNOX_PROFILE=staging
+# fnox: -3 +3 DATABASE_URL, API_KEY, JWT_SECRET (from staging profile)
+```
+
+## Hierarchical loading
+
+When you cd into a subdirectory, fnox merges config from all `fnox.toml` files found walking up the directory tree:
+
+```
+project/
+├── fnox.toml              # common secrets (shared keys, defaults)
+└── services/
+    ├── api/
+    │   └── fnox.toml      # API-specific secrets
+    └── worker/
+        └── fnox.toml      # worker-specific secrets
+```
+
+When you `cd services/api/`, fnox loads:
+
+1. Secrets from `project/fnox.toml`
+2. Secrets from `project/services/api/fnox.toml` (child overrides parent)
+
+See [Hierarchical configuration](/guides/hierarchical-config) for the full merge order.
+
+## Manual reload
+
+The shell hook automatically detects file changes and profile switches on each prompt. In most cases no manual action is needed.
+
+To force a complete reload:
+
+```bash theme={null}
+# Disable integration
+fnox deactivate
+
+# Re-enable integration
+eval "$(fnox activate bash)"
+```
+
+## Next steps
+
+<CardGroup>
+  <Card title="Profiles" icon="layers" href="/guides/profiles">
+    Switch environments by changing FNOX\_PROFILE.
+  </Card>
+
+  <Card title="Hierarchical config" icon="folder-tree" href="/guides/hierarchical-config">
+    Merge secrets across nested directories.
+  </Card>
+
+  <Card title="Real-world example" icon="rocket" href="/guides/real-world-example">
+    See a complete project setup with shell integration.
+  </Card>
+</CardGroup>
+
+
+# Installation
+Source: https://www.mintlify.com/jdx/fnox/installation
+
+Install fnox using mise, cargo, or from source.
+
+## Requirements
+
+* **OS**: macOS, Linux, or Windows
+* **Rust**: 1.91.1 or later (only required if building from source or installing via cargo)
+
+## Install fnox
+
+<Tabs>
+  <Tab title="mise (recommended)">
+    [mise](https://mise.jdx.dev) is the recommended way to install fnox. It handles installation and keeps fnox up to date.
+
+    <Steps>
+      <Step title="Install mise">
+        If you don't have mise installed, follow the [mise installation guide](https://mise.jdx.dev/getting-started.html).
+      </Step>
+
+      <Step title="Install fnox globally">
+        ```bash theme={null}
+        mise use -g fnox
+        ```
+
+        This installs the latest version of fnox and makes it available in your `PATH`.
+      </Step>
+
+      <Step title="Verify the installation">
+        ```bash theme={null}
+        fnox --version
+        ```
+      </Step>
+    </Steps>
+
+    <Tip>
+      To pin fnox to a specific version in a project, run `mise use fnox@1.20.0` inside that directory. This adds fnox to your project's `.mise.toml`.
+    </Tip>
+  </Tab>
+
+  <Tab title="cargo">
+    If you have Rust and Cargo installed:
+
+    ```bash theme={null}
+    cargo install fnox
+    ```
+
+    Verify the installation:
+
+    ```bash theme={null}
+    fnox --version
+    ```
+  </Tab>
+
+  <Tab title="From source">
+    To build from the latest source:
+
+    ```bash theme={null}
+    git clone https://github.com/jdx/fnox
+    cd fnox
+    cargo install --path .
+    ```
+
+    Verify the installation:
+
+    ```bash theme={null}
+    fnox --version
+    ```
+  </Tab>
+</Tabs>
+
+## Shell completions
+
+Fnox can generate completions for bash, zsh, and fish. Add the appropriate line to your shell profile to enable them.
+
+<CodeGroup>
+  ```bash bash theme={null}
+  fnox completion bash >> ~/.bashrc
+  ```
+
+  ```bash zsh theme={null}
+  fnox completion zsh >> ~/.zshrc
+  ```
+
+  ```bash fish theme={null}
+  fnox completion fish > ~/.config/fish/completions/fnox.fish
+  ```
+</CodeGroup>
+
+Reload your shell after adding the completion line:
+
+```bash theme={null}
+source ~/.bashrc  # or ~/.zshrc, etc.
+```
+
+## Next steps
+
+<CardGroup>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Set your first secret and run a command with it loaded in 5 minutes.
+  </Card>
+
+  <Card title="Shell integration" icon="terminal" href="/guides/shell-integration">
+    Auto-load secrets when you `cd` into a project directory.
+  </Card>
+</CardGroup>
+
+
+# What is Fnox?
+Source: https://www.mintlify.com/jdx/fnox/introduction
+
+Fnox is a CLI secret manager that supports encrypted secrets in git and remote cloud providers.
+
+Fnox is a flexible secret management tool that gives you a unified interface to work with secrets across development, CI, and production. The tagline says it all: **Fort Knox for your secrets.**
+
+## Two ways to store secrets
+
+Fnox supports two fundamentally different storage modes, and you can mix and match them within the same project.
+
+**Encrypted in git** — Secrets are encrypted and stored directly in `fnox.toml`. You commit the file to version control. Anyone on the team with the decryption key can read the secrets. Supported encryption backends: age, AWS KMS, Azure KMS, and GCP KMS.
+
+**Remote in the cloud** — `fnox.toml` holds a reference to a secret stored in an external provider. The secret value never lives in your repository. Supported providers include AWS Secrets Manager, AWS Parameter Store, Azure Key Vault, GCP Secret Manager, 1Password, Bitwarden, Bitwarden Secrets Manager, Infisical, and HashiCorp Vault.
+
+<Info>
+  You can use both modes simultaneously. A common pattern is encrypted secrets for development and remote secrets for production—managed through [profiles](/guides/profiles).
+</Info>
+
+## Key features
+
+<CardGroup>
+  <Card title="Works with your existing stack" icon="plug">
+    Already using AWS Secrets Manager or 1Password? Fnox integrates with them. No migration required.
+  </Card>
+
+  <Card title="Secrets in version control" icon="lock">
+    Store encrypted secrets in git using age or KMS. Clone the repo and immediately have development secrets.
+  </Card>
+
+  <Card title="Multi-environment profiles" icon="layer-group">
+    Manage dev, staging, and production secrets in one config file using profiles.
+  </Card>
+
+  <Card title="Shell integration" icon="terminal">
+    Auto-load secrets into your shell when you `cd` into a directory with a `fnox.toml`.
+  </Card>
+
+  <Card title="No vendor lock-in" icon="arrows-left-right">
+    Switch providers at any time. The CLI interface stays the same regardless of where secrets live.
+  </Card>
+
+  <Card title="Developer-focused" icon="code">
+    Simple TOML config, works offline with encrypted secrets, and runs any command with secrets loaded.
+  </Card>
+</CardGroup>
+
+## How it works
+
+Your project has a `fnox.toml` configuration file that defines providers and secrets. Run `fnox exec -- <command>` to inject secrets as environment variables, or enable shell integration to load them automatically.
+
+```toml theme={null}
+# fnox.toml
+
+[providers]
+age = { type = "age", recipients = ["age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p"] }
+
+[secrets]
+# Development secrets (encrypted in git)
+DATABASE_URL = { provider = "age", value = "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHNjcnlwdC..." }  # ← encrypted, safe to commit
+API_KEY = { default = "dev-key-12345" }  # ← plain default for local dev
+
+[profiles.production.providers]
+aws = { type = "aws-sm", region = "us-east-1", prefix = "myapp/" }
+
+[profiles.production.secrets]
+DATABASE_URL = { provider = "aws", value = "database-url" }  # ← reference to AWS secret
+```
+
+```bash theme={null}
+# Development (uses encrypted secrets)
+fnox exec -- npm start
+
+# Production (uses AWS Secrets Manager)
+fnox exec --profile production -- ./deploy.sh
+```
+
+## Next steps
+
+<CardGroup>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Get fnox installed and your first secret stored in 5 minutes.
+  </Card>
+
+  <Card title="Providers overview" icon="cloud" href="/providers/overview">
+    Browse all supported encryption backends and cloud providers.
+  </Card>
+</CardGroup>
+
+
+# Age Encryption
+Source: https://www.mintlify.com/jdx/fnox/providers/age
+
+Encrypt secrets with age and store the ciphertext directly in fnox.toml. Supports native age keys and SSH keys — no extra key management needed.
+
+[age](https://github.com/FiloSottile/age) is a modern, simple encryption tool. fnox uses it to encrypt secrets and store the ciphertext inside `fnox.toml`, so the file is safe to commit to version control. age has first-class SSH key support — you can use the keys you already have.
+
+## Quick start
+
+<Steps>
+  <Step title="Install age">
+    <CodeGroup>
+      ```bash macOS theme={null}
+      brew install age
+      ```
+
+      ```bash Ubuntu / Debian theme={null}
+      sudo apt install age
+      ```
+
+      ```bash Other theme={null}
+      # Download from https://github.com/FiloSottile/age/releases
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Generate an age key">
+    ```bash theme={null}
+    mkdir -p ~/.config/fnox
+    age-keygen -o ~/.config/fnox/age.txt
+    ```
+
+    The output looks like:
+
+    ```
+    # created: 2024-01-15T10:30:45-08:00
+    # public key: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
+    AGE-SECRET-KEY-1ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCDEFGHIJKLMNOPQRS
+    ```
+  </Step>
+
+  <Step title="Configure the provider">
+    Add the provider to `fnox.toml` using the public key from the previous step:
+
+    ```toml theme={null}
+    [providers]
+    age = { type = "age", recipients = ["age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p"] }
+    ```
+  </Step>
+
+  <Step title="Export your private key">
+    ```bash theme={null}
+    export FNOX_AGE_KEY=$(grep "AGE-SECRET-KEY" ~/.config/fnox/age.txt)
+    ```
+
+    Add this to your shell profile so it persists across sessions.
+  </Step>
+
+  <Step title="Encrypt a secret">
+    ```bash theme={null}
+    fnox set DATABASE_URL "postgresql://localhost/mydb" --provider age
+    ```
+
+    fnox writes encrypted ciphertext into `fnox.toml`:
+
+    ```toml theme={null}
+    [secrets]
+    DATABASE_URL = { provider = "age", value = "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+..." }
+    ```
+
+    The `value` is safe to commit.
+  </Step>
+</Steps>
+
+## Configuration
+
+```toml theme={null}
+[providers]
+age = { type = "age", recipients = ["age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p"] }
+```
+
+The `recipients` field is a list of public keys that can decrypt secrets. Each recipient can use a different key type.
+
+| Field        | Required | Description                                |
+| ------------ | -------- | ------------------------------------------ |
+| `type`       | Yes      | Must be `"age"`                            |
+| `recipients` | Yes      | List of age public keys or SSH public keys |
+
+## Environment variables
+
+| Variable       | Description                                                                   |
+| -------------- | ----------------------------------------------------------------------------- |
+| `FNOX_AGE_KEY` | Inline age private key content (`AGE-SECRET-KEY-1...` or SSH private key PEM) |
+
+fnox resolves the decryption key in this order:
+
+1. `FNOX_AGE_KEY` environment variable (inline key content)
+2. `key_file` field in the provider config
+3. Default path `~/.config/fnox/age.txt`
+
+## SSH key support
+
+age supports SSH keys natively — no conversion needed. Both `ssh-ed25519` and `ssh-rsa` keys work as recipients.
+
+```toml theme={null}
+[providers.age]
+type = "age"
+recipients = [
+  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGQs8YqSC... alice@example.com",
+  "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC5... bob@example.com"
+]
+```
+
+Set the decryption key using the SSH private key content:
+
+```bash theme={null}
+export FNOX_AGE_KEY=$(cat ~/.ssh/id_ed25519)
+```
+
+Or configure it directly in the provider:
+
+```toml theme={null}
+[providers.age]
+type = "age"
+key_file = "~/.ssh/id_ed25519"
+recipients = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGQs8YqSC..."]
+```
+
+<Warning>
+  Password-protected SSH keys are not supported. If your SSH key has a passphrase, create a passphrase-free copy for use with fnox.
+</Warning>
+
+Get your SSH public key:
+
+```bash theme={null}
+cat ~/.ssh/id_ed25519.pub   # Ed25519
+cat ~/.ssh/id_rsa.pub       # RSA
+```
+
+## Usage
+
+```bash theme={null}
+# Encrypt and store
+fnox set DATABASE_URL "postgresql://localhost/mydb" --provider age
+
+# Decrypt and retrieve
+fnox get DATABASE_URL
+
+# Run a command with all secrets injected
+fnox exec -- npm run dev
+```
+
+## Multi-recipient team setup
+
+Each team member (and CI) adds their public key to the `recipients` list. Anyone whose key is listed can decrypt.
+
+### Setting up team access
+
+<Steps>
+  <Step title="Collect public keys">
+    Each member shares their public key:
+
+    ```bash theme={null}
+    # age key
+    grep "public key:" ~/.config/fnox/age.txt
+
+    # SSH key
+    cat ~/.ssh/id_ed25519.pub
+    ```
+  </Step>
+
+  <Step title="Add all recipients">
+    ```toml theme={null}
+    [providers.age]
+    type = "age"
+    recipients = [
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGQs...",  # alice
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBws...",  # bob
+      "age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2el..."   # ci-bot
+    ]
+    ```
+  </Step>
+
+  <Step title="Encrypt secrets">
+    ```bash theme={null}
+    fnox set DATABASE_URL "postgresql://dev.example.com/db" --provider age
+    fnox set API_KEY "secret-key" --provider age
+    ```
+  </Step>
+
+  <Step title="Commit">
+    ```bash theme={null}
+    git add fnox.toml
+    git commit -m "Add encrypted development secrets"
+    git push
+    ```
+  </Step>
+
+  <Step title="Each member decrypts with their own key">
+    ```bash theme={null}
+    # SSH key
+    export FNOX_AGE_KEY_FILE=~/.ssh/id_ed25519
+
+    # Or age key
+    export FNOX_AGE_KEY="AGE-SECRET-KEY-1..."
+
+    fnox get DATABASE_URL  # Works for all recipients
+    ```
+  </Step>
+</Steps>
+
+### Adding a new team member
+
+1. The new member shares their public key.
+2. Add it to `recipients` in `fnox.toml`.
+3. Re-encrypt all secrets so the new key is included:
+   ```bash theme={null}
+   fnox reencrypt -p age
+
+   # Preview first
+   fnox reencrypt -p age --dry-run
+
+   # For multiple profiles
+   fnox reencrypt -p age -P staging -f
+   fnox reencrypt -p age -P prod -f
+   ```
+4. Commit and push. The new member pulls and sets their private key.
+
+## CI/CD setup (GitHub Actions)
+
+```yaml theme={null}
+name: CI
+on: [push]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run tests
+        env:
+          FNOX_AGE_KEY: ${{ secrets.FNOX_AGE_KEY }}
+        run: fnox exec -- npm test
+```
+
+Generate a dedicated CI age key, add its public key to `recipients`, then store the private key as the `FNOX_AGE_KEY` GitHub secret:
+
+```bash theme={null}
+age-keygen -o ci-age.txt
+grep "AGE-SECRET-KEY" ci-age.txt   # copy this value to GitHub Secrets
+```
+
+## Troubleshooting
+
+**"no identity matched any of the recipients"**
+
+Your private key does not match any key in `recipients`. Verify the public key listed in the config:
+
+```bash theme={null}
+grep "public key:" ~/.config/fnox/age.txt
+grep "recipients" fnox.toml
+```
+
+**"failed to decrypt"**
+
+* Confirm `FNOX_AGE_KEY` or `FNOX_AGE_KEY_FILE` is set.
+* Verify the key file exists and is readable.
+* Confirm you are using the private key that corresponds to one of the recipients.
+
+**SSH key not working**
+
+* Only `ssh-ed25519` and `ssh-rsa` are supported.
+* Confirm the private key file path is correct.
+* Confirm the private key has no passphrase.
+
+
+# AWS KMS
+Source: https://www.mintlify.com/jdx/fnox/providers/aws-kms
+
+Encrypt secrets with AWS Key Management Service and store the ciphertext in fnox.toml. Combines git-based version control with AWS-managed keys and IAM access control.
+
+AWS KMS encrypts each secret using an AWS-managed key. The resulting ciphertext is stored in `fnox.toml` and safe to commit to version control. Decryption calls the KMS API, so AWS credentials are required at runtime.
+
+## KMS vs Secrets Manager
+
+| Feature        | AWS KMS                         | AWS Secrets Manager  |
+| -------------- | ------------------------------- | -------------------- |
+| Storage        | Local (ciphertext in fnox.toml) | Remote (in AWS)      |
+| Secrets in git | Yes (encrypted)                 | No (references only) |
+| Pricing        | \$1/key/month (one key for all) | \$0.40/secret/month  |
+| Rotation       | Manual                          | Automatic            |
+| Offline        | No (needs KMS API)              | No (needs AWS API)   |
+
+**Use KMS** when you want version-controlled secrets with AWS-managed keys.
+
+**Use Secrets Manager** when you want centralized storage without secrets in git.
+
+## Prerequisites
+
+* AWS account with credentials configured
+* A KMS key created in the target region
+* IAM permissions (see below)
+
+## Setup
+
+<Steps>
+  <Step title="Create a KMS key">
+    ```bash theme={null}
+    aws kms create-key \
+      --description "fnox secrets encryption" \
+      --key-usage ENCRYPT_DECRYPT
+    ```
+
+    Note the `KeyId` in the output. You can also create the key in the [AWS Console](https://console.aws.amazon.com/kms/) under KMS → Customer managed keys → Create key.
+  </Step>
+
+  <Step title="Configure AWS credentials">
+    <CodeGroup>
+      ```bash Environment variables theme={null}
+      export AWS_ACCESS_KEY_ID="AKIA..."
+      export AWS_SECRET_ACCESS_KEY="..."
+      export AWS_REGION="us-east-1"
+      ```
+
+      ```bash AWS CLI profile theme={null}
+      aws configure
+      # or
+      export AWS_PROFILE=myapp
+      ```
+
+      ```bash IAM role (EC2/ECS/Lambda) theme={null}
+      # No configuration needed — credentials come from instance metadata
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Add the provider to fnox.toml">
+    ```toml theme={null}
+    [providers.kms]
+    type = "aws-kms"
+    key_id = "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+    region = "us-east-1"
+    ```
+  </Step>
+
+  <Step title="Encrypt a secret">
+    ```bash theme={null}
+    fnox set DATABASE_URL "postgresql://prod.example.com/db" --provider kms
+    ```
+
+    The result in `fnox.toml`:
+
+    ```toml theme={null}
+    [secrets]
+    DATABASE_URL = { provider = "kms", value = "AQICAHhw...base64ciphertext..." }
+    ```
+  </Step>
+</Steps>
+
+## Configuration
+
+```toml theme={null}
+[providers.kms]
+type = "aws-kms"
+key_id = "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+region = "us-east-1"
+```
+
+| Field    | Required | Description                                          |
+| -------- | -------- | ---------------------------------------------------- |
+| `type`   | Yes      | Must be `"aws-kms"`                                  |
+| `key_id` | Yes      | KMS key ARN, key ID, or alias (e.g., `alias/my-key`) |
+| `region` | Yes      | AWS region where the key was created                 |
+
+The `key_id` accepts:
+
+* Full ARN: `arn:aws:kms:us-east-1:123456789012:key/...`
+* Key ID: `12345678-1234-1234-1234-123456789012`
+* Alias: `alias/my-key`
+
+## IAM permissions
+
+```json theme={null}
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["kms:Decrypt", "kms:Encrypt", "kms:DescribeKey"],
+      "Resource": "arn:aws:kms:REGION:ACCOUNT:key/KEY-ID"
+    }
+  ]
+}
+```
+
+## Usage
+
+```bash theme={null}
+# Encrypt and store
+fnox set DATABASE_URL "postgresql://prod.example.com/db" --provider kms
+
+# Decrypt and retrieve
+fnox get DATABASE_URL
+
+# Run a command with secrets injected
+fnox exec -- ./start-server.sh
+```
+
+## How it works
+
+1. **`fnox set`** — calls the AWS KMS `Encrypt` API and stores the base64 ciphertext in `fnox.toml`.
+2. **`fnox get`** — reads the ciphertext from `fnox.toml` and calls the AWS KMS `Decrypt` API to recover the plaintext.
+
+## Multi-environment example
+
+```toml theme={null}
+# Development: age encryption (free, offline)
+[providers]
+age = { type = "age", recipients = ["age1..."] }
+
+[secrets]
+DATABASE_URL = { provider = "age", value = "encrypted-dev..." }
+
+# Production: AWS KMS
+[profiles.production.providers]
+kms = { type = "aws-kms", key_id = "arn:aws:kms:us-east-1:123456789012:key/...", region = "us-east-1" }
+
+[profiles.production.secrets]
+DATABASE_URL = { provider = "kms", value = "AQICAHhw..." }
+```
+
+## Key rotation
+
+When rotating the KMS key, update `key_id` in `fnox.toml` and re-encrypt all secrets:
+
+```bash theme={null}
+fnox set DATABASE_URL "$(fnox get DATABASE_URL)" --provider kms
+fnox set API_KEY "$(fnox get API_KEY)" --provider kms
+```
+
+## Costs
+
+* **\$1.00 per key per month**
+* **\$0.03 per 10,000 API calls**
+
+One key covers all your secrets, making KMS significantly cheaper than Secrets Manager when you have many secrets.
+
+
+# AWS Parameter Store
+Source: https://www.mintlify.com/jdx/fnox/providers/aws-ps
+
+Store secrets in AWS Systems Manager Parameter Store. Hierarchical paths, free standard tier, and IAM access control make it a cost-effective alternative to Secrets Manager.
+
+AWS Systems Manager Parameter Store stores secrets at hierarchical paths like `/myapp/prod/database-url`. The standard tier is free for up to 10,000 parameters, making it a cost-effective choice when automatic rotation is not required.
+
+## Parameter Store vs Secrets Manager
+
+| Feature      | Parameter Store               | Secrets Manager           |
+| ------------ | ----------------------------- | ------------------------- |
+| Cost         | Free (standard tier)          | \$0.40/secret/month       |
+| Max size     | 4 KB (8 KB advanced)          | 64 KB                     |
+| Rotation     | Manual                        | Automatic                 |
+| Versioning   | Limited                       | Full versioning           |
+| Organization | Hierarchical paths (`/a/b/c`) | Flat with tags            |
+| Best for     | Config values, simple secrets | Complex secrets, rotation |
+
+## Quick start
+
+<Steps>
+  <Step title="Configure the provider">
+    ```toml theme={null}
+    [providers]
+    ps = { type = "aws-ps", region = "us-east-1", prefix = "/myapp/prod/" }
+    ```
+  </Step>
+
+  <Step title="Create a parameter in AWS">
+    ```bash theme={null}
+    aws ssm put-parameter \
+      --name "/myapp/prod/database-url" \
+      --value "postgresql://prod.example.com/db" \
+      --type "SecureString"
+    ```
+  </Step>
+
+  <Step title="Reference it in fnox.toml">
+    ```toml theme={null}
+    [secrets]
+    DATABASE_URL = { provider = "ps", value = "database-url" }
+    # With prefix "/myapp/prod/", fnox fetches "/myapp/prod/database-url"
+    ```
+  </Step>
+
+  <Step title="Fetch the secret">
+    ```bash theme={null}
+    fnox get DATABASE_URL
+    ```
+  </Step>
+</Steps>
+
+## Prerequisites
+
+* AWS account
+* AWS credentials configured (environment variables, CLI profile, or IAM role)
+* IAM permissions to read parameters (see below)
+
+## Configuration
+
+```toml theme={null}
+[providers]
+ps = { type = "aws-ps", region = "us-east-1" }
+
+# With all optional fields:
+ps = { type = "aws-ps", region = "us-east-1", profile = "my-aws-profile", prefix = "/myapp/prod/" }
+```
+
+| Field     | Required | Description                                                                                  |
+| --------- | -------- | -------------------------------------------------------------------------------------------- |
+| `type`    | Yes      | Must be `"aws-ps"`                                                                           |
+| `region`  | Yes      | AWS region (e.g. `us-east-1`)                                                                |
+| `profile` | No       | AWS CLI profile from `~/.aws/config`. Falls back to the default credential chain if omitted. |
+| `prefix`  | No       | Prepended to all parameter names                                                             |
+
+### Configure AWS credentials
+
+<CodeGroup>
+  ```bash Environment variables theme={null}
+  export AWS_ACCESS_KEY_ID="AKIA..."
+  export AWS_SECRET_ACCESS_KEY="..."
+  export AWS_REGION="us-east-1"
+  ```
+
+  ```bash AWS CLI profile theme={null}
+  aws configure
+  export AWS_PROFILE=myapp
+  ```
+
+  ```bash IAM role (EC2 / ECS / Lambda) theme={null}
+  # No configuration needed
+  ```
+</CodeGroup>
+
+## The prefix field
+
+`prefix` is prepended to the `value` of each secret reference:
+
+```toml theme={null}
+[providers]
+ps = { type = "aws-ps", region = "us-east-1", prefix = "/myapp/prod/" }
+
+[secrets]
+DATABASE_URL = { provider = "ps", value = "database-url" }  # fetches "/myapp/prod/database-url"
+API_KEY      = { provider = "ps", value = "api-key" }       # fetches "/myapp/prod/api-key"
+```
+
+Without a prefix, use the full path in `value`:
+
+```toml theme={null}
+[providers]
+ps = { type = "aws-ps", region = "us-east-1" }
+
+[secrets]
+DATABASE_URL = { provider = "ps", value = "/myapp/prod/database-url" }
+```
+
+## IAM permissions
+
+### Read-only (minimum)
+
+```json theme={null}
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DescribeParameters",
+      "Effect": "Allow",
+      "Action": "ssm:DescribeParameters",
+      "Resource": "*"
+    },
+    {
+      "Sid": "ReadParameters",
+      "Effect": "Allow",
+      "Action": ["ssm:GetParameter", "ssm:GetParameters"],
+      "Resource": "arn:aws:ssm:REGION:ACCOUNT:parameter/myapp/*"
+    }
+  ]
+}
+```
+
+<Warning>
+  `ssm:DescribeParameters` must use `"Resource": "*"` — it cannot be scoped to specific ARNs.
+</Warning>
+
+### Full access (for testing / writes)
+
+```json theme={null}
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DescribeParameters",
+      "Effect": "Allow",
+      "Action": "ssm:DescribeParameters",
+      "Resource": "*"
+    },
+    {
+      "Sid": "ParameterStorePermissions",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:PutParameter",
+        "ssm:DeleteParameter"
+      ],
+      "Resource": ["arn:aws:ssm:REGION:ACCOUNT:parameter/myapp/*"]
+    }
+  ]
+}
+```
+
+## Usage
+
+```bash theme={null}
+# Store a secret via fnox
+fnox set DATABASE_URL "postgresql://prod.db.example.com/mydb" --provider ps
+
+# Fetch a single secret
+fnox get DATABASE_URL
+
+# Run a command with all secrets injected
+fnox exec -- ./start-server.sh
+
+# Use a different environment profile
+fnox exec --profile production -- ./deploy.sh
+```
+
+## Hierarchical organization
+
+Parameter Store paths map naturally to environments and subsystems:
+
+```
+/myapp/
+  prod/
+    database/url
+    database/password
+    api/key
+  staging/
+    database/url
+    database/password
+```
+
+```toml theme={null}
+[providers]
+prod    = { type = "aws-ps", region = "us-east-1", prefix = "/myapp/prod/" }
+staging = { type = "aws-ps", region = "us-east-1", prefix = "/myapp/staging/" }
+
+[secrets]
+DATABASE_URL = { provider = "prod", value = "database/url" }
+
+[profiles.staging.secrets]
+DATABASE_URL = { provider = "staging", value = "database/url" }
+```
+
+## Multi-environment example
+
+```toml theme={null}
+# Development: age encryption
+[providers]
+age = { type = "age", recipients = ["age1..."] }
+
+[secrets]
+DATABASE_URL = { provider = "age", value = "encrypted-dev-db..." }
+
+# Staging
+[profiles.staging.providers]
+ps = { type = "aws-ps", region = "us-east-1", prefix = "/myapp/staging/" }
+
+[profiles.staging.secrets]
+DATABASE_URL = { provider = "ps", value = "database/url" }
+
+# Production with a dedicated AWS profile
+[profiles.production.providers]
+ps = { type = "aws-ps", region = "us-east-1", profile = "prod-account", prefix = "/myapp/prod/" }
+
+[profiles.production.secrets]
+DATABASE_URL = { provider = "ps", value = "database/url" }
+```
+
+```bash theme={null}
+fnox get DATABASE_URL                        # development
+fnox get DATABASE_URL --profile staging      # staging
+fnox get DATABASE_URL --profile production   # production
+```
+
+## CI/CD example (GitHub Actions)
+
+```yaml theme={null}
+name: Deploy
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Deploy
+        run: fnox exec --profile production -- ./deploy.sh
+```
+
+## Troubleshooting
+
+**AccessDeniedException**
+
+```bash theme={null}
+aws ssm describe-parameters
+aws ssm get-parameter --name "/myapp/prod/database-url" --with-decryption
+```
+
+**ParameterNotFound**
+
+```bash theme={null}
+aws ssm get-parameters-by-path --path "/myapp/prod/" --recursive
+grep prefix fnox.toml
+```
+
+**Invalid Region**
+
+```bash theme={null}
+grep region fnox.toml
+echo $AWS_REGION
+```
+
+
+# AWS Secrets Manager
+Source: https://www.mintlify.com/jdx/fnox/providers/aws-sm
+
+Store secrets remotely in AWS Secrets Manager. fnox.toml contains only name references — secrets never touch the filesystem or version control.
+
+AWS Secrets Manager provides centralized secret storage with IAM access control, CloudTrail audit logs, and automatic rotation. Your `fnox.toml` holds only the secret names; values are fetched at runtime.
+
+## Quick start
+
+<Steps>
+  <Step title="Configure the provider">
+    ```toml theme={null}
+    [providers]
+    aws = { type = "aws-sm", region = "us-east-1", prefix = "myapp/" }
+    ```
+  </Step>
+
+  <Step title="Create a secret in AWS">
+    ```bash theme={null}
+    aws secretsmanager create-secret \
+      --name "myapp/database-url" \
+      --secret-string "postgresql://prod.example.com/db"
+    ```
+  </Step>
+
+  <Step title="Reference it in fnox.toml">
+    ```toml theme={null}
+    [secrets]
+    DATABASE_URL = { provider = "aws", value = "database-url" }
+    # With prefix "myapp/", fnox fetches "myapp/database-url"
+    ```
+  </Step>
+
+  <Step title="Fetch the secret">
+    ```bash theme={null}
+    fnox get DATABASE_URL
+    ```
+  </Step>
+</Steps>
+
+## Prerequisites
+
+* AWS account
+* AWS credentials configured (environment variables, CLI profile, or IAM role)
+* IAM permissions to read secrets (see below)
+
+## Configuration
+
+```toml theme={null}
+[providers]
+aws = { type = "aws-sm", region = "us-east-1" }
+
+# With all optional fields:
+aws = { type = "aws-sm", region = "us-east-1", profile = "my-aws-profile", prefix = "myapp/" }
+```
+
+| Field     | Required | Description                                                                                  |
+| --------- | -------- | -------------------------------------------------------------------------------------------- |
+| `type`    | Yes      | Must be `"aws-sm"`                                                                           |
+| `region`  | Yes      | AWS region (e.g. `us-east-1`)                                                                |
+| `profile` | No       | AWS CLI profile from `~/.aws/config`. Falls back to the default credential chain if omitted. |
+| `prefix`  | No       | Prepended to all secret names                                                                |
+
+### Configure AWS credentials
+
+<CodeGroup>
+  ```bash Environment variables theme={null}
+  export AWS_ACCESS_KEY_ID="AKIA..."
+  export AWS_SECRET_ACCESS_KEY="..."
+  export AWS_REGION="us-east-1"
+  ```
+
+  ```bash AWS CLI profile theme={null}
+  aws configure
+  # or use a named profile
+  export AWS_PROFILE=myapp
+  ```
+
+  ```bash IAM role (EC2 / ECS / Lambda) theme={null}
+  # No configuration needed — credentials come from instance metadata automatically
+  ```
+</CodeGroup>
+
+## The prefix field
+
+`prefix` is prepended to the `value` of each secret reference:
+
+```toml theme={null}
+[providers]
+aws = { type = "aws-sm", region = "us-east-1", prefix = "myapp/" }
+
+[secrets]
+DATABASE_URL = { provider = "aws", value = "database-url" }  # fetches "myapp/database-url"
+API_KEY      = { provider = "aws", value = "api-key" }       # fetches "myapp/api-key"
+```
+
+Without a prefix, use the full secret name in `value`:
+
+```toml theme={null}
+[providers]
+aws = { type = "aws-sm", region = "us-east-1" }
+
+[secrets]
+DATABASE_URL = { provider = "aws", value = "myapp/database-url" }
+```
+
+## IAM permissions
+
+### Read-only (minimum)
+
+```json theme={null}
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListSecrets",
+      "Effect": "Allow",
+      "Action": "secretsmanager:ListSecrets",
+      "Resource": "*"
+    },
+    {
+      "Sid": "ReadSecrets",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+      ],
+      "Resource": "arn:aws:secretsmanager:REGION:ACCOUNT:secret:myapp/*"
+    }
+  ]
+}
+```
+
+<Warning>
+  `secretsmanager:ListSecrets` must use `"Resource": "*"` — it cannot be scoped to specific ARNs.
+</Warning>
+
+### Full access (for testing / writes)
+
+```json theme={null}
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListSecretsPermission",
+      "Effect": "Allow",
+      "Action": "secretsmanager:ListSecrets",
+      "Resource": "*"
+    },
+    {
+      "Sid": "SecretsManagerPermissions",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:PutSecretValue",
+        "secretsmanager:CreateSecret",
+        "secretsmanager:UpdateSecret",
+        "secretsmanager:DeleteSecret"
+      ],
+      "Resource": ["arn:aws:secretsmanager:REGION:ACCOUNT:secret:myapp/*"]
+    }
+  ]
+}
+```
+
+## Usage
+
+```bash theme={null}
+# Fetch a single secret
+fnox get DATABASE_URL
+
+# Run a command with all secrets injected
+fnox exec -- ./start-server.sh
+
+# Use a different environment profile
+fnox exec --profile production -- ./deploy.sh
+```
+
+## JSON secrets
+
+AWS Secrets Manager supports JSON-structured secrets. By default fnox returns the entire JSON string. Use `json_path` to extract a specific field:
+
+```bash theme={null}
+aws secretsmanager create-secret \
+  --name "myapp/db-credentials" \
+  --secret-string '{"host":"db.example.com","port":"5432","username":"admin","password":"secret"}'
+```
+
+```toml theme={null}
+[secrets]
+DB_CREDENTIALS = { provider = "aws", value = "db-credentials" }
+DB_PASS        = { provider = "aws", value = "db-credentials", json_path = "password" }
+```
+
+Nested paths use dot notation. Literal dots must be escaped (`\.`):
+
+```toml theme={null}
+[secrets]
+DB_HOST      = { provider = "aws", value = "config", json_path = "database.host" }
+DB_CACHE_KEY = { provider = "aws", value = "config", json_path = 'database.cache\.key' }
+```
+
+## Multi-environment example
+
+```toml theme={null}
+# Development: age encryption
+[providers]
+age = { type = "age", recipients = ["age1..."] }
+
+[secrets]
+DATABASE_URL = { provider = "age", value = "encrypted-dev-db..." }
+
+# Staging: AWS Secrets Manager (us-east-1)
+[profiles.staging.providers]
+aws = { type = "aws-sm", region = "us-east-1", prefix = "myapp-staging/" }
+
+[profiles.staging.secrets]
+DATABASE_URL = { provider = "aws", value = "database-url" }  # → myapp-staging/database-url
+
+# Production: AWS Secrets Manager (us-west-2) with a dedicated profile
+[profiles.production.providers]
+aws = { type = "aws-sm", region = "us-west-2", profile = "prod-account", prefix = "myapp-prod/" }
+
+[profiles.production.secrets]
+DATABASE_URL = { provider = "aws", value = "database-url" }  # → myapp-prod/database-url
+```
+
+```bash theme={null}
+fnox get DATABASE_URL                        # development
+fnox get DATABASE_URL --profile staging      # staging
+fnox get DATABASE_URL --profile production   # production
+```
+
+<Tip>
+  Use age encryption for development and staging secrets to reduce AWS Secrets Manager costs. Reserve AWS SM for production-only secrets.
+</Tip>
+
+## CI/CD example (GitHub Actions)
+
+```yaml theme={null}
+name: Deploy
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Deploy
+        run: fnox exec --profile production -- ./deploy.sh
+```
+
+## Troubleshooting
+
+**AccessDeniedException**
+
+```bash theme={null}
+aws secretsmanager list-secrets
+aws secretsmanager get-secret-value --secret-id "myapp/database-url"
+```
+
+**ResourceNotFoundException**
+
+Secret does not exist or the prefix is wrong:
+
+```bash theme={null}
+aws secretsmanager list-secrets
+grep prefix fnox.toml
+```
+
+**Invalid Region**
+
+```bash theme={null}
+grep region fnox.toml
+echo $AWS_REGION
+```
+
+
+# Azure Providers
+Source: https://www.mintlify.com/jdx/fnox/providers/azure
+
+Use Azure Key Vault for encryption (azure-kms) or remote secret storage (azure-sm). Both providers authenticate with Azure credentials and integrate with Azure RBAC.
+
+fnox supports two Azure Key Vault provider types:
+
+* **`azure-kms`** — encrypts secrets using a Key Vault key and stores the ciphertext in `fnox.toml`
+* **`azure-sm`** — stores secrets remotely in Key Vault Secrets; `fnox.toml` holds only name references
+
+<Tabs>
+  <Tab title="Azure KMS (encryption)">
+    ## Azure Key Vault Keys
+
+    `azure-kms` encrypts each secret with an Azure-managed key. The ciphertext is stored in `fnox.toml` and safe to commit to git. Decryption calls the Azure Key Vault API.
+
+    ### Quick start
+
+    ```bash theme={null}
+    # Create a Key Vault key
+    az keyvault key create \
+      --vault-name "myapp-vault" \
+      --name "encryption-key" \
+      --protection software
+
+    # Configure fnox
+    cat >> fnox.toml << 'EOF'
+    [providers]
+    azurekms = { type = "azure-kms", vault_url = "https://myapp-vault.vault.azure.net/", key_name = "encryption-key" }
+    EOF
+
+    # Encrypt a secret
+    fnox set DATABASE_URL "postgresql://prod.example.com/db" --provider azurekms
+
+    # Decrypt
+    fnox get DATABASE_URL
+    ```
+
+    ### Configuration
+
+    ```toml theme={null}
+    [providers]
+    azurekms = { type = "azure-kms", vault_url = "https://myapp-vault.vault.azure.net/", key_name = "encryption-key" }
+    ```
+
+    | Field       | Required | Description                                                                   |
+    | ----------- | -------- | ----------------------------------------------------------------------------- |
+    | `type`      | Yes      | Must be `"azure-kms"`                                                         |
+    | `vault_url` | Yes      | Full URL of the Azure Key Vault (e.g. `https://myapp-vault.vault.azure.net/`) |
+    | `key_name`  | Yes      | Name of the key within the vault                                              |
+
+    ### Required permissions
+
+    Grant the **Key Vault Crypto User** role to the identity that will encrypt and decrypt:
+
+    ```bash theme={null}
+    az role assignment create \
+      --role "Key Vault Crypto User" \
+      --assignee "user@example.com" \
+      --scope "/subscriptions/SUB-ID/resourceGroups/myapp-rg/providers/Microsoft.KeyVault/vaults/myapp-vault"
+    ```
+
+    ### How it works
+
+    1. **`fnox set`** — calls Azure Key Vault to encrypt the value and stores the base64 ciphertext in `fnox.toml`.
+    2. **`fnox get`** — reads the ciphertext from `fnox.toml` and calls Azure Key Vault to recover the plaintext.
+  </Tab>
+
+  <Tab title="Azure SM (remote storage)">
+    ## Azure Key Vault Secrets
+
+    `azure-sm` stores secrets remotely in Azure Key Vault Secrets. Your `fnox.toml` contains only the secret name; the value is fetched at runtime.
+
+    ### Quick start
+
+    ```bash theme={null}
+    # Create a Key Vault
+    az keyvault create --name "myapp-vault" --resource-group "myapp-rg"
+
+    # Configure fnox
+    cat >> fnox.toml << 'EOF'
+    [providers]
+    azure = { type = "azure-sm", vault_url = "https://myapp-vault.vault.azure.net/", prefix = "myapp-" }
+    EOF
+
+    # Create a secret in Azure
+    az keyvault secret set \
+      --vault-name "myapp-vault" \
+      --name "myapp-database-url" \
+      --value "postgresql://prod.example.com/db"
+
+    # Reference it in fnox.toml
+    cat >> fnox.toml << 'EOF'
+    [secrets]
+    DATABASE_URL = { provider = "azure", value = "database-url" }
+    EOF
+
+    # Fetch the secret
+    fnox get DATABASE_URL
+    ```
+
+    ### Configuration
+
+    ```toml theme={null}
+    [providers]
+    azure = { type = "azure-sm", vault_url = "https://myapp-vault.vault.azure.net/", prefix = "myapp-" }
+    # prefix is optional
+    ```
+
+    | Field       | Required | Description                     |
+    | ----------- | -------- | ------------------------------- |
+    | `type`      | Yes      | Must be `"azure-sm"`            |
+    | `vault_url` | Yes      | Full URL of the Azure Key Vault |
+    | `prefix`    | No       | Prepended to all secret names   |
+
+    ### Required permissions
+
+    Grant the **Key Vault Secrets User** role to the identity that will read secrets:
+
+    ```bash theme={null}
+    az role assignment create \
+      --role "Key Vault Secrets User" \
+      --assignee "user@example.com" \
+      --scope "/subscriptions/SUB-ID/resourceGroups/myapp-rg/providers/Microsoft.KeyVault/vaults/myapp-vault"
+    ```
+  </Tab>
+</Tabs>
+
+## Authentication
+
+Both `azure-kms` and `azure-sm` use the Azure SDK default credential chain. Choose the method that fits your environment:
+
+<CodeGroup>
+  ```bash Azure CLI (local development) theme={null}
+  az login
+  ```
+
+  ```bash Service principal (CI/CD) theme={null}
+  export AZURE_CLIENT_ID="..."
+  export AZURE_CLIENT_SECRET="..."
+  export AZURE_TENANT_ID="..."
+  ```
+
+  ```bash Managed identity (Azure VMs / Functions) theme={null}
+  # No configuration needed — credentials are automatic
+  ```
+</CodeGroup>
+
+## Multi-environment example
+
+```toml theme={null}
+# Development: age encryption
+[providers]
+age = { type = "age", recipients = ["age1..."] }
+
+[secrets]
+DATABASE_URL = { provider = "age", value = "encrypted-dev..." }
+
+# Production: Azure Key Vault Secrets
+[profiles.production.providers]
+azure = { type = "azure-sm", vault_url = "https://myapp-vault.vault.azure.net/", prefix = "myapp-prod-" }
+
+[profiles.production.secrets]
+DATABASE_URL = { provider = "azure", value = "database-url" }
+```
+
+
+# Google Cloud Providers
+Source: https://www.mintlify.com/jdx/fnox/providers/gcp
+
+Use GCP Cloud KMS for encryption (gcp-kms) or GCP Secret Manager for remote storage (gcp-sm). Both providers authenticate via Application Default Credentials.
+
+fnox supports two Google Cloud provider types:
+
+* **`gcp-kms`** — encrypts secrets with Cloud KMS and stores the ciphertext in `fnox.toml`
+* **`gcp-sm`** — stores secrets remotely in GCP Secret Manager; `fnox.toml` holds only name references
+
+<Tabs>
+  <Tab title="GCP KMS (encryption)">
+    ## Google Cloud KMS
+
+    `gcp-kms` encrypts each secret with a GCP-managed key. The ciphertext is stored in `fnox.toml` and safe to commit to git. Decryption calls the Cloud KMS API.
+
+    ### Quick start
+
+    ```bash theme={null}
+    # Enable Cloud KMS and create a key
+    gcloud services enable cloudkms.googleapis.com
+    gcloud kms keyrings create "fnox-keyring" --location="us-central1"
+    gcloud kms keys create "fnox-key" \
+      --keyring="fnox-keyring" \
+      --location="us-central1" \
+      --purpose="encryption"
+
+    # Configure fnox
+    cat >> fnox.toml << 'EOF'
+    [providers.gcpkms]
+    type = "gcp-kms"
+    project = "my-project-id"
+    location = "us-central1"
+    keyring = "fnox-keyring"
+    key = "fnox-key"
+    EOF
+
+    # Encrypt a secret
+    fnox set DATABASE_URL "postgresql://prod.example.com/db" --provider gcpkms
+
+    # Decrypt
+    fnox get DATABASE_URL
+    ```
+
+    ### Configuration
+
+    ```toml theme={null}
+    [providers.gcpkms]
+    type = "gcp-kms"
+    project = "my-project-id"
+    location = "us-central1"
+    keyring = "fnox-keyring"
+    key = "fnox-key"
+    ```
+
+    | Field      | Required | Description                             |
+    | ---------- | -------- | --------------------------------------- |
+    | `type`     | Yes      | Must be `"gcp-kms"`                     |
+    | `project`  | Yes      | GCP project ID                          |
+    | `location` | Yes      | Cloud KMS location (e.g. `us-central1`) |
+    | `keyring`  | Yes      | Name of the key ring                    |
+    | `key`      | Yes      | Name of the crypto key                  |
+
+    ### Required permissions
+
+    Grant the **Cloud KMS CryptoKey Encrypter/Decrypter** role:
+
+    ```bash theme={null}
+    gcloud kms keys add-iam-policy-binding "fnox-key" \
+      --keyring="fnox-keyring" \
+      --location="us-central1" \
+      --member="user:your-email@example.com" \
+      --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
+    ```
+
+    ### How it works
+
+    1. **`fnox set`** — calls Cloud KMS to encrypt the value and stores the base64 ciphertext in `fnox.toml`.
+    2. **`fnox get`** — reads the ciphertext from `fnox.toml` and calls Cloud KMS to recover the plaintext.
+  </Tab>
+
+  <Tab title="GCP Secret Manager (remote storage)">
+    ## GCP Secret Manager
+
+    `gcp-sm` stores secrets remotely in GCP Secret Manager. Your `fnox.toml` contains only the secret name; the value is fetched at runtime.
+
+    ### Quick start
+
+    ```bash theme={null}
+    # Enable the Secret Manager API
+    gcloud services enable secretmanager.googleapis.com
+
+    # Configure fnox
+    cat >> fnox.toml << 'EOF'
+    [providers]
+    gcp = { type = "gcp-sm", project = "my-project-id", prefix = "myapp-" }
+    EOF
+
+    # Create a secret in GCP
+    echo -n "postgresql://prod.example.com/db" | \
+      gcloud secrets create myapp-database-url --data-file=-
+
+    # Reference it in fnox.toml
+    cat >> fnox.toml << 'EOF'
+    [secrets]
+    DATABASE_URL = { provider = "gcp", value = "database-url" }
+    EOF
+
+    # Fetch the secret
+    fnox get DATABASE_URL
+    ```
+
+    ### Configuration
+
+    ```toml theme={null}
+    [providers]
+    gcp = { type = "gcp-sm", project = "my-project-id", prefix = "myapp-" }
+    # prefix is optional
+    ```
+
+    | Field     | Required | Description                   |
+    | --------- | -------- | ----------------------------- |
+    | `type`    | Yes      | Must be `"gcp-sm"`            |
+    | `project` | Yes      | GCP project ID                |
+    | `prefix`  | No       | Prepended to all secret names |
+
+    ### Required permissions
+
+    Grant the **Secret Manager Secret Accessor** role:
+
+    ```bash theme={null}
+    gcloud projects add-iam-policy-binding PROJECT-ID \
+      --member="user:your-email@example.com" \
+      --role="roles/secretmanager.secretAccessor"
+    ```
+  </Tab>
+</Tabs>
+
+## Authentication
+
+Both `gcp-kms` and `gcp-sm` use Application Default Credentials (ADC). Choose the method that fits your environment:
+
+<CodeGroup>
+  ```bash gcloud CLI (local development) theme={null}
+  gcloud auth application-default login
+  ```
+
+  ```bash Service account (CI/CD) theme={null}
+  export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
+  ```
+
+  ```bash Workload Identity (GKE) theme={null}
+  # No configuration needed — credentials are automatic
+  ```
+</CodeGroup>
+
+## Multi-environment example
+
+```toml theme={null}
+# Development: age encryption
+[providers]
+age = { type = "age", recipients = ["age1..."] }
+
+[secrets]
+DATABASE_URL = { provider = "age", value = "encrypted-dev..." }
+
+# Production: GCP Secret Manager
+[profiles.production.providers]
+gcp = { type = "gcp-sm", project = "my-project-id", prefix = "myapp-prod-" }
+
+[profiles.production.secrets]
+DATABASE_URL = { provider = "gcp", value = "database-url" }
+```
+
+
+# HashiCorp Vault
+Source: https://www.mintlify.com/jdx/fnox/providers/hashicorp-vault
+
+Integrate with self-hosted or HCP HashiCorp Vault for advanced secret management with dynamic secrets, fine-grained policies, and audit logging.
+
+HashiCorp Vault is a mature, self-hostable secret management system with advanced features including dynamic secrets, secret leasing, and fine-grained access policies. fnox integrates via the `vault` CLI.
+
+## Prerequisites
+
+* Vault server running (self-hosted or [HCP Vault](https://developer.hashicorp.com/hcp/docs/vault))
+* Vault CLI installed
+* Vault token with appropriate policies
+
+## Installation
+
+<CodeGroup>
+  ```bash macOS theme={null}
+  brew install vault
+  ```
+
+  ```bash Ubuntu / Debian theme={null}
+  wget -O- https://apt.releases.hashicorp.com/gpg | \
+    sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+  echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
+    https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
+    sudo tee /etc/apt/sources.list.d/hashicorp.list
+  sudo apt update && sudo apt install vault
+  ```
+</CodeGroup>
+
+## Configuration
+
+```toml theme={null}
+[providers]
+vault = { type = "vault", path = "secret/myapp" }
+# address and token are optional — fall back to environment variables
+```
+
+| Field       | Required | Description                                                          |
+| ----------- | -------- | -------------------------------------------------------------------- |
+| `type`      | Yes      | Must be `"vault"`                                                    |
+| `path`      | Yes      | Base path for secrets in Vault (e.g. `secret/myapp`)                 |
+| `address`   | No       | Vault server URL. Falls back to `FNOX_VAULT_ADDR` then `VAULT_ADDR`. |
+| `token`     | No       | Vault token. Falls back to `FNOX_VAULT_TOKEN` then `VAULT_TOKEN`.    |
+| `namespace` | No       | Vault namespace (HCP Vault and Vault Enterprise).                    |
+
+## Environment variables
+
+| Variable           | Description                                                  |
+| ------------------ | ------------------------------------------------------------ |
+| `VAULT_ADDR`       | Vault server address (e.g. `https://vault.example.com:8200`) |
+| `FNOX_VAULT_ADDR`  | fnox-specific override for `VAULT_ADDR`                      |
+| `VAULT_TOKEN`      | Vault authentication token                                   |
+| `FNOX_VAULT_TOKEN` | fnox-specific override for `VAULT_TOKEN`                     |
+
+fnox resolves the address and token in this order: provider config → `FNOX_VAULT_*` → `VAULT_*`.
+
+## Setup
+
+<Steps>
+  <Step title="Configure Vault access">
+    ```bash theme={null}
+    export VAULT_ADDR="https://vault.example.com:8200"
+
+    # Login interactively
+    vault login -method=userpass username=myuser
+
+    # Or export an existing token
+    export VAULT_TOKEN="hvs.CAESIJ..."
+    ```
+  </Step>
+
+  <Step title="Create a Vault policy">
+    ```hcl theme={null}
+    # policy.hcl
+    path "secret/data/myapp/*" {
+      capabilities = ["read"]
+    }
+
+    path "secret/metadata/myapp/*" {
+      capabilities = ["list"]
+    }
+    ```
+
+    ```bash theme={null}
+    vault policy write fnox-policy policy.hcl
+    ```
+  </Step>
+
+  <Step title="Store secrets in Vault">
+    ```bash theme={null}
+    # KV v2 engine
+    vault kv put secret/myapp/database url="postgresql://prod.example.com/db"
+    vault kv put secret/myapp/api-key value="[REDACTED-STRIPE-DOCS-EXAMPLE]"
+    ```
+  </Step>
+
+  <Step title="Reference secrets in fnox.toml">
+    ```toml theme={null}
+    [providers]
+    vault = { type = "vault", path = "secret/myapp" }
+
+    [secrets]
+    DATABASE_URL = { provider = "vault", value = "database/url" }
+    # → reads field "url" from secret/myapp/database
+    API_KEY = { provider = "vault", value = "api-key/value" }
+    # → reads field "value" from secret/myapp/api-key
+    ```
+  </Step>
+</Steps>
+
+## Secret paths
+
+The `value` in a secret reference is appended to the `path` from the provider config. The format is `secret-name/field`:
+
+```toml theme={null}
+[providers]
+vault = { type = "vault", path = "secret/myapp" }
+
+[secrets]
+DATABASE_URL = { provider = "vault", value = "database/url" }
+# → vault kv get -field=url secret/myapp/database
+
+API_KEY = { provider = "vault", value = "api-key/value" }
+# → vault kv get -field=value secret/myapp/api-key
+```
+
+If no field is specified (e.g. `value = "api-key"`), fnox reads the `value` field by default.
+
+## Authentication methods
+
+Vault supports many auth methods. Set `VAULT_TOKEN` after authenticating:
+
+<CodeGroup>
+  ```bash Token (direct) theme={null}
+  export VAULT_TOKEN="hvs.CAESIJ..."
+  ```
+
+  ```bash Username / password theme={null}
+  vault login -method=userpass username=myuser
+  # VAULT_TOKEN is set automatically after login
+  ```
+
+  ```bash AppRole (CI/CD) theme={null}
+  vault write auth/approle/login \
+    role_id="$ROLE_ID" \
+    secret_id="$SECRET_ID"
+  export VAULT_TOKEN="<token from response>"
+  ```
+
+  ```bash AWS IAM theme={null}
+  vault login -method=aws
+  ```
+</CodeGroup>
+
+## Usage
+
+```bash theme={null}
+export VAULT_ADDR="https://vault.example.com:8200"
+export VAULT_TOKEN="hvs.CAESIJ..."
+
+# Fetch a secret
+fnox get DATABASE_URL
+
+# Run a command with all secrets injected
+fnox exec -- ./app
+```
+
+## CI/CD example (GitHub Actions)
+
+```yaml theme={null}
+name: Deploy
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy
+        env:
+          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+          VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
+        run: fnox exec -- ./deploy.sh
+```
+
+## Multi-environment example
+
+```toml theme={null}
+# Development: age encryption
+[providers]
+age = { type = "age", recipients = ["age1..."] }
+
+[secrets]
+DATABASE_URL = { provider = "age", value = "encrypted-dev..." }
+
+# Production: HashiCorp Vault
+[profiles.production.providers]
+vault = { type = "vault", address = "https://vault.example.com:8200", path = "secret/myapp/prod" }
+
+[profiles.production.secrets]
+DATABASE_URL = { provider = "vault", value = "database/url" }
+```
+
+## Troubleshooting
+
+**"VAULT\_TOKEN not set"**
+
+```bash theme={null}
+export VAULT_TOKEN="hvs.CAESIJ..."
+```
+
+**"permission denied" (403)**
+
+Check that your token's policy grants read access to the secret path:
+
+```bash theme={null}
+vault token lookup
+vault kv get secret/myapp/database
+```
+
+**"vault: command not found"**
+
+Install the Vault CLI (see [Installation](#installation) above).
+
+
+# Local Storage Providers
+Source: https://www.mintlify.com/jdx/fnox/providers/local-storage
+
+Store secrets locally using the OS keychain, a KeePass database, password-store (pass), or plain text defaults. Best for personal projects and local development.
+
+Local storage providers keep secrets on your machine. They are well-suited for personal projects and local development, but are not appropriate for teams or CI/CD environments.
+
+<AccordionGroup>
+  <Accordion title="OS Keychain">
+    ## OS Keychain
+
+    fnox can store and retrieve secrets from your operating system's native credential store.
+
+    | Platform | Backend                                                 |
+    | -------- | ------------------------------------------------------- |
+    | macOS    | Keychain Access (built-in)                              |
+    | Windows  | Credential Manager (built-in)                           |
+    | Linux    | Secret Service via `libsecret` (GNOME Keyring, KWallet) |
+
+    ### Linux setup
+
+    On Linux you need `libsecret` installed before using this provider:
+
+    <CodeGroup>
+      ```bash Ubuntu / Debian theme={null}
+      sudo apt-get install libsecret-1-0 libsecret-1-dev
+      ```
+
+      ```bash Fedora / RHEL theme={null}
+      sudo dnf install libsecret libsecret-devel
+      ```
+
+      ```bash Arch theme={null}
+      sudo pacman -S libsecret
+      ```
+    </CodeGroup>
+
+    macOS and Windows have built-in support — no installation needed.
+
+    ### Configuration
+
+    ```toml theme={null}
+    [providers]
+    keychain = { type = "keychain", service = "fnox" }
+
+    # With optional prefix:
+    keychain = { type = "keychain", service = "fnox", prefix = "myapp/" }
+    ```
+
+    | Field     | Required | Description                                                                     |
+    | --------- | -------- | ------------------------------------------------------------------------------- |
+    | `type`    | Yes      | Must be `"keychain"`                                                            |
+    | `service` | Yes      | Namespace for fnox entries in the keychain (e.g. `"fnox"` or your project name) |
+    | `prefix`  | No       | Prepended to all secret names                                                   |
+
+    ### Usage
+
+    ```bash theme={null}
+    # Store a secret in the OS keychain
+    fnox set DATABASE_URL "postgresql://localhost/mydb" --provider keychain
+
+    # Retrieve
+    fnox get DATABASE_URL
+
+    # Run commands with secrets injected
+    fnox exec -- npm run dev
+    ```
+
+    The resulting `fnox.toml` contains only the entry name, not the actual value:
+
+    ```toml theme={null}
+    [secrets]
+    DATABASE_URL = { provider = "keychain", value = "database-url" }
+    ```
+
+    ### Bootstrap pattern
+
+    A common use is storing provider tokens locally so they don't need to be set manually each session:
+
+    ```toml theme={null}
+    [providers]
+    keychain = { type = "keychain", service = "fnox" }
+
+    [secrets]
+    OP_SERVICE_ACCOUNT_TOKEN = { provider = "keychain", value = "op-token" }
+    ```
+
+    ```bash theme={null}
+    export OP_SERVICE_ACCOUNT_TOKEN=$(fnox get OP_SERVICE_ACCOUNT_TOKEN)
+    ```
+
+    ### Limitations
+
+    <Warning>
+      The OS keychain requires a graphical session. It does not work in CI/CD, Docker containers, or headless SSH sessions. Use age encryption or a cloud provider for those environments.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="KeePass">
+    ## KeePass
+
+    fnox reads and writes secrets to a local KeePass `.kdbx` database file (KDBX4 format), compatible with KeePass and KeePassXC.
+
+    ### Configuration
+
+    ```toml theme={null}
+    [providers]
+    keepass = { type = "keepass", database = "~/secrets.kdbx" }
+
+    # With keyfile for two-factor security:
+    keepass = { type = "keepass", database = "~/secrets.kdbx", keyfile = "~/keyfile.key" }
+    ```
+
+    | Field      | Required | Description                                                    |
+    | ---------- | -------- | -------------------------------------------------------------- |
+    | `type`     | Yes      | Must be `"keepass"`                                            |
+    | `database` | Yes      | Path to the `.kdbx` file. Shell expansion (`~`) is supported.  |
+    | `keyfile`  | No       | Path to an optional keyfile for two-factor database protection |
+
+    ### Authentication
+
+    Set the database master password via environment variable:
+
+    ```bash theme={null}
+    export FNOX_KEEPASS_PASSWORD="your-master-password"
+    # fallback:
+    export KEEPASS_PASSWORD="your-master-password"
+    ```
+
+    <Warning>
+      Do not put the master password directly in `fnox.toml`. Use environment variables.
+    </Warning>
+
+    ### Reference formats
+
+    | Format        | Example                      | Description                                      |
+    | ------------- | ---------------------------- | ------------------------------------------------ |
+    | Entry name    | `my-entry`                   | Returns the password field (searches all groups) |
+    | Entry + field | `my-entry/username`          | Returns a specific field                         |
+    | Group + entry | `work/my-entry`              | Returns password from entry in group             |
+    | Full path     | `work/project/api-key/notes` | Group path + entry + field                       |
+
+    Supported fields: `password` (default), `username`, `url`, `notes`, `title` (read-only). Field names are case-insensitive.
+
+    ### Usage
+
+    ```bash theme={null}
+    # Store a secret
+    fnox set DATABASE_URL "postgresql://localhost/mydb" --provider keepass
+
+    # Store with a specific path
+    fnox set API_USER "admin" --provider keepass --key-name "production/api-service/username"
+
+    # Retrieve
+    fnox get DATABASE_URL
+
+    # Run commands
+    fnox exec -- npm run dev
+    ```
+
+    ### Example configurations
+
+    ```toml theme={null}
+    # Personal database
+    [providers]
+    keepass = { type = "keepass", database = "~/Documents/passwords.kdbx" }
+
+    [secrets]
+    GITHUB_TOKEN = { provider = "keepass", value = "github/token" }
+    NPM_TOKEN    = { provider = "keepass", value = "npm/token" }
+    ```
+
+    ```toml theme={null}
+    # Organized by environment
+    [providers]
+    keepass = { type = "keepass", database = "~/work/secrets.kdbx" }
+
+    [secrets]
+    DEV_DB = { provider = "keepass", value = "development/database/password" }
+
+    [profiles.production.secrets]
+    PROD_DB = { provider = "keepass", value = "production/database/password" }
+    ```
+
+    ### Security
+
+    * Encrypted with AES-256 or ChaCha20 (KDBX4)
+    * Key derivation uses Argon2d
+    * Atomic writes protect against corruption
+  </Accordion>
+
+  <Accordion title="password-store (pass)">
+    ## password-store (pass)
+
+    fnox integrates with [`pass`](https://www.passwordstore.org/), the standard Unix password manager. Secrets are stored as GPG-encrypted files that can be synced via git.
+
+    ### Prerequisites
+
+    * GPG installed and a key pair generated
+    * `pass` installed
+
+    ### Installation
+
+    <CodeGroup>
+      ```bash macOS theme={null}
+      brew install gnupg pass
+      ```
+
+      ```bash Ubuntu / Debian theme={null}
+      sudo apt install gnupg pass
+      ```
+
+      ```bash Fedora / RHEL theme={null}
+      sudo dnf install gnupg2 pass
+      ```
+
+      ```bash Arch theme={null}
+      sudo pacman -S gnupg pass
+      ```
+    </CodeGroup>
+
+    ### Setup
+
+    ```bash theme={null}
+    # Generate a GPG key if you don't have one
+    gpg --full-generate-key
+    gpg --list-secret-keys --keyid-format LONG  # note the key ID
+
+    # Initialize password-store
+    pass init <your-gpg-key-id>
+    # Example: pass init 3AA5C34371567BD2
+    ```
+
+    ### Configuration
+
+    ```toml theme={null}
+    [providers]
+    pass = { type = "password-store", prefix = "fnox/" }
+    ```
+
+    ```toml theme={null}
+    [providers.pass]
+    type = "password-store"
+    prefix = "fnox/"         # Optional: prepend to all secret paths (default: none)
+    store_dir = "/custom/path"  # Optional: custom store location (default: ~/.password-store)
+    ```
+
+    | Field       | Required | Description                                                           |
+    | ----------- | -------- | --------------------------------------------------------------------- |
+    | `type`      | Yes      | Must be `"password-store"`                                            |
+    | `prefix`    | No       | Prepended to all secret paths (e.g. `"fnox/"`)                        |
+    | `store_dir` | No       | Custom password store directory (or set `PASSWORD_STORE_DIR` env var) |
+
+    ### Usage
+
+    ```bash theme={null}
+    # Store a secret
+    fnox set DATABASE_URL "postgresql://localhost/mydb" --provider pass
+
+    # Store with a nested path
+    fnox set DB_PASSWORD "secret123" --provider pass --key-name "database/production"
+
+    # Retrieve
+    fnox get DATABASE_URL
+
+    # Run commands
+    fnox exec -- npm run dev
+    ```
+
+    ### Secret reference formats
+
+    ```toml theme={null}
+    [secrets]
+    # With prefix "fnox/":
+    MY_SECRET   = { provider = "pass", value = "api-key" }       # → fnox/api-key.gpg
+    DB_PASSWORD = { provider = "pass", value = "db/production" } # → fnox/db/production.gpg
+    ```
+
+    ### Git integration
+
+    password-store has built-in git support. Changes are committed automatically when using `fnox set`:
+
+    ```bash theme={null}
+    pass git init
+    pass git remote add origin https://github.com/username/password-store.git
+    pass git push
+    ```
+
+    ### Environment variables
+
+    ```bash theme={null}
+    export PASSWORD_STORE_DIR=/path/to/store        # standard pass env var
+    export FNOX_PASSWORD_STORE_DIR=/path/to/store   # fnox-specific override
+    export GPG_TTY=$(tty)                           # required for TTY-based GPG prompts
+    ```
+
+    <Tip>
+      Add `export GPG_TTY=$(tty)` to your shell profile to prevent GPG passphrase prompts from failing.
+    </Tip>
+  </Accordion>
+
+  <Accordion title="Plain text">
+    ## Plain text
+
+    Plain text is the default when no provider is specified. Use it only for non-sensitive default values — never for passwords, API keys, or tokens.
+
+    ### Configuration
+
+    No provider setup is needed. Set `default` on a secret:
+
+    ```toml theme={null}
+    [secrets]
+    NODE_ENV   = { default = "development" }
+    LOG_LEVEL  = { default = "info" }
+    PORT       = { default = "3000" }
+    ```
+
+    ### When plain text is appropriate
+
+    * Non-sensitive configuration defaults (ports, log levels, feature flags)
+    * Public URLs
+    * Local development fallbacks
+
+    ```toml theme={null}
+    [secrets]
+    PUBLIC_API_URL = { default = "https://api.example.com" }
+    CDN_URL        = { default = "https://cdn.example.com" }
+    DEBUG_MODE     = { default = "false" }
+    ```
+
+    ### Fallback pattern
+
+    A `default` value is used when the provider-encrypted value cannot be decrypted (e.g. the key is not available locally):
+
+    ```toml theme={null}
+    [providers]
+    age = { type = "age", recipients = ["age1..."] }
+
+    [secrets]
+    DATABASE_URL = { provider = "age", value = "encrypted...", default = "postgresql://localhost/dev_db" }
+    ```
+
+    ### When NOT to use plain text
+
+    <Warning>
+      Never store sensitive data as plain text in `fnox.toml`.
+    </Warning>
+
+    ```toml theme={null}
+    # ❌ Never do this
+    DATABASE_PASSWORD = { default = "super-secret" }
+    STRIPE_KEY        = { default = "[REDACTED-STRIPE-DOCS-EXAMPLE]" }
+    JWT_SECRET        = { default = "my-secret-key" }
+
+    # ✅ Use encryption instead
+    DATABASE_PASSWORD = { provider = "age", value = "encrypted..." }
+    ```
+
+    Run `fnox scan` to detect accidentally committed secrets:
+
+    ```bash theme={null}
+    fnox scan
+    fnox scan src/
+    fnox scan --fix  # interactive
+    ```
+  </Accordion>
+</AccordionGroup>
+
+
+# Providers Overview
+Source: https://www.mintlify.com/jdx/fnox/providers/overview
+
+Choose the right secret storage provider for your project. fnox supports encryption, cloud storage, password managers, and local storage backends.
+
+Providers are the backends that store or encrypt your secrets. fnox.toml contains references to secrets (or encrypted ciphertext), while providers handle the actual storage and retrieval. You can use multiple providers in the same project.
+
+## Categories
+
+### Encryption
+
+Secrets are encrypted and stored directly in `fnox.toml`. The ciphertext is safe to commit to version control, and decryption happens locally using your key.
+
+<CardGroup>
+  <Card title="Age" icon="key" href="/providers/age">
+    Modern encryption with SSH key support. Free, offline, team-friendly.
+  </Card>
+
+  <Card title="AWS KMS" icon="lock" href="/providers/aws-kms">
+    AWS Key Management Service. Encrypted ciphertext stored in git with IAM access control.
+  </Card>
+
+  <Card title="Azure Key Vault Keys" icon="lock" href="/providers/azure">
+    Azure-managed encryption keys. Ciphertext stored in fnox.toml.
+  </Card>
+
+  <Card title="GCP Cloud KMS" icon="lock" href="/providers/gcp">
+    Google Cloud KMS encryption. Ciphertext stored in fnox.toml.
+  </Card>
+</CardGroup>
+
+### Cloud secret storage
+
+Secrets are stored remotely in a cloud provider. Your `fnox.toml` contains only references (names), not values or ciphertext.
+
+<CardGroup>
+  <Card title="AWS Secrets Manager" icon="cloud" href="/providers/aws-sm">
+    Centralized AWS secret storage with rotation and versioning.
+  </Card>
+
+  <Card title="AWS Parameter Store" icon="cloud" href="/providers/aws-ps">
+    Cost-effective AWS SSM storage with hierarchical paths.
+  </Card>
+
+  <Card title="Azure Key Vault Secrets" icon="cloud" href="/providers/azure">
+    Azure-managed remote secret storage.
+  </Card>
+
+  <Card title="GCP Secret Manager" icon="cloud" href="/providers/gcp">
+    Google Cloud centralized secret storage.
+  </Card>
+
+  <Card title="HashiCorp Vault" icon="server" href="/providers/hashicorp-vault">
+    Self-hosted or HCP Vault with dynamic secrets and fine-grained policies.
+  </Card>
+
+  <Card title="Bitwarden Secrets Manager" icon="shield" href="/providers/password-managers">
+    Bitwarden's DevOps-focused secrets product (bws CLI).
+  </Card>
+
+  <Card title="Doppler" icon="cloud" href="/providers/password-managers">
+    Developer-friendly cloud secrets with environment-based configs.
+  </Card>
+</CardGroup>
+
+### Password managers
+
+Retrieve secrets from password managers and secret services you already use.
+
+<CardGroup>
+  <Card title="1Password" icon="shield-check" href="/providers/password-managers">
+    1Password CLI integration with service account support.
+  </Card>
+
+  <Card title="Bitwarden" icon="shield" href="/providers/password-managers">
+    Bitwarden and self-hosted Vaultwarden vault integration.
+  </Card>
+
+  <Card title="Infisical" icon="cloud" href="/providers/password-managers">
+    Open-source secret management with environment scoping.
+  </Card>
+</CardGroup>
+
+### Local storage
+
+Secrets are stored on the local machine only — not suitable for teams or CI/CD.
+
+<CardGroup>
+  <Card title="OS Keychain" icon="laptop" href="/providers/local-storage">
+    macOS Keychain, Windows Credential Manager, Linux Secret Service.
+  </Card>
+
+  <Card title="KeePass" icon="database" href="/providers/local-storage">
+    Local KDBX database files, compatible with KeePassXC.
+  </Card>
+
+  <Card title="password-store (pass)" icon="terminal" href="/providers/local-storage">
+    GPG-encrypted files with git sync support.
+  </Card>
+
+  <Card title="Plain text" icon="file-text" href="/providers/local-storage">
+    Unencrypted defaults only. Never use for sensitive values.
+  </Card>
+</CardGroup>
+
+## Feature comparison
+
+| Feature        | age    | AWS KMS | AWS SM | 1Password | Vault |
+| -------------- | ------ | ------- | ------ | --------- | ----- |
+| Offline        | ✅      | ❌       | ❌      | ❌         | ❌     |
+| In git         | ✅      | ✅       | ❌      | ❌         | ❌     |
+| Free           | ✅      | 💰      | 💰     | 💰        | ✅\*   |
+| Audit logs     | ❌      | ✅       | ✅      | ✅         | ✅     |
+| Access control | ❌      | ✅       | ✅      | ✅         | ✅     |
+| Rotation       | Manual | Manual  | ✅      | Manual    | ✅     |
+| Team-friendly  | ✅      | ✅       | ✅      | ✅         | ✅     |
+
+\*Self-hosted Vault is free; HCP Vault is paid.
+
+## Mixing providers
+
+You can declare multiple providers in the same `fnox.toml` and assign each secret to the appropriate one. A common pattern is age for development secrets (encrypted in git) and a cloud provider for production.
+
+```toml theme={null}
+[providers]
+age = { type = "age", recipients = ["age1..."] }
+aws = { type = "aws-sm", region = "us-east-1" }
+
+# Development secrets (encrypted in git)
+[secrets]
+DATABASE_URL = { provider = "age", value = "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+" }
+
+# Production secrets (fetched from AWS)
+[profiles.production.providers]
+aws = { type = "aws-sm", region = "us-east-1", prefix = "myapp-prod/" }
+
+[profiles.production.secrets]
+DATABASE_URL = { provider = "aws", value = "database-url" }
+```
+
+```bash theme={null}
+# Development
+fnox get DATABASE_URL
+
+# Production
+fnox get DATABASE_URL --profile production
+```
+
+## Next steps
+
+* [Age Encryption](/providers/age) — Simple, free, works with SSH keys you already have
+* [AWS Parameter Store](/providers/aws-ps) — Cost-effective AWS secret storage
+* [AWS Secrets Manager](/providers/aws-sm) — Production AWS workloads with rotation
+* [1Password](/providers/password-managers) — Leverage an existing 1Password setup
+
+
+# Password Managers
+Source: https://www.mintlify.com/jdx/fnox/providers/password-managers
+
+Integrate fnox with 1Password, Bitwarden, Bitwarden Secrets Manager, Infisical, or Doppler. Secrets live in your existing password manager or cloud secrets service.
+
+fnox integrates with popular password managers and cloud secrets services. `fnox.toml` stores only name references; values are fetched from the service at runtime.
+
+<Tabs>
+  <Tab title="1Password">
+    ## 1Password
+
+    fnox integrates with 1Password via the `op` CLI. Use a service account token so no interactive login is required.
+
+    ### Prerequisites
+
+    * [1Password account](https://1password.com)
+    * [1Password CLI](https://developer.1password.com/docs/cli) (`op`) installed
+
+    ### Installation
+
+    <CodeGroup>
+      ```bash macOS theme={null}
+      brew install 1password-cli
+      ```
+
+      ```bash Linux theme={null}
+      curl -sS https://downloads.1password.com/linux/keys/1password.asc | \
+        sudo gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] \
+        https://downloads.1password.com/linux/debian/$(dpkg --print-architecture) stable main" | \
+        sudo tee /etc/apt/sources.list.d/1password.list
+      sudo apt update && sudo apt install 1password-cli
+      ```
+
+      ```bash Windows (Scoop) theme={null}
+      scoop install 1password-cli
+      ```
+    </CodeGroup>
+
+    ### Setup
+
+    <Steps>
+      <Step title="Create a service account">
+        1. Go to your [1Password account](https://my.1password.com)
+        2. Navigate to Settings → Integrations → Service Accounts
+        3. Create a new service account (e.g. "fnox-dev")
+        4. Grant access to the relevant vault
+        5. Copy the `OP_SERVICE_ACCOUNT_TOKEN` (starts with `ops_`)
+      </Step>
+
+      <Step title="Store the token (bootstrap with age)">
+        ```bash theme={null}
+        fnox set OP_SERVICE_ACCOUNT_TOKEN "ops_YOUR_TOKEN" --provider age
+        ```
+
+        This encrypts the token in `fnox.toml` so the team can bootstrap.
+      </Step>
+
+      <Step title="Configure the 1Password provider">
+        ```toml theme={null}
+        [providers]
+        onepass = { type = "1password", vault = "Development" }
+        # account is optional: onepass = { type = "1password", vault = "Development", account = "my.1password.com" }
+        ```
+      </Step>
+
+      <Step title="Reference secrets">
+        ```toml theme={null}
+        [secrets]
+        DATABASE_PASSWORD = { provider = "onepass", value = "Database" }
+        DB_USERNAME       = { provider = "onepass", value = "Database/username" }
+        API_KEY           = { provider = "onepass", value = "op://Development/API Keys/credential" }
+        ```
+      </Step>
+
+      <Step title="Bootstrap and use">
+        ```bash theme={null}
+        export OP_SERVICE_ACCOUNT_TOKEN=$(fnox get OP_SERVICE_ACCOUNT_TOKEN)
+        fnox exec -- npm start
+        ```
+      </Step>
+    </Steps>
+
+    ### Configuration
+
+    ```toml theme={null}
+    [providers]
+    onepass = { type = "1password", vault = "Development", account = "my.1password.com" }
+    ```
+
+    | Field     | Required | Description                 |
+    | --------- | -------- | --------------------------- |
+    | `type`    | Yes      | Must be `"1password"`       |
+    | `vault`   | Yes      | Name of the 1Password vault |
+    | `account` | No       | 1Password account URL       |
+
+    ### Secret reference formats
+
+    | Format          | Example                                  | Description                  |
+    | --------------- | ---------------------------------------- | ---------------------------- |
+    | Item name       | `"Database"`                             | Returns the `password` field |
+    | Item + field    | `"Database/username"`                    | Returns a specific field     |
+    | Full op\:// URI | `"op://Development/API Keys/credential"` | Fully qualified reference    |
+
+    ### Authentication
+
+    Always use service accounts for fnox — not personal tokens:
+
+    ```bash theme={null}
+    export OP_SERVICE_ACCOUNT_TOKEN="ops_..."
+    ```
+
+    <Warning>
+      Personal tokens require interactive login and MFA, making them unsuitable for automation. Use service accounts instead.
+    </Warning>
+  </Tab>
+
+  <Tab title="Bitwarden">
+    ## Bitwarden
+
+    fnox integrates with Bitwarden (and self-hosted Vaultwarden) via the `bw` CLI.
+
+    ### Prerequisites
+
+    * [Bitwarden account](https://bitwarden.com) or a self-hosted [Vaultwarden](https://github.com/dani-garcia/vaultwarden) instance
+    * Bitwarden CLI (`bw`) installed
+
+    ### Installation
+
+    <CodeGroup>
+      ```bash macOS theme={null}
+      brew install bitwarden-cli
+      ```
+
+      ```bash Linux / Node.js theme={null}
+      npm install -g @bitwarden/cli
+      ```
+
+      ```bash Windows (Chocolatey) theme={null}
+      choco install bitwarden-cli
+      ```
+    </CodeGroup>
+
+    ### Setup
+
+    <Steps>
+      <Step title="Login and unlock">
+        ```bash theme={null}
+        # Cloud Bitwarden
+        bw login
+
+        # Self-hosted Vaultwarden
+        bw config server https://vault.example.com
+        bw login
+
+        # Unlock and get session token
+        export BW_SESSION=$(bw unlock --raw)
+        ```
+      </Step>
+
+      <Step title="Store the session token (optional bootstrap)">
+        ```bash theme={null}
+        fnox set BW_SESSION "$(bw unlock --raw)" --provider age
+        # Bootstrap: export BW_SESSION=$(fnox get BW_SESSION)
+        ```
+      </Step>
+
+      <Step title="Configure the provider">
+        ```toml theme={null}
+        [providers]
+        bitwarden = { type = "bitwarden" }
+        # Optional: collection and organization filtering
+        # bitwarden = { type = "bitwarden", collection = "abc123-id", organization_id = "org-id" }
+        ```
+      </Step>
+
+      <Step title="Reference secrets">
+        ```toml theme={null}
+        [secrets]
+        DATABASE_PASSWORD = { provider = "bitwarden", value = "Database" }
+        DB_USERNAME       = { provider = "bitwarden", value = "Database/username" }
+        ```
+      </Step>
+    </Steps>
+
+    ### Configuration
+
+    ```toml theme={null}
+    [providers]
+    bitwarden = { type = "bitwarden", collection = "abc123-collection-id", organization_id = "org-id" }
+    ```
+
+    | Field             | Required | Description                                    |
+    | ----------------- | -------- | ---------------------------------------------- |
+    | `type`            | Yes      | Must be `"bitwarden"`                          |
+    | `collection`      | No       | Filter to a specific Bitwarden collection ID   |
+    | `organization_id` | No       | Filter to a specific Bitwarden organization ID |
+    | `profile`         | No       | `bw` CLI profile (for multiple accounts)       |
+    | `backend`         | No       | Use `"rbw"` to switch to the `rbw` backend     |
+
+    ### Secret reference formats
+
+    | Format       | Example               | Description                                                               |
+    | ------------ | --------------------- | ------------------------------------------------------------------------- |
+    | Item name    | `"Database"`          | Returns the `password` field                                              |
+    | Item + field | `"Database/username"` | Returns a specific field (`username`, `password`, `notes`, `uri`, `totp`) |
+
+    ### rbw support
+
+    [`rbw`](https://github.com/doy/rbw) is a stateful alternative to `bw`:
+
+    ```toml theme={null}
+    [providers.bitwarden]
+    type = "bitwarden"
+    backend = "rbw"
+    auth_command = "rbw unlock"
+    ```
+
+    <Warning>
+      Bitwarden session tokens expire. Re-run `export BW_SESSION=$(bw unlock --raw)` when the session expires.
+    </Warning>
+  </Tab>
+
+  <Tab title="Bitwarden Secrets Manager">
+    ## Bitwarden Secrets Manager
+
+    Bitwarden Secrets Manager (BSM) is a separate product from Bitwarden Password Manager, designed for DevOps and machine secrets. It uses the `bws` CLI and access tokens instead of session tokens.
+
+    ### Prerequisites
+
+    * [Bitwarden Secrets Manager](https://bitwarden.com/products/secrets-manager/) account
+    * `bws` CLI installed
+
+    ### Installation
+
+    <CodeGroup>
+      ```bash macOS theme={null}
+      brew install bws
+      ```
+
+      ```bash Other theme={null}
+      # Download from https://github.com/bitwarden/sdk-sm/releases
+      ```
+    </CodeGroup>
+
+    ### Setup
+
+    <Steps>
+      <Step title="Create a machine account and access token">
+        In the Bitwarden Secrets Manager web console:
+
+        1. Go to **Machine accounts**
+        2. Create a new machine account
+        3. Generate an access token
+        4. Note the project ID you want to access
+      </Step>
+
+      <Step title="Set the access token">
+        ```bash theme={null}
+        export BWS_ACCESS_TOKEN="<your-access-token>"
+
+        # Or store it encrypted with age for bootstrap
+        fnox set BWS_ACCESS_TOKEN "<your-access-token>" --provider age
+        ```
+      </Step>
+
+      <Step title="Configure the provider">
+        ```toml theme={null}
+        [providers]
+        bws = { type = "bitwarden-sm", project_id = "your-project-id" }
+        ```
+      </Step>
+
+      <Step title="Reference secrets">
+        ```toml theme={null}
+        [secrets]
+        DATABASE_URL = { provider = "bws", value = "database-url" }
+        API_KEY      = { provider = "bws", value = "stripe-api-key" }
+
+        # Access note or key name fields
+        MY_NOTE = { provider = "bws", value = "my-secret-name/note" }
+        ```
+      </Step>
+    </Steps>
+
+    ### Configuration
+
+    ```toml theme={null}
+    [providers]
+    bws = { type = "bitwarden-sm", project_id = "your-project-id", profile = "..." }
+    ```
+
+    | Field        | Required | Description                                           |
+    | ------------ | -------- | ----------------------------------------------------- |
+    | `type`       | Yes      | Must be `"bitwarden-sm"`                              |
+    | `project_id` | No       | BSM project ID (or set `BWS_PROJECT_ID` env var)      |
+    | `profile`    | No       | `bws` CLI profile for self-hosted or multiple servers |
+
+    ### Environment variables
+
+    | Variable                | Description                              |
+    | ----------------------- | ---------------------------------------- |
+    | `BWS_ACCESS_TOKEN`      | Bitwarden Secrets Manager access token   |
+    | `FNOX_BWS_ACCESS_TOKEN` | fnox-specific override (takes priority)  |
+    | `BWS_PROJECT_ID`        | Project ID fallback if not set in config |
+
+    ### BSM vs Bitwarden Password Manager
+
+    | Feature | Bitwarden SM (`bitwarden-sm`) | Bitwarden PM (`bitwarden`) |
+    | ------- | ----------------------------- | -------------------------- |
+    | CLI     | `bws`                         | `bw`                       |
+    | Auth    | Access token                  | Session token              |
+    | Purpose | DevOps / machine secrets      | Personal passwords         |
+    | Model   | Key-value secrets in projects | Vault items with fields    |
+  </Tab>
+
+  <Tab title="Infisical">
+    ## Infisical
+
+    Infisical is an open-source secrets manager with environment-based organization and self-hosting support.
+
+    ### Prerequisites
+
+    * [Infisical account](https://infisical.com) or self-hosted instance
+    * Infisical CLI installed
+
+    ### Installation
+
+    <CodeGroup>
+      ```bash macOS theme={null}
+      brew install infisical/get-cli/infisical
+      ```
+
+      ```bash Ubuntu / Debian theme={null}
+      curl -1sLf 'https://dl.cloudsmith.io/public/infisical/infisical-cli/setup.deb.sh' | sudo -E bash
+      sudo apt-get update && sudo apt-get install -y infisical
+      ```
+
+      ```bash Windows (Scoop) theme={null}
+      scoop bucket add infisical https://github.com/Infisical/scoop-infisical.git
+      scoop install infisical
+      ```
+    </CodeGroup>
+
+    ### Setup
+
+    <Steps>
+      <Step title="Get an authentication token">
+        Create a service token in the Infisical project settings:
+
+        ```bash theme={null}
+        export INFISICAL_TOKEN="st.xxx.yyy.zzz"
+
+        # Or store it encrypted with age for bootstrap
+        fnox set INFISICAL_TOKEN "st.xxx.yyy.zzz" --provider age
+        ```
+      </Step>
+
+      <Step title="Configure the provider">
+        ```toml theme={null}
+        [providers]
+        infisical = { type = "infisical", project_id = "your-project-id", environment = "dev", path = "/" }
+        ```
+
+        All fields are optional — if omitted, the Infisical CLI uses its own defaults.
+      </Step>
+
+      <Step title="Reference secrets">
+        ```toml theme={null}
+        [secrets]
+        DATABASE_PASSWORD = { provider = "infisical", value = "DATABASE_PASSWORD" }
+        API_KEY           = { provider = "infisical", value = "API_KEY" }
+        ```
+      </Step>
+    </Steps>
+
+    ### Configuration
+
+    ```toml theme={null}
+    [providers]
+    infisical = { type = "infisical", project_id = "abc123", environment = "dev", path = "/" }
+    ```
+
+    | Field         | Required | Description                                                            |
+    | ------------- | -------- | ---------------------------------------------------------------------- |
+    | `type`        | Yes      | Must be `"infisical"`                                                  |
+    | `project_id`  | No       | Infisical project ID (defaults to CLI default project)                 |
+    | `environment` | No       | Environment slug: `"dev"`, `"staging"`, `"prod"` (defaults to `"dev"`) |
+    | `path`        | No       | Secret path within the project (defaults to `"/"`)                     |
+
+    ### Multi-environment example
+
+    ```toml theme={null}
+    [providers]
+    infisical = { type = "infisical", project_id = "abc123", environment = "dev", path = "/" }
+
+    [profiles.staging.providers]
+    infisical = { type = "infisical", project_id = "abc123", environment = "staging", path = "/" }
+
+    [profiles.production.providers]
+    infisical = { type = "infisical", project_id = "abc123", environment = "prod", path = "/" }
+    ```
+  </Tab>
+
+  <Tab title="Doppler">
+    ## Doppler
+
+    Doppler is a developer-friendly cloud secrets platform with a project/config model that maps naturally to environments.
+
+    ### Prerequisites
+
+    * [Doppler account](https://www.doppler.com/)
+    * [Doppler CLI](https://docs.doppler.com/docs/cli) installed
+
+    ### Installation
+
+    <CodeGroup>
+      ```bash macOS theme={null}
+      brew install dopplerhq/cli/doppler
+      ```
+
+      ```bash Linux theme={null}
+      curl -sLf --retry 3 --tlsv1.2 --proto "=https" \
+        'https://packages.doppler.com/public/cli/gpg.DE2A7741A397C129.key' | \
+        sudo gpg --dearmor -o /usr/share/keyrings/doppler-archive-keyring.gpg
+      echo "deb [signed-by=/usr/share/keyrings/doppler-archive-keyring.gpg] \
+        https://packages.doppler.com/public/cli/deb/debian any-version main" | \
+        sudo tee /etc/apt/sources.list.d/doppler-cli.list
+      sudo apt-get update && sudo apt-get install -y doppler
+      ```
+    </CodeGroup>
+
+    ### Setup
+
+    <Steps>
+      <Step title="Authenticate">
+        ```bash theme={null}
+        # Interactive login (local development)
+        doppler login
+
+        # Service token (CI/CD)
+        export DOPPLER_TOKEN="dp.st.prd.xxxx"
+        ```
+      </Step>
+
+      <Step title="Configure the provider">
+        ```toml theme={null}
+        [providers]
+        doppler = { type = "doppler", project = "my-project", config = "prd" }
+        ```
+
+        All fields are optional — if omitted, the Doppler CLI uses defaults from `doppler setup`.
+      </Step>
+
+      <Step title="Reference secrets">
+        ```toml theme={null}
+        [secrets]
+        DATABASE_URL = { provider = "doppler", value = "DATABASE_URL" }
+        API_KEY      = { provider = "doppler", value = "API_KEY" }
+        ```
+      </Step>
+    </Steps>
+
+    ### Configuration
+
+    ```toml theme={null}
+    [providers]
+    doppler = { type = "doppler", project = "my-project", config = "prd" }
+    ```
+
+    | Field     | Required | Description                                                             |
+    | --------- | -------- | ----------------------------------------------------------------------- |
+    | `type`    | Yes      | Must be `"doppler"`                                                     |
+    | `project` | No       | Doppler project name (defaults to `doppler setup` value)                |
+    | `config`  | No       | Config/environment name (e.g. `"dev"`, `"stg"`, `"prd"`)                |
+    | `token`   | No       | Service token. Falls back to `FNOX_DOPPLER_TOKEN` then `DOPPLER_TOKEN`. |
+
+    ### Token resolution order
+
+    1. `token` field in provider config
+    2. `FNOX_DOPPLER_TOKEN` environment variable
+    3. `DOPPLER_TOKEN` environment variable
+    4. Interactive login session (from `doppler login`)
+
+    ### Multi-environment example
+
+    ```toml theme={null}
+    [providers]
+    doppler = { type = "doppler", project = "my-app", config = "dev" }
+
+    [profiles.staging.providers]
+    doppler = { type = "doppler", project = "my-app", config = "stg" }
+
+    [profiles.production.providers]
+    doppler = { type = "doppler", project = "my-app", config = "prd" }
+    ```
+  </Tab>
+</Tabs>
+
+
+# Quick Start
+Source: https://www.mintlify.com/jdx/fnox/quickstart
+
+Get fnox installed and your first secret encrypted and loaded in under 5 minutes.
+
+## 1. Install fnox
+
+<CodeGroup>
+  ```bash mise (recommended) theme={null}
+  mise use -g fnox
+  ```
+
+  ```bash cargo theme={null}
+  cargo install fnox
+  ```
+</CodeGroup>
+
+Verify the installation:
+
+```bash theme={null}
+fnox --version
+```
+
+## 2. Initialize your project
+
+```bash theme={null}
+cd your-project
+fnox init
+```
+
+This creates a `fnox.toml` configuration file in the current directory.
+
+## 3. Set a secret
+
+```bash theme={null}
+# Prompts interactively (recommended for sensitive values)
+fnox set DATABASE_URL
+
+# Or pass the value directly
+fnox set DATABASE_URL "postgresql://localhost/mydb"
+```
+
+<Warning>
+  Passing secrets as CLI arguments exposes them in shell history and `ps` output. For sensitive values, use the interactive prompt or pipe from stdin.
+</Warning>
+
+## 4. Get a secret
+
+```bash theme={null}
+fnox get DATABASE_URL
+```
+
+## 5. Run commands with secrets loaded
+
+```bash theme={null}
+fnox exec -- npm start
+fnox exec -- python app.py
+fnox exec -- ./my-script.sh
+```
+
+Secrets are injected as environment variables into the subprocess. Nothing leaks into your current shell.
+
+## 6. Add encryption (recommended)
+
+By default, `fnox set` stores a plain-text default value. For real secrets, encrypt them with [age](https://github.com/FiloSottile/age):
+
+<Steps>
+  <Step title="Install age and generate a key">
+    ```bash theme={null}
+    # macOS
+    brew install age
+
+    # Ubuntu / Debian
+    sudo apt install age
+
+    # Generate a key pair
+    mkdir -p ~/.config/fnox
+    age-keygen -o ~/.config/fnox/age.txt
+    ```
+
+    Note your public key from the output:
+
+    ```
+    # public key: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
+    ```
+  </Step>
+
+  <Step title="Configure the age provider">
+    Add the provider to `fnox.toml` using your public key:
+
+    ```toml fnox.toml theme={null}
+    [providers.age]
+    type = "age"
+    recipients = ["age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p"]
+    ```
+  </Step>
+
+  <Step title="Export your private key">
+    ```bash theme={null}
+    export FNOX_AGE_KEY=$(grep "AGE-SECRET-KEY" ~/.config/fnox/age.txt)
+    ```
+
+    Add this to your shell profile (`~/.bashrc`, `~/.zshrc`) so it persists.
+  </Step>
+
+  <Step title="Encrypt a secret">
+    ```bash theme={null}
+    fnox set DATABASE_URL "postgresql://prod.example.com/db" --provider age
+    ```
+
+    fnox writes the ciphertext into `fnox.toml`:
+
+    ```toml theme={null}
+    [secrets]
+    DATABASE_URL = { provider = "age", value = "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+..." }
+    ```
+
+    This file is now safe to commit to git.
+  </Step>
+</Steps>
+
+## 7. Enable shell integration (optional)
+
+Auto-load secrets when you `cd` into a directory:
+
+```bash theme={null}
+# Add to your shell profile
+echo 'eval "$(fnox activate bash)"' >> ~/.bashrc   # bash
+echo 'eval "$(fnox activate zsh)"' >> ~/.zshrc      # zsh
+```
+
+Now secrets load automatically:
+
+```bash theme={null}
+~/projects $ cd my-app
+fnox: +3 DATABASE_URL, API_KEY, JWT_SECRET
+~/projects/my-app $
+```
+
+## Next steps
+
+<CardGroup>
+  <Card title="How it works" icon="gears" href="/guides/how-it-works">
+    Understand secret resolution order and the execution model.
+  </Card>
+
+  <Card title="Providers" icon="plug" href="/providers/overview">
+    Explore all 15+ supported secret backends.
+  </Card>
+
+  <Card title="Shell integration" icon="terminal" href="/guides/shell-integration">
+    Deep dive into shell integration for bash, zsh, fish, and nushell.
+  </Card>
+
+  <Card title="Profiles" icon="layer-group" href="/guides/profiles">
+    Manage dev, staging, and production secrets in one config file.
+  </Card>
+</CardGroup>
+
+
+# CLI Reference
+Source: https://www.mintlify.com/jdx/fnox/reference/cli
+
+Complete reference for all fnox commands and flags.
+
+**Usage**: `fnox [FLAGS] <COMMAND>`
+
+**Version**: 1.20.0
+
+## Global flags
+
+These flags apply to every command.
+
+| Flag                   | Short | Description                                                  | Default     |
+| ---------------------- | ----- | ------------------------------------------------------------ | ----------- |
+| `--config <PATH>`      | `-c`  | Path to the config file (searches parent directories)        | `fnox.toml` |
+| `--profile <NAME>`     | `-P`  | Profile to use (or `FNOX_PROFILE` env var)                   | `default`   |
+| `--if-missing <VALUE>` |       | What to do if a secret is missing: `error`, `warn`, `ignore` |             |
+| `--no-defaults`        |       | Do not merge top-level secrets into the selected profile     |             |
+| `--no-color`           |       | Disable colored output                                       |             |
+| `--verbose`            | `-v`  | Enable verbose logging                                       |             |
+
+***
+
+## Core commands
+
+<AccordionGroup>
+  <Accordion title="fnox init — Initialize a config file">
+    **Usage**: `fnox init [FLAGS]`
+
+    **Aliases**: `i`
+
+    Initialize a new `fnox.toml` in the current directory. Runs an interactive wizard by default to help you choose a provider.
+
+    | Flag            | Short | Description                                                      |
+    | --------------- | ----- | ---------------------------------------------------------------- |
+    | `--global`      | `-g`  | Initialize the global config file (`~/.config/fnox/config.toml`) |
+    | `--force`       | `-f`  | Overwrite an existing config file                                |
+    | `--skip-wizard` |       | Create a minimal config without the interactive wizard           |
+
+    ```bash theme={null}
+    # Initialize project config
+    fnox init
+
+    # Initialize global config
+    fnox init --global
+
+    # Non-interactive minimal config
+    fnox init --skip-wizard
+    ```
+  </Accordion>
+
+  <Accordion title="fnox set — Store a secret">
+    **Usage**: `fnox set [FLAGS] <KEY> [VALUE]`
+
+    **Aliases**: `s`
+
+    Store a secret value. If `VALUE` is omitted, fnox reads from stdin when piped, or prompts interactively with hidden input.
+
+    <Warning>
+      Passing secrets as CLI arguments exposes them in shell history and `ps` output. Prefer stdin or the interactive prompt for sensitive values.
+    </Warning>
+
+    | Flag                   | Short | Description                                                 |
+    | ---------------------- | ----- | ----------------------------------------------------------- |
+    | `--provider <NAME>`    | `-p`  | Provider to store the secret with                           |
+    | `--description <TEXT>` | `-d`  | Description of the secret                                   |
+    | `--key-name <NAME>`    | `-k`  | Key name in the provider if different from the env var name |
+    | `--default <VALUE>`    |       | Default value if the secret is not found                    |
+    | `--if-missing <VALUE>` |       | Behavior when missing: `error`, `warn`, `ignore`            |
+    | `--base64-encode`      |       | Base64-encode the value before storing                      |
+    | `--global`             | `-g`  | Save to the global config file                              |
+    | `--dry-run`            | `-n`  | Show what would be done without making changes              |
+
+    ```bash theme={null}
+    # Interactive prompt (recommended for sensitive values)
+    fnox set DATABASE_URL
+
+    # From stdin
+    echo "postgresql://..." | fnox set DATABASE_URL
+
+    # With provider and description
+    fnox set API_KEY --provider age --description "Third-party API key"
+
+    # Save to global config
+    fnox set PERSONAL_TOKEN "abc123" --global
+    ```
+  </Accordion>
+
+  <Accordion title="fnox get — Retrieve a secret">
+    **Usage**: `fnox get [--base64-decode] <KEY>`
+
+    Print a single secret value to stdout.
+
+    | Flag              | Description                             |
+    | ----------------- | --------------------------------------- |
+    | `--base64-decode` | Base64-decode the value before printing |
+
+    ```bash theme={null}
+    fnox get DATABASE_URL
+
+    # Use in a script
+    DB_URL=$(fnox get DATABASE_URL)
+
+    # Decode a base64-encoded secret
+    fnox get CERT_DATA --base64-decode
+    ```
+  </Accordion>
+
+  <Accordion title="fnox exec — Run a command with secrets">
+    **Usage**: `fnox exec [COMMAND]…`
+
+    **Aliases**: `x`
+
+    Execute a command with all resolved secrets injected as environment variables. Separate fnox flags from the command with `--`.
+
+    ```bash theme={null}
+    # Basic usage
+    fnox exec -- npm start
+
+    # With profile
+    fnox exec --profile production -- ./deploy.sh
+
+    # Without inheriting top-level secrets
+    fnox exec --profile production --no-defaults -- ./deploy.sh
+
+    # Inline for a single command
+    fnox exec -- env | grep DATABASE
+    ```
+  </Accordion>
+
+  <Accordion title="fnox list — List all secrets">
+    **Usage**: `fnox list [FLAGS]`
+
+    **Aliases**: `ls`, `secrets`
+
+    List all secrets defined in the current config.
+
+    | Flag        | Short | Description                                              |
+    | ----------- | ----- | -------------------------------------------------------- |
+    | `--values`  | `-V`  | Show resolved secret values                              |
+    | `--full`    | `-f`  | Show full provider keys without truncation               |
+    | `--sources` | `-s`  | Show the source config file where each secret is defined |
+
+    ```bash theme={null}
+    fnox list
+
+    # Show values (requires provider access)
+    fnox list --values
+
+    # Show with source file paths
+    fnox list --sources
+    ```
+  </Accordion>
+
+  <Accordion title="fnox remove — Remove a secret">
+    **Usage**: `fnox remove [-g --global] [-n --dry-run] <KEY>`
+
+    **Aliases**: `rm`, `delete`
+
+    Remove a secret from the config file.
+
+    | Flag        | Short | Description                                       |
+    | ----------- | ----- | ------------------------------------------------- |
+    | `--global`  | `-g`  | Remove from the global config file                |
+    | `--dry-run` | `-n`  | Show what would be removed without making changes |
+
+    ```bash theme={null}
+    fnox remove OLD_API_KEY
+
+    # Preview removal
+    fnox remove OLD_API_KEY --dry-run
+
+    # Remove from global config
+    fnox remove PERSONAL_TOKEN --global
+    ```
+  </Accordion>
+</AccordionGroup>
+
+***
+
+## Shell integration
+
+<AccordionGroup>
+  <Accordion title="fnox activate — Enable shell integration">
+    **Usage**: `fnox activate [--no-hook-env] [SHELL]`
+
+    Output shell activation code that installs a hook to automatically load secrets when you `cd` into a project. Pipe the output to `eval`.
+
+    | Argument / Flag | Description                                             |
+    | --------------- | ------------------------------------------------------- |
+    | `[SHELL]`       | Shell to generate code for: `bash`, `zsh`, `fish`, `nu` |
+    | `--no-hook-env` | Don't automatically invoke `hook-env` (for testing)     |
+
+    ```bash theme={null}
+    # bash
+    eval "$(fnox activate bash)"
+
+    # zsh
+    eval "$(fnox activate zsh)"
+
+    # fish
+    fnox activate fish | source
+
+    # Add to shell profile for permanent activation
+    echo 'eval "$(fnox activate bash)"' >> ~/.bashrc
+    ```
+  </Accordion>
+
+  <Accordion title="fnox deactivate — Disable shell integration">
+    **Usage**: `fnox deactivate`
+
+    Disable fnox shell integration in the current shell session and unset any injected secrets.
+  </Accordion>
+</AccordionGroup>
+
+***
+
+## Provider management
+
+<AccordionGroup>
+  <Accordion title="fnox provider — Manage providers">
+    **Usage**: `fnox provider <SUBCOMMAND>`
+
+    Defaults to listing providers when called without a subcommand.
+
+    **Subcommands**: `add`, `list`, `remove`, `test`
+  </Accordion>
+
+  <Accordion title="fnox provider add — Add a provider">
+    **Usage**: `fnox provider add [-g --global] [--vault <VAULT>] <PROVIDER> <PROVIDER_TYPE>`
+
+    **Aliases**: `a`, `set`
+
+    Add a new provider to the config. `PROVIDER` is your chosen name; `PROVIDER_TYPE` is the backend type.
+
+    | Flag             | Short | Description                                                    |
+    | ---------------- | ----- | -------------------------------------------------------------- |
+    | `--global`       | `-g`  | Add to the global config file                                  |
+    | `--vault <NAME>` |       | Default Proton Pass vault name (only valid with `proton-pass`) |
+
+    **Available provider types**: `1password`, `age`, `aws`, `aws-kms`, `aws-ps`, `azure-kms`, `azure-sm`, `gcp`, `gcp-kms`, `fido2`, `bitwarden`, `bitwarden-sm`, `doppler`, `infisical`, `keepass`, `keychain`, `password-store`, `passwordstate`, `plain`, `proton-pass`, `vault`, `yubikey`
+
+    ```bash theme={null}
+    fnox provider add age age
+    fnox provider add aws aws-sm
+    fnox provider add prod-vault vault
+    fnox provider add keys keychain --global
+    ```
+  </Accordion>
+
+  <Accordion title="fnox provider list — List providers">
+    **Usage**: `fnox provider list`
+
+    **Aliases**: `ls`
+
+    List all providers configured in the current config.
+
+    ```bash theme={null}
+    fnox provider list
+    ```
+  </Accordion>
+
+  <Accordion title="fnox provider remove — Remove a provider">
+    **Usage**: `fnox provider remove [-g --global] <PROVIDER>`
+
+    **Aliases**: `rm`, `delete`
+
+    Remove a provider from the config.
+
+    | Flag       | Short | Description                        |
+    | ---------- | ----- | ---------------------------------- |
+    | `--global` | `-g`  | Remove from the global config file |
+
+    ```bash theme={null}
+    fnox provider remove old-provider
+    ```
+  </Accordion>
+
+  <Accordion title="fnox provider test — Test a provider connection">
+    **Usage**: `fnox provider test [-a --all] [PROVIDER]`
+
+    **Aliases**: `t`
+
+    Test connectivity and authentication for a provider.
+
+    | Flag    | Short | Description                   |
+    | ------- | ----- | ----------------------------- |
+    | `--all` | `-a`  | Test all configured providers |
+
+    ```bash theme={null}
+    fnox provider test aws
+    fnox provider test --all
+    ```
+  </Accordion>
+</AccordionGroup>
+
+***
+
+## Leases
+
+Leases create short-lived ephemeral credentials from a secret backend.
+
+<AccordionGroup>
+  <Accordion title="fnox lease create — Create a lease">
+    **Usage**: `fnox lease create [FLAGS] [BACKEND_NAME]`
+
+    Create a short-lived credential lease. If `BACKEND_NAME` is omitted, creates leases for all configured lease backends.
+
+    | Flag                    | Short | Description                                  | Default      |
+    | ----------------------- | ----- | -------------------------------------------- | ------------ |
+    | `--duration <DURATION>` | `-d`  | Lease duration (e.g. `15m`, `1h`, `2h30m`)   |              |
+    | `--format <FORMAT>`     | `-f`  | Output format: `shell`, `json`, `env`        | `shell`      |
+    | `--label <LABEL>`       | `-l`  | Label for the lease (e.g. session purpose)   | `fnox-lease` |
+    | `--all`                 | `-a`  | Create leases for all configured backends    |              |
+    | `--interactive`         | `-i`  | Prompt interactively for missing credentials |              |
+
+    ```bash theme={null}
+    fnox lease create
+    fnox lease create my-backend --duration 1h
+    fnox lease create --format json
+    ```
+  </Accordion>
+
+  <Accordion title="fnox lease list — List leases">
+    **Usage**: `fnox lease list [--active] [--expired]`
+
+    List tracked leases.
+
+    | Flag        | Description                                        |
+    | ----------- | -------------------------------------------------- |
+    | `--active`  | Show only active (non-expired, non-revoked) leases |
+    | `--expired` | Show only expired leases                           |
+
+    ```bash theme={null}
+    fnox lease list
+    fnox lease list --active
+    ```
+  </Accordion>
+
+  <Accordion title="fnox lease revoke — Revoke a lease">
+    **Usage**: `fnox lease revoke <LEASE_ID>`
+
+    Revoke a specific lease by its ID.
+
+    ```bash theme={null}
+    fnox lease revoke abc123
+    ```
+  </Accordion>
+
+  <Accordion title="fnox lease cleanup — Clean up expired leases">
+    **Usage**: `fnox lease cleanup`
+
+    Revoke all expired leases that require manual cleanup.
+
+    ```bash theme={null}
+    fnox lease cleanup
+    ```
+  </Accordion>
+</AccordionGroup>
+
+***
+
+## Profiles
+
+<AccordionGroup>
+  <Accordion title="fnox profiles — List profiles">
+    **Usage**: `fnox profiles`
+
+    List all profiles defined in the current config.
+
+    ```bash theme={null}
+    fnox profiles
+    # default (active)
+    # staging
+    # production
+    ```
+  </Accordion>
+</AccordionGroup>
+
+***
+
+## Utilities
+
+<AccordionGroup>
+  <Accordion title="fnox check — Check secret configuration">
+    **Usage**: `fnox check [-a --all]`
+
+    **Aliases**: `c`
+
+    Check that all required secrets are defined and accessible.
+
+    | Flag    | Short | Description                                                                      |
+    | ------- | ----- | -------------------------------------------------------------------------------- |
+    | `--all` | `-a`  | Check all secrets, including those with `if_missing=warn` or `if_missing=ignore` |
+
+    ```bash theme={null}
+    fnox check
+    fnox check --all
+    ```
+  </Accordion>
+
+  <Accordion title="fnox scan — Scan for secrets in source code">
+    **Usage**: `fnox scan [FLAGS]`
+
+    Scan a repository for hard-coded or plaintext secrets.
+
+    | Flag                 | Short | Description                                   | Default |
+    | -------------------- | ----- | --------------------------------------------- | ------- |
+    | `--dir <DIR>`        | `-d`  | Directory to scan                             | `.`     |
+    | `--ignore <PATTERN>` | `-i`  | Skip files matching this pattern (repeatable) |         |
+    | `--quiet`            | `-q`  | Show only files with potential secrets        |         |
+
+    ```bash theme={null}
+    fnox scan
+    fnox scan --dir ./src --ignore "*.test.ts"
+    fnox scan --quiet
+    ```
+  </Accordion>
+
+  <Accordion title="fnox doctor — Diagnostic information">
+    **Usage**: `fnox doctor`
+
+    **Aliases**: `dr`
+
+    Show diagnostic information about the current fnox state: loaded config files, active profile, provider status, and resolved secrets.
+
+    ```bash theme={null}
+    fnox doctor
+    ```
+  </Accordion>
+
+  <Accordion title="fnox edit — Edit the config file">
+    **Usage**: `fnox edit`
+
+    Open the current `fnox.toml` in your `$EDITOR`.
+
+    ```bash theme={null}
+    fnox edit
+    EDITOR=code fnox edit
+    ```
+  </Accordion>
+
+  <Accordion title="fnox tui — Interactive dashboard">
+    **Usage**: `fnox tui`
+
+    Launch an interactive terminal UI for browsing and managing secrets.
+
+    ```bash theme={null}
+    fnox tui
+    ```
+  </Accordion>
+
+  <Accordion title="fnox sync — Sync remote secrets to local encryption">
+    **Usage**: `fnox sync [FLAGS] [KEYS]…`
+
+    Sync secrets from remote providers (e.g. AWS Secrets Manager) into a local encryption provider (e.g. age). Useful for working offline or creating encrypted backups.
+
+    | Flag                | Short | Description                                                 |
+    | ------------------- | ----- | ----------------------------------------------------------- |
+    | `--provider <NAME>` | `-p`  | Target encryption provider (defaults to `default_provider`) |
+    | `--source <NAME>`   | `-s`  | Only sync secrets from this source provider                 |
+    | `--filter <REGEX>`  |       | Only sync secrets matching this pattern                     |
+    | `--global`          | `-g`  | Write to the global config file                             |
+    | `--local-file`      |       | Write overrides to `fnox.local.toml` instead of `fnox.toml` |
+    | `--force`           | `-f`  | Skip confirmation prompt                                    |
+    | `--dry-run`         | `-n`  | Show what would be done without making changes              |
+
+    ```bash theme={null}
+    # Sync all secrets to default local provider
+    fnox sync
+
+    # Sync specific keys
+    fnox sync DATABASE_URL JWT_SECRET
+
+    # Preview
+    fnox sync --dry-run
+
+    # From a specific source provider
+    fnox sync --source aws --provider age
+    ```
+  </Accordion>
+</AccordionGroup>
+
+***
+
+## Import / Export
+
+<AccordionGroup>
+  <Accordion title="fnox import — Import secrets">
+    **Usage**: `fnox import <FLAGS> [FORMAT]`
+
+    **Aliases**: `im`
+
+    Import secrets from a file or stdin into the config. The `--provider` flag is required to specify where to store the imported secrets.
+
+    | Argument   | Description                                  | Default |
+    | ---------- | -------------------------------------------- | ------- |
+    | `[FORMAT]` | Source format: `env`, `json`, `yaml`, `toml` | `env`   |
+
+    | Flag                | Short | Description                                                     |
+    | ------------------- | ----- | --------------------------------------------------------------- |
+    | `--provider <NAME>` | `-p`  | Provider for encrypting/storing imported secrets (**required**) |
+    | `--input <PATH>`    | `-i`  | Source file (default: stdin)                                    |
+    | `--filter <REGEX>`  |       | Only import secrets matching this pattern                       |
+    | `--prefix <PREFIX>` |       | Prefix to prepend to imported secret names                      |
+    | `--global`          | `-g`  | Import to the global config file                                |
+    | `--force`           | `-f`  | Skip confirmation prompts                                       |
+    | `--dry-run`         | `-n`  | Show what would be imported without making changes              |
+
+    ```bash theme={null}
+    # Import a .env file
+    fnox import --provider age --input .env
+
+    # Import from stdin
+    cat secrets.env | fnox import --provider age
+
+    # Import JSON with a name prefix
+    fnox import json --provider aws --input secrets.json --prefix myapp/
+
+    # Preview
+    fnox import --provider age --input .env --dry-run
+    ```
+  </Accordion>
+
+  <Accordion title="fnox export — Export secrets">
+    **Usage**: `fnox export [FLAGS]`
+
+    **Aliases**: `ex`
+
+    Export resolved secrets to stdout or a file.
+
+    | Flag                | Short | Description                                  | Default |
+    | ------------------- | ----- | -------------------------------------------- | ------- |
+    | `--format <FORMAT>` | `-f`  | Output format: `env`, `json`, `yaml`, `toml` | `env`   |
+    | `--output <PATH>`   | `-o`  | Output file (default: stdout)                |         |
+    | `--dry-run`         | `-n`  | Show what would be exported without writing  |         |
+
+    ```bash theme={null}
+    # Export as .env to stdout
+    fnox export
+
+    # Export as JSON to a file
+    fnox export --format json --output secrets.json
+
+    # Export YAML for staging profile
+    fnox export --profile staging --format yaml
+    ```
+  </Accordion>
+</AccordionGroup>
+
+***
+
+## Encryption
+
+<AccordionGroup>
+  <Accordion title="fnox reencrypt — Re-encrypt secrets">
+    **Usage**: `fnox reencrypt [FLAGS] [KEYS]…`
+
+    Re-encrypt secrets with the current provider configuration. Use this after rotating recipients or keys.
+
+    | Flag                | Short | Description                                    |
+    | ------------------- | ----- | ---------------------------------------------- |
+    | `--provider <NAME>` | `-p`  | Only re-encrypt secrets from this provider     |
+    | `--filter <REGEX>`  |       | Only re-encrypt secrets matching this pattern  |
+    | `--force`           | `-f`  | Skip confirmation prompt                       |
+    | `--dry-run`         | `-n`  | Show what would be done without making changes |
+
+    ```bash theme={null}
+    # Re-encrypt everything
+    fnox reencrypt
+
+    # Re-encrypt specific keys
+    fnox reencrypt DATABASE_URL JWT_SECRET
+
+    # Preview
+    fnox reencrypt --dry-run
+    ```
+  </Accordion>
+</AccordionGroup>
+
+***
+
+## Other commands
+
+<AccordionGroup>
+  <Accordion title="fnox mcp — Start an MCP server">
+    **Usage**: `fnox mcp`
+
+    Start a Model Context Protocol (MCP) server that exposes secrets to AI agents in a controlled, access-gated way.
+
+    ```bash theme={null}
+    fnox mcp
+    ```
+  </Accordion>
+
+  <Accordion title="fnox completion — Generate shell completions">
+    **Usage**: `fnox completion <SHELL>`
+
+    Generate shell completion scripts.
+
+    ```bash theme={null}
+    # bash
+    fnox completion bash >> ~/.bash_completion
+
+    # zsh
+    fnox completion zsh > ~/.zsh/completions/_fnox
+
+    # fish
+    fnox completion fish > ~/.config/fish/completions/fnox.fish
+    ```
+  </Accordion>
+
+  <Accordion title="fnox config-files — List loaded config files">
+    **Usage**: `fnox config-files`
+
+    List all config files that would be loaded for the current directory and profile.
+
+    ```bash theme={null}
+    fnox config-files
+    # /home/user/.config/fnox/config.toml
+    # /home/user/projects/myapp/fnox.toml
+    # /home/user/projects/myapp/fnox.local.toml
+    ```
+  </Accordion>
+
+  <Accordion title="fnox version — Show version">
+    **Usage**: `fnox version`
+
+    **Aliases**: `v`
+
+    Print version information.
+
+    ```bash theme={null}
+    fnox version
+    # fnox 1.20.0
+    ```
+  </Accordion>
+</AccordionGroup>
+
+
+# Configuration Reference
+Source: https://www.mintlify.com/jdx/fnox/reference/configuration
+
+Complete reference for the fnox.toml configuration file.
+
+## JSON schema
+
+A JSON Schema is available for IDE autocompletion and validation:
+
+```
+https://fnox.jdx.dev/schema.json
+```
+
+### Editor setup
+
+<Tabs>
+  <Tab title="VS Code">
+    Install [Even Better TOML](https://marketplace.visualstudio.com/items?itemName=tamasfe.even-better-toml), then add the schema directive at the top of your `fnox.toml`:
+
+    ```toml theme={null}
+    #:schema https://fnox.jdx.dev/schema.json
+
+    [providers]
+    age = { type = "age", recipients = ["age1..."] }
+    ```
+  </Tab>
+
+  <Tab title="JetBrains IDEs">
+    Go to **Settings > Languages & Frameworks > Schemas and DTDs > JSON Schema Mappings** and add:
+
+    * **Schema URL**: `https://fnox.jdx.dev/schema.json`
+    * **File pattern**: `fnox*.toml`
+  </Tab>
+</Tabs>
+
+## File loading order
+
+fnox looks for and merges configuration files in this order (lowest to highest priority):
+
+1. **Global config** — `~/.config/fnox/config.toml` (or `$FNOX_CONFIG_DIR/config.toml`)
+2. **Parent directories** — `fnox.toml` files found searching upward from the current directory
+3. **Local config** — `fnox.toml` in the current directory
+4. **Profile-specific file** — `fnox.$FNOX_PROFILE.toml` alongside each `fnox.toml`
+5. **Local overrides** — `fnox.local.toml` alongside each `fnox.toml`
+6. **CLI flag** — path specified with `-c, --config`
+
+Later entries override earlier ones. The global config is always loaded, even when a `root = true` directive stops parent directory recursion.
+
+### Global configuration
+
+The global config file stores machine-wide secrets and providers that apply to all projects.
+
+**Location**: `~/.config/fnox/config.toml` (customizable via `FNOX_CONFIG_DIR`)
+
+```bash theme={null}
+# Initialize global config
+fnox init --global
+
+# Add a secret to global config
+fnox set MY_TOKEN "secret-value" --global
+
+# Add a provider to global config
+fnox provider add aws aws-sm --global
+```
+
+Use the global config for personal API tokens used across multiple projects, machine-specific credentials, and default providers available everywhere.
+
+## Basic structure
+
+```toml theme={null}
+# Top-level settings
+if_missing = "warn"
+import = ["./shared/secrets.toml"]
+
+[providers]
+PROVIDER_NAME = { type = "PROVIDER_TYPE" }
+
+[secrets]
+SECRET_NAME = { provider = "PROVIDER_NAME", value = "...", default = "...", if_missing = "error", description = "..." }
+
+[profiles.PROFILE_NAME]
+# same structure as top-level
+```
+
+## Top-level settings
+
+### `if_missing`
+
+Global default behavior when a secret cannot be resolved.
+
+| Value      | Behavior                               |
+| ---------- | -------------------------------------- |
+| `"error"`  | Fail and exit with an error            |
+| `"warn"`   | Print a warning and continue (default) |
+| `"ignore"` | Silently skip the missing secret       |
+
+```toml theme={null}
+if_missing = "error"
+```
+
+**Priority:** Lowest. Overridden by secret-level `if_missing`, `FNOX_IF_MISSING`, and `--if-missing`.
+
+### `imports`
+
+List of config files to import. Paths are relative to the current config file. Imported files are merged in order; later imports override earlier ones.
+
+```toml theme={null}
+import = ["./shared/base.toml", "./envs/dev.toml"]
+```
+
+## Provider configuration
+
+```toml theme={null}
+[providers.PROVIDER_NAME]
+type = "PROVIDER_TYPE"
+# provider-specific fields
+```
+
+### `auth_command`
+
+Override the authentication command for a provider instance. When provider authentication fails in a TTY, fnox prompts to run this command. Each provider type has a built-in default (e.g. `bw login` for Bitwarden, `op signin` for 1Password). Set to `""` to disable auth prompting entirely.
+
+```toml theme={null}
+[providers]
+# Use rbw instead of the default bw CLI
+rbw = { type = "bitwarden", backend = "rbw", auth_command = "rbw unlock" }
+
+# Custom AWS SSO login profile
+aws = { type = "aws-sm", region = "us-east-1", auth_command = "aws sso login --profile myprofile" }
+
+# Disable auth prompting for this provider
+vault = { type = "vault", address = "https://vault.example.com", auth_command = "" }
+```
+
+### Provider types
+
+<AccordionGroup>
+  <Accordion title="age — Age encryption">
+    Secrets are encrypted in `fnox.toml` using [age](https://age-encryption.org). Recipients can be age keys or SSH keys.
+
+    ```toml theme={null}
+    [providers.age]
+    type = "age"
+    recipients = [
+      "age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p",
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGQs..."
+    ]
+    ```
+  </Accordion>
+
+  <Accordion title="aws-sm — AWS Secrets Manager">
+    ```toml theme={null}
+    [providers]
+    aws = { type = "aws-sm", region = "us-east-1", prefix = "myapp/" }
+    ```
+
+    `prefix` is optional. Secrets are stored in AWS Secrets Manager; `value` in `[secrets]` is the secret name.
+  </Accordion>
+
+  <Accordion title="aws-kms — AWS KMS">
+    Secrets are encrypted with an AWS KMS key and stored as ciphertext in `fnox.toml`.
+
+    ```toml theme={null}
+    [providers]
+    kms = { type = "aws-kms", key_id = "arn:aws:kms:us-east-1:123456789012:key/...", region = "us-east-1" }
+    ```
+  </Accordion>
+
+  <Accordion title="azure-sm — Azure Key Vault Secrets">
+    ```toml theme={null}
+    [providers]
+    azure = { type = "azure-sm", vault_url = "https://myapp-vault.vault.azure.net/", prefix = "myapp/" }
+    ```
+  </Accordion>
+
+  <Accordion title="azure-kms — Azure Key Vault Keys">
+    ```toml theme={null}
+    [providers]
+    azurekms = { type = "azure-kms", vault_url = "https://myapp-vault.vault.azure.net/", key_name = "encryption-key" }
+    ```
+  </Accordion>
+
+  <Accordion title="gcp-sm — GCP Secret Manager">
+    ```toml theme={null}
+    [providers]
+    gcp = { type = "gcp-sm", project = "my-project-id", prefix = "myapp/" }
+    ```
+  </Accordion>
+
+  <Accordion title="gcp-kms — GCP Cloud KMS">
+    ```toml theme={null}
+    [providers.gcpkms]
+    type     = "gcp-kms"
+    project  = "my-project-id"
+    location = "us-central1"
+    keyring  = "fnox-keyring"
+    key      = "fnox-key"
+    ```
+  </Accordion>
+
+  <Accordion title="1password — 1Password">
+    ```toml theme={null}
+    [providers]
+    onepass = { type = "1password", vault = "Development", account = "my.1password.com" }
+    ```
+
+    `account` is optional.
+  </Accordion>
+
+  <Accordion title="bitwarden — Bitwarden">
+    ```toml theme={null}
+    [providers]
+    bitwarden = { type = "bitwarden", collection = "collection-id", organization_id = "org-id" }
+    ```
+
+    Both `collection` and `organization_id` are optional.
+  </Accordion>
+
+  <Accordion title="vault — HashiCorp Vault">
+    ```toml theme={null}
+    [providers]
+    vault = { type = "vault", address = "https://vault.example.com:8200", path = "secret/myapp", token = "hvs.CAESIJ..." }
+    ```
+
+    `token` is optional; use `VAULT_TOKEN` environment variable instead.
+  </Accordion>
+
+  <Accordion title="keychain — OS keychain">
+    ```toml theme={null}
+    [providers]
+    keychain = { type = "keychain", service = "fnox", prefix = "myapp/" }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Secret configuration
+
+```toml theme={null}
+[secrets]
+SECRET_NAME = { provider = "PROVIDER_NAME", value = "...", default = "...", if_missing = "error", description = "..." }
+```
+
+### Fields
+
+<AccordionGroup>
+  <Accordion title="provider">
+    The provider to use for this secret. Required unless you are using only `default` (plain text).
+
+    ```toml theme={null}
+    [secrets]
+    DATABASE_URL = { provider = "age", value = "encrypted..." }
+    ```
+  </Accordion>
+
+  <Accordion title="value">
+    The provider-specific reference for the secret:
+
+    * **Encryption providers** (`age`, `aws-kms`, etc.) — encrypted ciphertext stored in the config file
+    * **Remote providers** (`aws-sm`, `1password`, etc.) — the secret name or reference in the remote store
+
+    ```toml theme={null}
+    [secrets]
+    # Encrypted ciphertext (age)
+    DATABASE_URL = { provider = "age", value = "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHNjcnlwdC..." }
+
+    # Remote reference (AWS Secrets Manager)
+    DATABASE_URL = { provider = "aws", value = "database-url" }
+    ```
+  </Accordion>
+
+  <Accordion title="default">
+    Fallback value used when the secret cannot be resolved. Useful for non-sensitive defaults and local development.
+
+    ```toml theme={null}
+    [secrets]
+    DATABASE_URL = { provider = "age", value = "encrypted...", default = "postgresql://localhost/dev" }
+    ```
+  </Accordion>
+
+  <Accordion title="if_missing">
+    Per-secret override for missing-secret behavior. Accepts `"error"`, `"warn"`, or `"ignore"`. Overrides the top-level `if_missing` setting but is itself overridden by `FNOX_IF_MISSING` and `--if-missing`.
+
+    ```toml theme={null}
+    [secrets]
+    DATABASE_URL  = { provider = "aws", value = "database-url", if_missing = "error" }
+    ANALYTICS_KEY = { provider = "aws", value = "analytics-key", if_missing = "ignore" }
+    ```
+  </Accordion>
+
+  <Accordion title="description">
+    Human-readable description shown in `fnox list` output.
+
+    ```toml theme={null}
+    [secrets]
+    DATABASE_URL = { provider = "age", value = "encrypted...", description = "Production database connection string" }
+    ```
+  </Accordion>
+
+  <Accordion title="as_file">
+    When `true`, write the secret to a temporary file and inject the file path as the environment variable instead of the raw value. Useful for credentials that must exist on disk.
+
+    ```toml theme={null}
+    [secrets]
+    GOOGLE_APPLICATION_CREDENTIALS = { provider = "age", value = "encrypted...", as_file = true }
+    ```
+  </Accordion>
+
+  <Accordion title="env">
+    Set `env = false` to prevent this secret from being injected as an environment variable in subprocesses. The secret is still resolved and available via `fnox get`.
+
+    ```toml theme={null}
+    [secrets]
+    INTERNAL_TOKEN = { provider = "age", value = "encrypted...", env = false }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Profile configuration
+
+Profiles let you define environment-specific secrets and providers in a single config file.
+
+```toml theme={null}
+[profiles.PROFILE_NAME]
+if_missing = "error"  # profile-specific default
+
+[profiles.PROFILE_NAME.providers]
+PROVIDER_NAME = { type = "PROVIDER_TYPE" }
+
+[profiles.PROFILE_NAME.secrets]
+SECRET_NAME = { provider = "PROVIDER_NAME", value = "..." }
+```
+
+### Profile inheritance
+
+Profiles inherit all top-level secrets and providers. You only need to define values that differ:
+
+```toml theme={null}
+# Top-level (inherited by all profiles)
+[secrets]
+LOG_LEVEL    = { default = "info" }
+DATABASE_URL = { provider = "age", value = "encrypted-dev..." }
+
+# Production profile — only override what changes
+[profiles.production.secrets]
+DATABASE_URL = { provider = "aws", value = "prod-db" }
+# LOG_LEVEL="info" still inherited from top level
+```
+
+### `--no-defaults` flag
+
+To use only profile-specific secrets without inheriting from the top level:
+
+```bash theme={null}
+fnox exec --profile production --no-defaults -- ./deploy.sh
+```
+
+## Local overrides
+
+Create `fnox.local.toml` alongside `fnox.toml` to override values locally without touching the shared config. Add it to `.gitignore`.
+
+```toml theme={null}
+# fnox.local.toml
+[secrets]
+DATABASE_URL = { default = "postgresql://localhost/mylocal" }
+DEBUG_MODE   = { default = "true" }
+```
+
+```gitignore theme={null}
+fnox.local.toml
+```
+
+## Profile-specific config files
+
+Create `fnox.<profile>.toml` files that are automatically loaded when `FNOX_PROFILE` matches:
+
+```
+project/
+├── fnox.toml              # base config (committed)
+├── fnox.production.toml   # production overrides (committed)
+├── fnox.staging.toml      # staging overrides (committed)
+└── fnox.local.toml        # personal overrides (gitignored)
+```
+
+```bash theme={null}
+# Load fnox.toml only
+fnox exec -- npm start
+
+# Load fnox.toml + fnox.production.toml
+FNOX_PROFILE=production fnox exec -- ./deploy.sh
+```
+
+<Note>
+  `fnox.$FNOX_PROFILE.toml` files apply on top of `fnox.toml`'s default-profile secrets — they are separate from the `[profiles.xxx]` sections inside `fnox.toml`. `fnox.default.toml` is never loaded.
+</Note>
+
+## Hierarchical configuration
+
+fnox searches parent directories for `fnox.toml` files:
+
+```
+project/
+├── fnox.toml          # root config
+└── services/
+    └── api/
+        └── fnox.toml  # API config — inherits from root
+```
+
+Merge order for a project with a parent config (lowest to highest priority):
+
+1. Global config (`~/.config/fnox/config.toml`)
+2. Root `fnox.toml`
+3. Root `fnox.$FNOX_PROFILE.toml`
+4. Root `fnox.local.toml`
+5. Child `fnox.toml`
+6. Child `fnox.$FNOX_PROFILE.toml`
+7. Child `fnox.local.toml`
+
+## Complete example
+
+```toml theme={null}
+# Global settings
+if_missing = "warn"
+import     = ["./shared/common.toml"]
+
+# Providers
+[providers]
+age = { type = "age", recipients = ["age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p"] }
+aws = { type = "aws-sm", region = "us-east-1", prefix = "myapp/" }
+
+# Default profile secrets
+[secrets]
+DATABASE_URL = { provider = "age", value = "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHNjcnlwdC...", default = "postgresql://localhost/dev", description = "Database connection string" }
+JWT_SECRET   = { provider = "age", value = "encrypted...", if_missing = "error" }
+LOG_LEVEL    = { default = "info" }
+
+# Production profile
+[profiles.production]
+if_missing = "error"
+
+[profiles.production.providers]
+aws = { type = "aws-sm", region = "us-east-1", prefix = "myapp-prod/" }
+
+[profiles.production.secrets]
+DATABASE_URL = { provider = "aws", value = "database-url", description = "Production database" }
+JWT_SECRET   = { provider = "aws", value = "jwt-secret" }
+# LOG_LEVEL inherited from top level
+```
+
+
+# Environment Variables
+Source: https://www.mintlify.com/jdx/fnox/reference/environment
+
+Complete reference for all FNOX_* environment variables and provider-specific variables.
+
+## Core configuration
+
+### `FNOX_PROFILE`
+
+The active profile name. Must consist of alphanumeric characters, dashes, underscores, or dots. Path separators and control characters are rejected.
+
+|             |                                               |
+| ----------- | --------------------------------------------- |
+| **Default** | `default`                                     |
+| **Values**  | Any valid profile name defined in `fnox.toml` |
+
+```bash theme={null}
+export FNOX_PROFILE=production
+fnox exec -- ./deploy.sh
+```
+
+### `FNOX_CONFIG_DIR`
+
+Path to the directory containing the global config file (`config.toml`). Must be an absolute path; relative paths are ignored.
+
+|             |                                                        |
+| ----------- | ------------------------------------------------------ |
+| **Default** | `~/.config/fnox` (or `$XDG_CONFIG_HOME/fnox` on Linux) |
+
+```bash theme={null}
+export FNOX_CONFIG_DIR=/opt/fnox
+fnox get DATABASE_URL
+```
+
+### `FNOX_NO_DEFAULTS`
+
+When set to `true`, skip merging top-level secrets into the selected profile. Equivalent to passing `--no-defaults` on every command.
+
+|             |                 |
+| ----------- | --------------- |
+| **Default** | `false`         |
+| **Values**  | `true`, `false` |
+
+```bash theme={null}
+export FNOX_NO_DEFAULTS=true
+fnox exec --profile production -- ./deploy.sh
+```
+
+## Age encryption keys
+
+### `FNOX_AGE_KEY`
+
+Age private key provided directly as a string. Use this in CI/CD environments where you inject the key from a secret manager.
+
+|            |                       |
+| ---------- | --------------------- |
+| **Format** | `AGE-SECRET-KEY-1...` |
+
+```bash theme={null}
+export FNOX_AGE_KEY="AGE-SECRET-KEY-1ABCDEFGHIJKLMNOPQRSTUVWXYZ..."
+fnox get DATABASE_URL
+```
+
+<Tip>
+  To load the age key from a file instead of an inline string, set `FNOX_AGE_KEY` to the file's contents:
+
+  ```bash theme={null}
+  export FNOX_AGE_KEY=$(grep "AGE-SECRET-KEY" ~/.config/fnox/age.txt)
+  ```
+
+  Alternatively, configure `key_file` directly in the provider config in `fnox.toml`:
+
+  ```toml theme={null}
+  [providers.age]
+  type = "age"
+  key_file = "~/.ssh/id_ed25519"
+  recipients = ["age1..."]
+  ```
+</Tip>
+
+## Missing secret behavior
+
+### `FNOX_IF_MISSING`
+
+Runtime override for missing-secret behavior. Overrides config file settings but is overridden by the `--if-missing` CLI flag.
+
+| Value    | Behavior                                               |
+| -------- | ------------------------------------------------------ |
+| `error`  | Fail and exit with an error                            |
+| `warn`   | Print a warning and continue (default system behavior) |
+| `ignore` | Silently skip the missing secret                       |
+
+```bash theme={null}
+# Strict mode for deployment scripts
+export FNOX_IF_MISSING=error
+fnox exec -- ./deploy.sh
+
+# Lenient mode for optional secrets
+FNOX_IF_MISSING=ignore fnox exec -- npm test
+```
+
+### `FNOX_IF_MISSING_DEFAULT`
+
+Base default when no other configuration specifies missing-secret behavior. This has the lowest priority of all configuration methods.
+
+|             |                           |
+| ----------- | ------------------------- |
+| **Default** | `warn`                    |
+| **Values**  | `error`, `warn`, `ignore` |
+
+Only applies when all of the following are unset: `--if-missing` flag, `FNOX_IF_MISSING`, secret-level `if_missing`, and top-level `if_missing` in config.
+
+```bash theme={null}
+# Make error mode the global default across all projects
+echo 'export FNOX_IF_MISSING_DEFAULT=error' >> ~/.bashrc
+```
+
+## Shell integration
+
+### `FNOX_SHELL_OUTPUT`
+
+Controls how much output the shell hook prints when loading secrets.
+
+| Value    | Output                                          |
+| -------- | ----------------------------------------------- |
+| `none`   | Silent — no output                              |
+| `normal` | Secret count and names (default)                |
+| `debug`  | Verbose: config path, profile, resolved secrets |
+
+```bash theme={null}
+# Silence shell integration output
+export FNOX_SHELL_OUTPUT=none
+
+# Default output
+export FNOX_SHELL_OUTPUT=normal
+cd my-app
+# fnox: +3 DATABASE_URL, API_KEY, JWT_SECRET
+
+# Debug output
+export FNOX_SHELL_OUTPUT=debug
+cd my-app
+# fnox: Loading config from /path/to/fnox.toml
+# fnox: Active profile: default
+# fnox: Resolved 3 secrets
+# fnox: +3 DATABASE_URL, API_KEY, JWT_SECRET
+```
+
+### `FNOX_PROMPT_AUTH`
+
+Whether to prompt for authentication when a provider's auth fails in a TTY. Disable this in non-interactive or automated contexts.
+
+|             |                                        |
+| ----------- | -------------------------------------- |
+| **Default** | `true`                                 |
+| **Values**  | `true`, `false`, `1`, `0`, `yes`, `no` |
+
+```bash theme={null}
+export FNOX_PROMPT_AUTH=false
+fnox exec -- ./automated-script.sh
+```
+
+## Provider-specific variables
+
+### AWS
+
+Used by `aws-sm`, `aws-kms`, and `aws-ps` providers.
+
+```bash theme={null}
+export AWS_ACCESS_KEY_ID="AKIA..."
+export AWS_SECRET_ACCESS_KEY="..."
+export AWS_REGION="us-east-1"
+export AWS_PROFILE="myapp"
+```
+
+### Azure
+
+Used by `azure-sm` and `azure-kms` providers.
+
+```bash theme={null}
+export AZURE_CLIENT_ID="..."
+export AZURE_CLIENT_SECRET="..."
+export AZURE_TENANT_ID="..."
+```
+
+### Google Cloud
+
+Used by `gcp-sm` and `gcp-kms` providers.
+
+```bash theme={null}
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
+```
+
+### 1Password
+
+Used by the `1password` provider. Enables non-interactive (service account) authentication.
+
+```bash theme={null}
+export OP_SERVICE_ACCOUNT_TOKEN="ops_..."
+```
+
+### Bitwarden
+
+Used by the `bitwarden` provider. Provides an already-unlocked session key.
+
+```bash theme={null}
+export BW_SESSION="..."
+```
+
+### HashiCorp Vault
+
+Used by the `vault` provider. `FNOX_`-prefixed variables take precedence over the standard Vault variables.
+
+```bash theme={null}
+export VAULT_ADDR="https://vault.example.com:8200"
+export VAULT_TOKEN="hvs.CAESIJ..."
+```
+
+### Editor
+
+Used by `fnox edit` to open the config file.
+
+```bash theme={null}
+export EDITOR=vim
+```
+
+**Default:** system default editor (`$VISUAL`, then `vi` or `nano`).
+
+## Priority order
+
+When the same setting is configured in multiple places, fnox resolves it in this order (highest to lowest):
+
+1. **CLI flags** — `--profile`, `--if-missing`, `--no-defaults`
+2. **Environment variables** — `FNOX_PROFILE`, `FNOX_IF_MISSING`, `FNOX_NO_DEFAULTS`
+3. **Secret-level config** — `if_missing` in `[secrets]`
+4. **Top-level config** — `if_missing` at the top of `fnox.toml`
+5. **`FNOX_IF_MISSING_DEFAULT`** — base default env var
+6. **Built-in defaults** — hardcoded behavior (`warn`)
+
+## Usage examples
+
+<Tabs>
+  <Tab title="Development">
+    ```bash theme={null}
+    # ~/.bashrc or ~/.zshrc
+
+    export FNOX_PROFILE=default
+    export FNOX_AGE_KEY_FILE=~/.ssh/id_ed25519
+    export FNOX_SHELL_OUTPUT=normal
+    export FNOX_IF_MISSING=warn
+
+    # Enable shell integration
+    eval "$(fnox activate bash)"
+    ```
+  </Tab>
+
+  <Tab title="Production server">
+    ```bash theme={null}
+    # CI/CD or production server environment
+
+    export FNOX_PROFILE=production
+    export FNOX_IF_MISSING=error
+
+    # AWS credentials (or use IAM role)
+    export AWS_REGION=us-east-1
+
+    # Age key injected from a secure secret store
+    export FNOX_AGE_KEY="${CI_SECRET_AGE_KEY}"
+    ```
+  </Tab>
+
+  <Tab title="GitHub Actions">
+    ```yaml theme={null}
+    # .github/workflows/deploy.yml
+    env:
+      FNOX_PROFILE: production
+      FNOX_IF_MISSING: error
+      FNOX_AGE_KEY: ${{ secrets.FNOX_AGE_KEY }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    ```
+  </Tab>
+</Tabs>
+
+

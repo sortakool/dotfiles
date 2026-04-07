@@ -1,0 +1,45 @@
+# Mise
+
+## Docs
+
+- [mise activate](https://www.mintlify.com/jdx/mise/cli/activate.md): Initialize mise in your current shell session by adding it to your shell's rc file.
+- [mise config](https://www.mintlify.com/jdx/mise/cli/config.md): Manage mise.toml config files — list, get, and set configuration values.
+- [mise doctor](https://www.mintlify.com/jdx/mise/cli/doctor.md): Check your mise installation for configuration problems and display diagnostic information.
+- [mise env](https://www.mintlify.com/jdx/mise/cli/env.md): Export mise environment variables for use in a single shell session or script.
+- [mise exec](https://www.mintlify.com/jdx/mise/cli/exec.md): Execute a command with mise-managed tools active, without modifying the current shell session.
+- [mise install](https://www.mintlify.com/jdx/mise/cli/install.md): Install tool versions without modifying any config file.
+- [mise ls](https://www.mintlify.com/jdx/mise/cli/ls.md): List installed and active tool versions managed by mise.
+- [mise plugins](https://www.mintlify.com/jdx/mise/cli/plugins.md): Manage mise plugins for extending tool support.
+- [mise prune](https://www.mintlify.com/jdx/mise/cli/prune.md): Remove unused tool versions to free up disk space.
+- [mise run](https://www.mintlify.com/jdx/mise/cli/run.md): Run project tasks defined in mise.toml or as shell scripts.
+- [mise upgrade](https://www.mintlify.com/jdx/mise/cli/upgrade.md): Upgrade installed tools to newer versions within the range specified in mise.toml.
+- [mise use](https://www.mintlify.com/jdx/mise/cli/use.md): Install a tool and add it to mise.toml.
+- [Config Environments](https://www.mintlify.com/jdx/mise/configuration/environments.md): Use environment-specific mise.toml files for development, production, and other profiles.
+- [Configuration overview](https://www.mintlify.com/jdx/mise/configuration/overview.md): How mise loads and merges configuration from mise.toml files across system, global, and project scopes.
+- [Settings](https://www.mintlify.com/jdx/mise/configuration/settings.md): Global settings for mise, configurable via mise.toml, environment variables, or the mise settings command.
+- [Templates](https://www.mintlify.com/jdx/mise/configuration/templates.md): Use Tera templates in mise.toml to dynamically generate configuration values.
+- [Aliases](https://www.mintlify.com/jdx/mise/dev-tools/aliases.md): Create short names for tool versions and redirect tool backends using aliases in mise.toml.
+- [Backends](https://www.mintlify.com/jdx/mise/dev-tools/backends.md): All the package ecosystems mise can install tools from, and how to choose between them.
+- [Dev tools overview](https://www.mintlify.com/jdx/mise/dev-tools/overview.md): How mise manages tool versions, resolves configurations, and switches between runtimes automatically.
+- [Shims](https://www.mintlify.com/jdx/mise/dev-tools/shims.md): What shims are, how they compare to PATH activation, and when to use them — especially for IDEs and non-interactive environments.
+- [Environments overview](https://www.mintlify.com/jdx/mise/environments/overview.md): Set, unset, and dynamically generate environment variables for your projects using mise.
+- [Secrets](https://www.mintlify.com/jdx/mise/environments/secrets.md): Manage sensitive environment variables securely using SOPS, age encryption, or external secret managers.
+- [Getting started](https://www.mintlify.com/jdx/mise/getting-started.md): Install mise, activate your shell, and start managing tools, environment variables, and tasks.
+- [Continuous integration](https://www.mintlify.com/jdx/mise/guides/continuous-integration.md): Use mise in CI pipelines to provision reproducible tool environments across GitHub Actions, GitLab CI, Xcode Cloud, and any other CI system.
+- [Hooks](https://www.mintlify.com/jdx/mise/guides/hooks.md): Automatically execute scripts on directory changes, tool installation, and other mise lifecycle events.
+- [IDE Integration](https://www.mintlify.com/jdx/mise/guides/ide-integration.md): Configure VS Code, IntelliJ, and other editors to use tools managed by mise.
+- [Plugins](https://www.mintlify.com/jdx/mise/guides/plugins.md): Extend mise with plugins for additional tools and environment management.
+- [Troubleshooting](https://www.mintlify.com/jdx/mise/guides/troubleshooting.md): Diagnose and fix common issues with mise tool management, shell activation, and environment setup.
+- [Installing mise](https://www.mintlify.com/jdx/mise/installing-mise.md): All installation methods for mise: curl, brew, apt, dnf, cargo, winget, scoop, and more.
+- [Introduction](https://www.mintlify.com/jdx/mise/introduction.md): Mise is a dev tools manager, environment manager, and task runner — all in one fast Rust binary.
+- [File tasks](https://www.mintlify.com/jdx/mise/tasks/file-tasks.md): Write mise tasks as standalone executable scripts with metadata headers, argument parsing, and multi-language support.
+- [Tasks overview](https://www.mintlify.com/jdx/mise/tasks/overview.md): Define and run project tasks in mise — from simple one-liners to complex dependency graphs.
+- [Running Tasks](https://www.mintlify.com/jdx/mise/tasks/running-tasks.md): Run mise tasks from the command line with parallel execution, file watching, and dependency ordering.
+- [TOML tasks](https://www.mintlify.com/jdx/mise/tasks/toml-tasks.md): Define tasks directly in mise.toml with dependencies, environment variables, sources, and argument parsing.
+
+## OpenAPI Specs
+
+- [openapi](https://www.mintlify.com/jdx/mise/api-reference/openapi.json)
+
+
+Built with [Mintlify](https://mintlify.com).

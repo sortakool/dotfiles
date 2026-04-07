@@ -1,0 +1,87 @@
+# chezmoi
+
+## Docs
+
+- [Customize chezmoi](https://www.mintlify.com/twpayne/chezmoi/advanced/customize-chezmoi.md): Advanced customization options for chezmoi's behavior and structure
+- [Machine-Specific Configurations](https://www.mintlify.com/twpayne/chezmoi/advanced/machines.md): Manage dotfiles across different machines with templates and conditionals
+- [Migrating from Another Dotfile Manager](https://www.mintlify.com/twpayne/chezmoi/advanced/migrating-from-another-dotfile-manager.md): Guide to migrating your dotfiles from other tools to chezmoi
+- [Configuring External Tools](https://www.mintlify.com/twpayne/chezmoi/advanced/tools.md): Customize diff, merge, and editor tools used by chezmoi
+- [add](https://www.mintlify.com/twpayne/chezmoi/commands/add.md): Add files, directories, or symlinks to the source state
+- [apply](https://www.mintlify.com/twpayne/chezmoi/commands/apply.md): Update the destination directory to match the target state
+- [cat](https://www.mintlify.com/twpayne/chezmoi/commands/cat.md): Print the target contents of files, scripts, or symlinks
+- [cd](https://www.mintlify.com/twpayne/chezmoi/commands/cd.md): Launch a shell in the source directory
+- [completion](https://www.mintlify.com/twpayne/chezmoi/commands/completion.md): Generate shell completion scripts
+- [diff](https://www.mintlify.com/twpayne/chezmoi/commands/diff.md): Show differences between the target state and the destination state
+- [doctor](https://www.mintlify.com/twpayne/chezmoi/commands/doctor.md): Check your system for potential problems
+- [edit](https://www.mintlify.com/twpayne/chezmoi/commands/edit.md): Edit the source state of targets
+- [execute-template](https://www.mintlify.com/twpayne/chezmoi/commands/execute-template.md): Execute templates with access to template data
+- [init](https://www.mintlify.com/twpayne/chezmoi/commands/init.md): Setup the source directory and update the destination directory to match the target state
+- [managed](https://www.mintlify.com/twpayne/chezmoi/commands/managed.md): List the managed entries in the destination directory
+- [merge](https://www.mintlify.com/twpayne/chezmoi/commands/merge.md): Perform three-way merges between the destination, source, and target states
+- [Command Reference](https://www.mintlify.com/twpayne/chezmoi/commands/overview.md): Complete reference for all chezmoi commands
+- [status](https://www.mintlify.com/twpayne/chezmoi/commands/status.md): Show the status of files and scripts managed by chezmoi
+- [unmanaged](https://www.mintlify.com/twpayne/chezmoi/commands/unmanaged.md): List the unmanaged files in the destination directory
+- [update](https://www.mintlify.com/twpayne/chezmoi/commands/update.md): Pull changes from the source repository and apply them
+- [upgrade](https://www.mintlify.com/twpayne/chezmoi/commands/upgrade.md): Upgrade chezmoi to the latest released version
+- [verify](https://www.mintlify.com/twpayne/chezmoi/commands/verify.md): Verify that the destination state matches the target state
+- [Articles and Blog Posts](https://www.mintlify.com/twpayne/chezmoi/community/articles.md): Community articles, tutorials, and blog posts about chezmoi
+- [Comparison Table](https://www.mintlify.com/twpayne/chezmoi/community/comparison-table.md): Feature comparison between chezmoi and other dotfile managers
+- [Dotfile Repositories](https://www.mintlify.com/twpayne/chezmoi/community/dotfile-repos.md): Browse and learn from community dotfile repositories using chezmoi
+- [Related Software](https://www.mintlify.com/twpayne/chezmoi/community/related-software.md): Tools, plugins, and integrations that work with chezmoi
+- [Videos and Presentations](https://www.mintlify.com/twpayne/chezmoi/community/videos.md): Video tutorials, talks, and presentations about chezmoi
+- [How chezmoi works](https://www.mintlify.com/twpayne/chezmoi/concepts/how-chezmoi-works.md): Understand chezmoi architecture, core concepts, and how it manages dotfiles from source state to destination state.
+- [What does chezmoi do?](https://www.mintlify.com/twpayne/chezmoi/concepts/what-does-chezmoi-do.md): Learn how chezmoi helps manage personal configuration files across multiple machines and operating systems.
+- [Why use chezmoi?](https://www.mintlify.com/twpayne/chezmoi/concepts/why-use-chezmoi.md): Understand the benefits of using chezmoi over other dotfile management approaches and why thousands of developers trust it.
+- [Architecture](https://www.mintlify.com/twpayne/chezmoi/developer/architecture.md): High-level overview of chezmoi's source code architecture
+- [Building chezmoi](https://www.mintlify.com/twpayne/chezmoi/developer/building.md): Instructions for building chezmoi from source
+- [Building on Top of chezmoi](https://www.mintlify.com/twpayne/chezmoi/developer/building-on-top-of-chezmoi.md): Guidelines for integrating with chezmoi and building tools on top of it
+- [Contributing to chezmoi](https://www.mintlify.com/twpayne/chezmoi/developer/contributing.md): Guidelines for contributing changes to chezmoi
+- [Install Script](https://www.mintlify.com/twpayne/chezmoi/developer/install-script.md): Information about chezmoi's install script generation
+- [Packaging chezmoi](https://www.mintlify.com/twpayne/chezmoi/developer/packaging.md): Guidelines for packaging chezmoi for operating systems and distributions
+- [Releases](https://www.mintlify.com/twpayne/chezmoi/developer/releases.md): How chezmoi releases are created and published
+- [Security](https://www.mintlify.com/twpayne/chezmoi/developer/security.md): Security policy and vulnerability reporting for chezmoi
+- [Testing chezmoi](https://www.mintlify.com/twpayne/chezmoi/developer/testing.md): Overview of chezmoi's testing strategy and how to run tests
+- [age Encryption](https://www.mintlify.com/twpayne/chezmoi/encryption/age.md): Encrypt your dotfiles with age, a modern encryption tool
+- [GPG Encryption](https://www.mintlify.com/twpayne/chezmoi/encryption/gpg.md): Encrypt your dotfiles with GPG/PGP encryption
+- [Encryption Overview](https://www.mintlify.com/twpayne/chezmoi/encryption/overview.md): Keep your secrets secure with chezmoi's encryption support
+- [Design Decisions FAQ](https://www.mintlify.com/twpayne/chezmoi/faq/design.md): Frequently asked questions about chezmoi's design and architecture
+- [General FAQ](https://www.mintlify.com/twpayne/chezmoi/faq/general.md): Frequently asked questions about chezmoi
+- [Troubleshooting FAQ](https://www.mintlify.com/twpayne/chezmoi/faq/troubleshooting.md): Solutions to common problems and errors with chezmoi
+- [Usage FAQ](https://www.mintlify.com/twpayne/chezmoi/faq/usage.md): Frequently asked questions about using chezmoi day-to-day
+- [Install chezmoi](https://www.mintlify.com/twpayne/chezmoi/install.md): Install chezmoi on Linux, macOS, Windows, FreeBSD, and more with your preferred package manager or direct download
+- [chezmoi - Manage Your Dotfiles Across Multiple Machines](https://www.mintlify.com/twpayne/chezmoi/introduction.md): Securely manage your personal configuration files (dotfiles) across multiple diverse machines, from your laptop to cloud servers
+- [1Password](https://www.mintlify.com/twpayne/chezmoi/password-managers/1password.md): Integrate 1Password with chezmoi to manage secrets in your dotfiles
+- [AWS Secrets Manager](https://www.mintlify.com/twpayne/chezmoi/password-managers/aws-secrets-manager.md): Integrate AWS Secrets Manager with chezmoi to manage secrets in your dotfiles
+- [Azure Key Vault](https://www.mintlify.com/twpayne/chezmoi/password-managers/azure-key-vault.md): Integrate Azure Key Vault with chezmoi to manage secrets in your dotfiles
+- [Bitwarden](https://www.mintlify.com/twpayne/chezmoi/password-managers/bitwarden.md): Integrate Bitwarden with chezmoi to manage secrets in your dotfiles
+- [Dashlane](https://www.mintlify.com/twpayne/chezmoi/password-managers/dashlane.md): Integrate Dashlane with chezmoi to manage secrets in your dotfiles
+- [Doppler](https://www.mintlify.com/twpayne/chezmoi/password-managers/doppler.md): Integrate Doppler with chezmoi to manage secrets in your dotfiles
+- [gopass](https://www.mintlify.com/twpayne/chezmoi/password-managers/gopass.md): Integrate gopass with chezmoi to manage secrets in your dotfiles
+- [KeePassXC](https://www.mintlify.com/twpayne/chezmoi/password-managers/keepassxc.md): Integrate KeePassXC with chezmoi to manage secrets in your dotfiles
+- [Keeper](https://www.mintlify.com/twpayne/chezmoi/password-managers/keeper.md): Integrate Keeper Security with chezmoi to manage secrets in your dotfiles
+- [LastPass](https://www.mintlify.com/twpayne/chezmoi/password-managers/lastpass.md): Integrate LastPass with chezmoi to manage secrets in your dotfiles
+- [pass (Password Store)](https://www.mintlify.com/twpayne/chezmoi/password-managers/pass.md): Integrate pass with chezmoi to manage secrets in your dotfiles
+- [Passhole](https://www.mintlify.com/twpayne/chezmoi/password-managers/passhole.md): Integrate KeePass with chezmoi using the Passhole CLI
+- [Proton Pass](https://www.mintlify.com/twpayne/chezmoi/password-managers/proton-pass.md): Integrate Proton Pass with chezmoi to manage secrets in your dotfiles
+- [HashiCorp Vault](https://www.mintlify.com/twpayne/chezmoi/password-managers/vault.md): Integrate HashiCorp Vault with chezmoi to manage secrets in your dotfiles
+- [Quick Start Guide](https://www.mintlify.com/twpayne/chezmoi/quick-start.md): Get started with chezmoi and learn how to manage your dotfiles across multiple machines
+- [Application Order](https://www.mintlify.com/twpayne/chezmoi/reference/application-order.md): The deterministic order in which chezmoi applies changes
+- [Configuration File](https://www.mintlify.com/twpayne/chezmoi/reference/configuration-file.md): Complete reference for chezmoi's configuration file options
+- [Source State Attributes](https://www.mintlify.com/twpayne/chezmoi/reference/source-state-attributes.md): File naming conventions and attributes in chezmoi's source directory
+- [Special Files and Directories](https://www.mintlify.com/twpayne/chezmoi/reference/special-files-and-directories.md): Special files and directories in chezmoi's source directory
+- [Target Types](https://www.mintlify.com/twpayne/chezmoi/reference/target-types.md): Different types of targets chezmoi can manage
+- [Template Directives](https://www.mintlify.com/twpayne/chezmoi/reference/templates/directives.md): File-specific template options using directives
+- [Template Functions](https://www.mintlify.com/twpayne/chezmoi/reference/templates/functions.md): Complete reference of all template functions available in chezmoi
+- [Templates Overview](https://www.mintlify.com/twpayne/chezmoi/reference/templates/overview.md): Overview of chezmoi's template system
+- [Password Manager Functions](https://www.mintlify.com/twpayne/chezmoi/reference/templates/password-manager-functions.md): Template functions for integrating with password managers
+- [Template Variables](https://www.mintlify.com/twpayne/chezmoi/reference/templates/variables.md): Automatically-populated variables available in chezmoi templates
+- [Daily Operations](https://www.mintlify.com/twpayne/chezmoi/user-guide/daily-operations.md): Common workflows for managing your dotfiles with chezmoi
+- [Include Files from Elsewhere](https://www.mintlify.com/twpayne/chezmoi/user-guide/include-files-from-elsewhere.md): Import external files and repositories into your dotfiles
+- [Manage Different Types of File](https://www.mintlify.com/twpayne/chezmoi/user-guide/manage-different-types-of-file.md): Handle special file types and scenarios with chezmoi
+- [Manage Machine-to-Machine Differences](https://www.mintlify.com/twpayne/chezmoi/user-guide/manage-machine-to-machine-differences.md): Use templates to customize dotfiles for different machines
+- [Setup](https://www.mintlify.com/twpayne/chezmoi/user-guide/setup.md): Set up chezmoi to manage your dotfiles across multiple machines
+- [Templating](https://www.mintlify.com/twpayne/chezmoi/user-guide/templating.md): Master chezmoi's template system for dynamic configuration
+- [Use Scripts to Perform Actions](https://www.mintlify.com/twpayne/chezmoi/user-guide/use-scripts-to-perform-actions.md): Automate tasks with chezmoi's script system
+
+
+Built with [Mintlify](https://mintlify.com).

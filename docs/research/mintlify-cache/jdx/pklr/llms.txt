@@ -1,0 +1,28 @@
+# pklr
+
+## Docs
+
+- [analyze_imports](https://www.mintlify.com/jdx/pklr/api/analyze-imports.md): Extract all transitive local file dependencies from a Pkl file
+- [Error](https://www.mintlify.com/jdx/pklr/api/error.md): Error types returned by pklr
+- [EvalOptions](https://www.mintlify.com/jdx/pklr/api/eval-options.md): Configuration options for the pkl evaluator
+- [eval_to_json](https://www.mintlify.com/jdx/pklr/api/eval-to-json.md): Evaluate a Pkl file and return its contents as serde_json::Value
+- [Evaluator](https://www.mintlify.com/jdx/pklr/api/evaluator.md): Low-level Pkl evaluator with full configuration control
+- [Value](https://www.mintlify.com/jdx/pklr/api/value.md): The pklr runtime value type
+- [Error handling](https://www.mintlify.com/jdx/pklr/guides/error-handling.md): Understanding and handling pklr errors
+- [Evaluating Pkl files](https://www.mintlify.com/jdx/pklr/guides/evaluating-files.md): How to load and evaluate .pkl configuration files
+- [HTTP and remote imports](https://www.mintlify.com/jdx/pklr/guides/http-remote-imports.md): Fetching remote Pkl modules via HTTP, HTTPS, and package:// URIs
+- [Imports and amends](https://www.mintlify.com/jdx/pklr/guides/imports-and-amends.md): Resolving imports, amends, and extends in Pkl files
+- [Installation](https://www.mintlify.com/jdx/pklr/installation.md): Add pklr to your Rust project
+- [Introduction](https://www.mintlify.com/jdx/pklr/introduction.md): What pklr is and why you'd use it
+- [Classes and modules](https://www.mintlify.com/jdx/pklr/language/classes-and-modules.md): Defining classes and working with modules
+- [Expressions](https://www.mintlify.com/jdx/pklr/language/expressions.md): Operators, control flow, and lambdas in Pkl
+- [Objects and mappings](https://www.mintlify.com/jdx/pklr/language/objects-and-mappings.md): Pkl objects, mappings, lists, and sets
+- [Primitives](https://www.mintlify.com/jdx/pklr/language/primitives.md): Pkl primitive types supported by pklr
+- [Quickstart](https://www.mintlify.com/jdx/pklr/quickstart.md): Evaluate your first Pkl file in minutes
+
+## OpenAPI Specs
+
+- [openapi](https://www.mintlify.com/jdx/pklr/api-reference/openapi.json)
+
+
+Built with [Mintlify](https://mintlify.com).

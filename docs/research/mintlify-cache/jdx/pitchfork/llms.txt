@@ -1,0 +1,51 @@
+# Pitchfork
+
+## Docs
+
+- [pitchfork activate](https://www.mintlify.com/jdx/pitchfork/cli/activate.md): Generate shell hook code that enables automatic daemon management when you change directories.
+- [pitchfork boot](https://www.mintlify.com/jdx/pitchfork/cli/boot.md): Register or remove the pitchfork supervisor from automatic system boot startup.
+- [pitchfork clean](https://www.mintlify.com/jdx/pitchfork/cli/clean.md): Remove stopped and failed daemon entries from the pitchfork list.
+- [pitchfork completion](https://www.mintlify.com/jdx/pitchfork/cli/completion.md): Generate tab-completion scripts for bash, zsh, or fish shells.
+- [pitchfork config](https://www.mintlify.com/jdx/pitchfork/cli/config.md): Manage and edit pitchfork.toml configuration files, including adding and removing daemon entries.
+- [pitchfork disable](https://www.mintlify.com/jdx/pitchfork/cli/disable.md): Prevent a daemon from being started manually or automatically until re-enabled.
+- [pitchfork enable](https://www.mintlify.com/jdx/pitchfork/cli/enable.md): Re-enable a previously disabled daemon, allowing it to be started manually or automatically.
+- [CLI reference](https://www.mintlify.com/jdx/pitchfork/cli/index.md): Complete reference for all pitchfork commands, flags, and arguments.
+- [pitchfork list](https://www.mintlify.com/jdx/pitchfork/cli/list.md): Display a table of all tracked daemons with their PID, status, and error information.
+- [pitchfork logs](https://www.mintlify.com/jdx/pitchfork/cli/logs.md): Display, filter, and follow log output from one or more managed daemons.
+- [pitchfork restart](https://www.mintlify.com/jdx/pitchfork/cli/restart.md): Stop then start one or more daemons, equivalent to running start --force.
+- [pitchfork run](https://www.mintlify.com/jdx/pitchfork/cli/run.md): Run a one-off command as a managed daemon without a pitchfork.toml configuration file.
+- [pitchfork start](https://www.mintlify.com/jdx/pitchfork/cli/start.md): Start one or more daemons defined in pitchfork.toml, waiting for each to be ready before returning.
+- [pitchfork status](https://www.mintlify.com/jdx/pitchfork/cli/status.md): Show detailed status information for a single daemon, including its PID and current state.
+- [pitchfork stop](https://www.mintlify.com/jdx/pitchfork/cli/stop.md): Send a graceful stop signal to one or more running daemons, escalating to SIGKILL if needed.
+- [pitchfork tui](https://www.mintlify.com/jdx/pitchfork/cli/tui.md): Launch the interactive terminal dashboard to monitor daemons and view logs in real time.
+- [pitchfork wait](https://www.mintlify.com/jdx/pitchfork/cli/wait.md): Block until a daemon stops, tailing its logs in real time. Exits with the same code as the daemon.
+- [Architecture](https://www.mintlify.com/jdx/pitchfork/concepts/architecture.md): A technical deep-dive into how Pitchfork is built.
+- [How it works](https://www.mintlify.com/jdx/pitchfork/concepts/how-it-works.md): A tour of the client-server architecture that powers Pitchfork.
+- [Namespaces](https://www.mintlify.com/jdx/pitchfork/concepts/namespaces.md): How Pitchfork keeps daemons from different projects from colliding.
+- [Your first project](https://www.mintlify.com/jdx/pitchfork/first-daemon.md): Set up a pitchfork.toml with multiple daemons for a realistic development environment.
+- [Auto restart](https://www.mintlify.com/jdx/pitchfork/guides/auto-restart.md): Configure pitchfork to automatically restart daemons when they crash.
+- [Start on boot](https://www.mintlify.com/jdx/pitchfork/guides/boot-start.md): Configure pitchfork to start automatically when your system boots using launchd on macOS or systemd on Linux.
+- [Container mode](https://www.mintlify.com/jdx/pitchfork/guides/container-mode.md): Run pitchfork as PID 1 inside a Docker container with proper zombie reaping and signal forwarding.
+- [File watching](https://www.mintlify.com/jdx/pitchfork/guides/file-watching.md): Automatically restart daemons when source files change.
+- [Lifecycle hooks](https://www.mintlify.com/jdx/pitchfork/guides/lifecycle-hooks.md): Run custom shell commands when daemons become ready, fail, retry, or stop.
+- [Viewing logs](https://www.mintlify.com/jdx/pitchfork/guides/logs.md): View, filter, tail, and manage daemon logs from the command line, TUI, or web UI.
+- [mise integration](https://www.mintlify.com/jdx/pitchfork/guides/mise-integration.md): Use mise with pitchfork to ensure the correct tool versions and environment variables are available to your daemons.
+- [Ready checks](https://www.mintlify.com/jdx/pitchfork/guides/ready-checks.md): Configure how pitchfork determines when a daemon is ready to accept requests.
+- [Cron scheduling](https://www.mintlify.com/jdx/pitchfork/guides/scheduling.md): Run daemons on a schedule using cron expressions.
+- [Shell hook](https://www.mintlify.com/jdx/pitchfork/guides/shell-hook.md): Automatically start daemons when you enter a project directory and stop them when you leave.
+- [Terminal UI (TUI)](https://www.mintlify.com/jdx/pitchfork/guides/tui.md): Monitor and manage daemons from an interactive terminal dashboard with vim-style keybindings.
+- [Web UI](https://www.mintlify.com/jdx/pitchfork/guides/web-ui.md): Monitor and manage daemons from a browser with real-time log streaming and config editing.
+- [Installation](https://www.mintlify.com/jdx/pitchfork/installation.md): Install Pitchfork via mise, cargo, or a pre-built binary from GitHub Releases.
+- [Introduction](https://www.mintlify.com/jdx/pitchfork/introduction.md): Pitchfork is a CLI for managing background daemons with a focus on developer experience.
+- [Quick start](https://www.mintlify.com/jdx/pitchfork/quickstart.md): Get Pitchfork running and launch your first daemon in under 5 minutes.
+- [Configuration reference](https://www.mintlify.com/jdx/pitchfork/reference/configuration.md): Complete reference for pitchfork.toml — daemon definitions, naming rules, namespace derivation, and all configuration options.
+- [Environment variables](https://www.mintlify.com/jdx/pitchfork/reference/environment-vars.md): All environment variables that control pitchfork behavior. Environment variables override all file-based configuration.
+- [File locations](https://www.mintlify.com/jdx/pitchfork/reference/file-locations.md): Where pitchfork stores configuration files, state, logs, and the IPC socket.
+- [Settings reference](https://www.mintlify.com/jdx/pitchfork/reference/settings.md): All configurable settings for pitchfork, grouped by section. Set via pitchfork.toml, user config, or environment variables.
+
+## OpenAPI Specs
+
+- [openapi](https://www.mintlify.com/jdx/pitchfork/api-reference/openapi.json)
+
+
+Built with [Mintlify](https://mintlify.com).

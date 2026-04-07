@@ -1,0 +1,31 @@
+# Fnox
+
+## Docs
+
+- [CI/CD Integration](https://www.mintlify.com/jdx/fnox/guides/ci-cd.md): Run fnox in GitHub Actions and other CI pipelines to securely inject secrets at deploy time.
+- [Hierarchical Configuration](https://www.mintlify.com/jdx/fnox/guides/hierarchical-config.md): Merge fnox.toml files across parent directories for monorepos and multi-service projects.
+- [How It Works](https://www.mintlify.com/jdx/fnox/guides/how-it-works.md): Understand fnox's two storage modes, secret resolution order, and execution flow.
+- [Credential Leases](https://www.mintlify.com/jdx/fnox/guides/leases.md): Vend short-lived cloud credentials from AWS, GCP, Azure, Vault, and more using fnox leases.
+- [MCP Server](https://www.mintlify.com/jdx/fnox/guides/mcp.md): Use fnox as a session-scoped secret broker for AI agents via the Model Context Protocol.
+- [Profiles](https://www.mintlify.com/jdx/fnox/guides/profiles.md): Manage secrets for multiple environments in a single fnox.toml using profiles.
+- [Real-World Example](https://www.mintlify.com/jdx/fnox/guides/real-world-example.md): Build a complete multi-environment secret setup with age encryption, AWS Secrets Manager, shell integration, and CI/CD.
+- [Shell Integration](https://www.mintlify.com/jdx/fnox/guides/shell-integration.md): Automatically load and unload secrets when you cd into and out of project directories.
+- [Installation](https://www.mintlify.com/jdx/fnox/installation.md): Install fnox using mise, cargo, or from source.
+- [What is Fnox?](https://www.mintlify.com/jdx/fnox/introduction.md): Fnox is a CLI secret manager that supports encrypted secrets in git and remote cloud providers.
+- [Age Encryption](https://www.mintlify.com/jdx/fnox/providers/age.md): Encrypt secrets with age and store the ciphertext directly in fnox.toml. Supports native age keys and SSH keys — no extra key management needed.
+- [AWS KMS](https://www.mintlify.com/jdx/fnox/providers/aws-kms.md): Encrypt secrets with AWS Key Management Service and store the ciphertext in fnox.toml. Combines git-based version control with AWS-managed keys and IAM access control.
+- [AWS Parameter Store](https://www.mintlify.com/jdx/fnox/providers/aws-ps.md): Store secrets in AWS Systems Manager Parameter Store. Hierarchical paths, free standard tier, and IAM access control make it a cost-effective alternative to Secrets Manager.
+- [AWS Secrets Manager](https://www.mintlify.com/jdx/fnox/providers/aws-sm.md): Store secrets remotely in AWS Secrets Manager. fnox.toml contains only name references — secrets never touch the filesystem or version control.
+- [Azure Providers](https://www.mintlify.com/jdx/fnox/providers/azure.md): Use Azure Key Vault for encryption (azure-kms) or remote secret storage (azure-sm). Both providers authenticate with Azure credentials and integrate with Azure RBAC.
+- [Google Cloud Providers](https://www.mintlify.com/jdx/fnox/providers/gcp.md): Use GCP Cloud KMS for encryption (gcp-kms) or GCP Secret Manager for remote storage (gcp-sm). Both providers authenticate via Application Default Credentials.
+- [HashiCorp Vault](https://www.mintlify.com/jdx/fnox/providers/hashicorp-vault.md): Integrate with self-hosted or HCP HashiCorp Vault for advanced secret management with dynamic secrets, fine-grained policies, and audit logging.
+- [Local Storage Providers](https://www.mintlify.com/jdx/fnox/providers/local-storage.md): Store secrets locally using the OS keychain, a KeePass database, password-store (pass), or plain text defaults. Best for personal projects and local development.
+- [Providers Overview](https://www.mintlify.com/jdx/fnox/providers/overview.md): Choose the right secret storage provider for your project. fnox supports encryption, cloud storage, password managers, and local storage backends.
+- [Password Managers](https://www.mintlify.com/jdx/fnox/providers/password-managers.md): Integrate fnox with 1Password, Bitwarden, Bitwarden Secrets Manager, Infisical, or Doppler. Secrets live in your existing password manager or cloud secrets service.
+- [Quick Start](https://www.mintlify.com/jdx/fnox/quickstart.md): Get fnox installed and your first secret encrypted and loaded in under 5 minutes.
+- [CLI Reference](https://www.mintlify.com/jdx/fnox/reference/cli.md): Complete reference for all fnox commands and flags.
+- [Configuration Reference](https://www.mintlify.com/jdx/fnox/reference/configuration.md): Complete reference for the fnox.toml configuration file.
+- [Environment Variables](https://www.mintlify.com/jdx/fnox/reference/environment.md): Complete reference for all FNOX_* environment variables and provider-specific variables.
+
+
+Built with [Mintlify](https://mintlify.com).

@@ -1,0 +1,36 @@
+# Dev Container Images
+
+## Docs
+
+- [Adding an image](https://www.mintlify.com/devcontainers/images/build/adding-an-image.md): Step-by-step guide to contributing a new devcontainer image, from creating the Dockerfile to configuring manifest.json and setting up tests.
+- [manifest.json reference](https://www.mintlify.com/devcontainers/images/build/manifest.md): Complete reference for every field in the manifest.json file that controls how devcontainer images are built, tagged, and tracked.
+- [Build system overview](https://www.mintlify.com/devcontainers/images/build/overview.md): An overview of the build CLI, GitHub Actions workflows, and dev-tagged images used to build and publish devcontainer images to MCR.
+- [Testing](https://www.mintlify.com/devcontainers/images/build/testing.md): How to build and test devcontainer images locally using the vscdc CLI, Docker, and ARM64-specific build instructions.
+- [Versioning](https://www.mintlify.com/devcontainers/images/build/versioning.md): How devcontainer images are versioned, how repository versions map to image tags, and the difference between dev and release tags.
+- [Choosing an image](https://www.mintlify.com/devcontainers/images/choosing-an-image.md): Compare base, language, and universal images to find the right one for your project.
+- [Anaconda (Python 3)](https://www.mintlify.com/devcontainers/images/images/anaconda.md): A dev container image for developing Anaconda and Python 3 applications, with conda package management and Jupyter support.
+- [Alpine](https://www.mintlify.com/devcontainers/images/images/base-alpine.md): A minimal Alpine Linux container with Git and other common utilities installed, optimized for small image sizes.
+- [Debian](https://www.mintlify.com/devcontainers/images/images/base-debian.md): A simple Debian container with Git and other common utilities installed, suitable for general-purpose development environments.
+- [Ubuntu](https://www.mintlify.com/devcontainers/images/images/base-ubuntu.md): A simple Ubuntu container with Git and other common utilities installed, suitable for general-purpose development environments.
+- [C++](https://www.mintlify.com/devcontainers/images/images/cpp.md): Pre-built dev container image for C++ development on Linux, with GCC, Clang, CMake, cppcheck, valgrind, lldb, and Vcpkg.
+- [.NET](https://www.mintlify.com/devcontainers/images/images/dotnet.md): Pre-built dev container image for C# and .NET development, based on the official .NET SDK with nvm and developer tooling included.
+- [Go](https://www.mintlify.com/devcontainers/images/images/go.md): A dev container image for Go development, with gopls, delve, golangci-lint, and common Go tooling pre-installed.
+- [Java](https://www.mintlify.com/devcontainers/images/images/java.md): Pre-built dev container image for Java development, with SDKMAN!, nvm, and support for JDK 11 through 25 on Debian.
+- [Node.js & JavaScript](https://www.mintlify.com/devcontainers/images/images/javascript-node.md): A dev container image for Node.js and JavaScript development, with ESLint, nvm, and yarn pre-installed.
+- [Jekyll](https://www.mintlify.com/devcontainers/images/images/jekyll.md): A dev container image for developing static sites with Jekyll, including Ruby, Bundler, and GitHub Pages support.
+- [PHP](https://www.mintlify.com/devcontainers/images/images/php.md): Pre-built dev container image for PHP development, with Apache, Xdebug, Composer, and nvm included.
+- [Python 3](https://www.mintlify.com/devcontainers/images/images/python.md): A dev container image for Python 3 development, with linting tools, formatters, and type checkers pre-installed.
+- [Ruby](https://www.mintlify.com/devcontainers/images/images/ruby.md): Pre-built dev container image for Ruby development, with rvm, rbenv, ruby-build, bundler, and debugging tools included.
+- [Rust](https://www.mintlify.com/devcontainers/images/images/rust.md): Pre-built dev container image for Rust development, with cargo, rustfmt, clippy, rust-analyzer support, and lldb for debugging.
+- [Node.js & TypeScript](https://www.mintlify.com/devcontainers/images/images/typescript-node.md): A dev container image for TypeScript development on Node.js, with the TypeScript compiler, ESLint, nvm, and yarn pre-installed.
+- [Universal](https://www.mintlify.com/devcontainers/images/images/universal.md): A large, multi-language image with popular runtimes pre-installed — the default image used by GitHub Codespaces.
+- [Introduction](https://www.mintlify.com/devcontainers/images/introduction.md): Learn what dev container images are, how they relate to the Dev Containers spec, and how versioning works.
+- [Quickstart](https://www.mintlify.com/devcontainers/images/quickstart.md): Go from zero to a running dev container in minutes using the Python image.
+- [Dockerfile tips](https://www.mintlify.com/devcontainers/images/tips.md): Best practices for writing efficient Dockerfiles, including layer caching, cleanup, and package installation flags.
+
+## OpenAPI Specs
+
+- [openapi](https://www.mintlify.com/devcontainers/images/api-reference/openapi.json)
+
+
+Built with [Mintlify](https://mintlify.com).

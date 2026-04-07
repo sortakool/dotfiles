@@ -1,0 +1,44 @@
+# Dev Container Features
+
+## Docs
+
+- [Contributing](https://www.mintlify.com/devcontainers/features/contributing/overview.md): How to contribute bug fixes and improvements to Dev Container Features
+- [Testing Features](https://www.mintlify.com/devcontainers/features/contributing/testing.md): How to write and run tests for Dev Container Features
+- [Anaconda](https://www.mintlify.com/devcontainers/features/features/anaconda.md): Installs the Anaconda distribution, including the conda package manager and a full-featured Python environment for data science.
+- [AWS CLI](https://www.mintlify.com/devcontainers/features/features/aws-cli.md): Installs the AWS CLI along with needed dependencies. Useful for base Dockerfiles that often are missing required install dependencies like gpg.
+- [Azure CLI](https://www.mintlify.com/devcontainers/features/features/azure-cli.md): Installs the Azure CLI along with needed dependencies. Useful for base Dockerfiles that often are missing required install dependencies like gpg.
+- [Common Utilities](https://www.mintlify.com/devcontainers/features/features/common-utils.md): Installs a set of common command line utilities, Oh My Zsh!, and sets up a non-root user.
+- [Conda](https://www.mintlify.com/devcontainers/features/features/conda.md): A cross-platform, language-agnostic binary package manager.
+- [GitHub Copilot CLI](https://www.mintlify.com/devcontainers/features/features/copilot-cli.md): Installs the GitHub Copilot CLI.
+- [Light-weight Desktop](https://www.mintlify.com/devcontainers/features/features/desktop-lite.md): Adds a lightweight Fluxbox-based desktop to the container, accessible via a VNC viewer or web browser. GUI commands run from the VS Code terminal open on the desktop automatically.
+- [Docker (Docker-in-Docker)](https://www.mintlify.com/devcontainers/features/features/docker-in-docker.md): Create child containers inside a container, independent from the host's docker instance. Installs Docker extension in the container along with needed CLIs.
+- [Docker (docker-outside-of-docker)](https://www.mintlify.com/devcontainers/features/features/docker-outside-of-docker.md): Re-use the host docker socket, adding the Docker CLI to a container. Feature invokes a script to enable using a forwarded Docker socket within a container to run Docker commands.
+- [Dotnet CLI](https://www.mintlify.com/devcontainers/features/features/dotnet.md): This Feature installs the latest .NET SDK, which includes the .NET CLI and the shared runtime. Options are provided to choose a different version or additional versions.
+- [Git (from source)](https://www.mintlify.com/devcontainers/features/features/git.md): Install an up-to-date version of Git, built from source as needed. Auto-detects the latest stable version and installs needed dependencies.
+- [Git Large File Support (LFS)](https://www.mintlify.com/devcontainers/features/features/git-lfs.md): Installs Git Large File Support (Git LFS) along with needed dependencies. Useful for base Dockerfiles that often are missing required install dependencies like git and curl.
+- [GitHub CLI](https://www.mintlify.com/devcontainers/features/features/github-cli.md): Installs the GitHub CLI. Auto-detects latest version and installs needed dependencies.
+- [Go](https://www.mintlify.com/devcontainers/features/features/go.md): Installs Go and common Go utilities. Auto-detects latest version and installs needed dependencies.
+- [Hugo](https://www.mintlify.com/devcontainers/features/features/hugo.md): Installs Hugo, a popular open-source static site generator written in Go.
+- [Java](https://www.mintlify.com/devcontainers/features/features/java.md): Installs Java, SDKMAN! (if not installed), and needed dependencies.
+- [Kubectl, Helm, and Minikube](https://www.mintlify.com/devcontainers/features/features/kubectl-helm-minikube.md): Installs latest version of kubectl, Helm, and optionally minikube. Auto-detects latest versions and installs needed dependencies.
+- [Nix Package Manager](https://www.mintlify.com/devcontainers/features/features/nix.md): Installs the Nix package manager and optionally a set of packages.
+- [Node.js](https://www.mintlify.com/devcontainers/features/features/node.md): Installs Node.js, nvm, yarn, pnpm, and needed dependencies.
+- [NVIDIA CUDA](https://www.mintlify.com/devcontainers/features/features/nvidia-cuda.md): Installs shared libraries for NVIDIA CUDA.
+- [Oryx](https://www.mintlify.com/devcontainers/features/features/oryx.md): Installs the oryx CLI.
+- [PHP](https://www.mintlify.com/devcontainers/features/features/php.md): Installs PHP and optionally Composer into your dev container.
+- [PowerShell](https://www.mintlify.com/devcontainers/features/features/powershell.md): Installs PowerShell along with needed dependencies. Useful for base Dockerfiles that often are missing required install dependencies like gpg.
+- [Python](https://www.mintlify.com/devcontainers/features/features/python.md): Installs the provided version of Python, as well as PIPX, and other common Python utilities. JupyterLab is conditionally installed with the python feature. Note: May require source code compilation.
+- [Ruby (via rvm)](https://www.mintlify.com/devcontainers/features/features/ruby.md): Installs Ruby, rvm, rbenv, common Ruby utilities, and needed dependencies.
+- [Rust](https://www.mintlify.com/devcontainers/features/features/rust.md): Installs Rust, common Rust utilities, and their required dependencies
+- [SSH server](https://www.mintlify.com/devcontainers/features/features/sshd.md): Adds an SSH server into a container so that you can use an external terminal, sftp, or SSHFS to interact with it.
+- [Terraform, tflint, and Terragrunt](https://www.mintlify.com/devcontainers/features/features/terraform.md): Installs the Terraform CLI and optionally TFLint and Terragrunt. Auto-detects latest version and installs needed dependencies.
+- [Combining Features](https://www.mintlify.com/devcontainers/features/guides/combining-features.md): How to compose multiple Features in a single devcontainer.json
+- [Self-authoring Features](https://www.mintlify.com/devcontainers/features/guides/self-authoring.md): How to create, test, and publish your own Dev Container Features
+- [Using Features](https://www.mintlify.com/devcontainers/features/guides/using-features.md): How to add Dev Container Features to your devcontainer.json
+- [Versioning](https://www.mintlify.com/devcontainers/features/guides/versioning.md): How to pin, update, and manage Feature versions
+- [How Features work](https://www.mintlify.com/devcontainers/features/how-features-work.md): Understand the Feature lifecycle, manifest format, and installation model
+- [Dev Container Features](https://www.mintlify.com/devcontainers/features/introduction.md): A curated collection of reusable Dev Container Features that instantly add languages, tools, and CLIs to any development container.
+- [Quickstart](https://www.mintlify.com/devcontainers/features/quickstart.md): Get up and running with Dev Container Features in minutes
+
+
+Built with [Mintlify](https://mintlify.com).

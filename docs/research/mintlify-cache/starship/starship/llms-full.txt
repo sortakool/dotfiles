@@ -1,0 +1,3848 @@
+# Custom commands and hooks
+Source: https://www.mintlify.com/starship/starship/advanced/custom-commands
+
+Run code before the prompt renders, configure continuation prompts, add a right-side prompt, and switch between prompt profiles.
+
+Starship exposes several hooks and configuration options that let you extend the prompt beyond what modules provide: run arbitrary code before the prompt is drawn, customise the continuation prompt, display content on the right side of the terminal, and switch between named prompt profiles.
+
+<Warning>
+  The configurations in this section are subject to change in future releases of Starship.
+</Warning>
+
+## Pre-prompt commands
+
+You can run a custom function immediately before Starship renders the prompt. This is useful for tasks like updating the terminal window title, printing separators, or logging session activity.
+
+<Tabs>
+  <Tab title="PowerShell">
+    Define a function named `Invoke-Starship-PreCommand`:
+
+    ```powershell theme={null}
+    function Invoke-Starship-PreCommand {
+        $host.ui.Write("🚀")
+    }
+    ```
+
+    For example, to update the window title before each prompt:
+
+    ```powershell theme={null}
+    # edit $PROFILE
+    function Invoke-Starship-PreCommand {
+      $host.ui.RawUI.WindowTitle = "$env:USERNAME@$env:COMPUTERNAME`: $pwd `a"
+    }
+
+    Invoke-Expression (&starship init powershell)
+    ```
+  </Tab>
+
+  <Tab title="Bash">
+    Bash does not have a formal `precmd` framework. Starship lets you assign a function name to `starship_precmd_user_func`, which Starship calls before drawing the prompt:
+
+    ```bash theme={null}
+    function blastoff(){
+        echo "🚀"
+    }
+    starship_precmd_user_func="blastoff"
+    ```
+
+    To run code before each command executes (pre-execution hook), use the `DEBUG` trap. You **must** set the trap before initializing Starship:
+
+    ```bash theme={null}
+    function blastoff(){
+        echo "🚀"
+    }
+    trap blastoff DEBUG     # Trap DEBUG *before* running starship
+    set -o functrace
+    eval $(starship init bash)
+    set +o functrace
+    ```
+
+    For example, to update the window title:
+
+    ```bash theme={null}
+    function set_win_title(){
+        echo -ne "\033]0; $(basename "$PWD") \007"
+    }
+    starship_precmd_user_func="set_win_title"
+    ```
+  </Tab>
+
+  <Tab title="Fish">
+    In Fish you can add functions to the standard `fish_prompt` event or define `starship_precmd_user_func` equivalently. The recommended approach is to use Fish's built-in `fish_preexec` and `fish_prompt` events in your `~/.config/fish/config.fish`.
+
+    To set the window title before each prompt, for example:
+
+    ```fish theme={null}
+    function set_win_title
+        echo -ne "\033]0; $(basename $PWD) \007"
+    end
+    starship init fish | source
+    ```
+  </Tab>
+
+  <Tab title="Zsh">
+    Add functions to the `precmd_functions` array in `~/.zshrc`:
+
+    ```bash theme={null}
+    precmd_functions+=(set_win_title)
+    ```
+
+    For example, to update the window title:
+
+    ```bash theme={null}
+    function set_win_title(){
+        echo -ne "\033]0; $(basename "$PWD") \007"
+    }
+    precmd_functions+=(set_win_title)
+    ```
+  </Tab>
+
+  <Tab title="Cmd (Clink)">
+    Clink provides `starship_preprompt_user_func` (runs before the prompt is drawn) and `starship_precmd_user_func` (runs before a command is executed). Define them in your `starship.lua`:
+
+    ```lua theme={null}
+    -- Runs before the prompt is drawn
+    function starship_preprompt_user_func(prompt)
+      print("🚀")
+    end
+
+    load(io.popen('starship init cmd'):read("*a"))()
+    ```
+
+    ```lua theme={null}
+    -- Runs before a command is executed; receives the command line as a string
+    function starship_precmd_user_func(line)
+      print("Executing: "..line)
+    end
+
+    load(io.popen('starship init cmd'):read("*a"))()
+    ```
+
+    To update the window title:
+
+    ```lua theme={null}
+    function starship_preprompt_user_func(prompt)
+      console.settitle(os.getenv('USERNAME').."@"..os.getenv('COMPUTERNAME')..": "..os.getcwd())
+    end
+
+    load(io.popen('starship init cmd'):read("*a"))()
+    ```
+  </Tab>
+</Tabs>
+
+## Continuation prompt
+
+A continuation prompt appears instead of the normal prompt when you have entered an incomplete statement — for example, an unclosed parenthesis or quote. Starship exposes this as the `continuation_prompt` option in `starship.toml`.
+
+**Supported shells:** `bash`, `zsh`, `PowerShell`
+
+<Note>
+  `continuation_prompt` must be a literal string. Variables are not expanded inside it.
+</Note>
+
+The default continuation prompt is `'[∙](bright-black) '`. To customize it, set `continuation_prompt` at the top level of your config:
+
+```toml theme={null}
+# ~/.config/starship.toml
+
+# A continuation prompt that displays two filled-in arrows
+continuation_prompt = '▶▶ '
+```
+
+## Right prompt
+
+Some shells support a right-aligned prompt that renders on the same line as the input cursor. Set the `right_format` option in `starship.toml` to populate it:
+
+```toml theme={null}
+# ~/.config/starship.toml
+
+# A minimal left prompt
+format = """$character"""
+
+# Move the rest of the prompt to the right
+right_format = """$all"""
+```
+
+This produces output like:
+
+```
+▶                                   starship on  rprompt [!] is 📦 v0.57.0 via 🦀 v1.54.0 took 17s
+```
+
+**Supported shells:** elvish, fish, zsh, xonsh, cmd, nushell, bash (requires Ble.sh v0.4+)
+
+<Note>
+  The right prompt is a single line following the input cursor. To right-align content above the input line in a multi-line prompt, use the `fill` module instead.
+</Note>
+
+Any module that can appear in `format` can also appear in `right_format`. The `$all` variable only includes modules not already used in either `format` or `right_format`.
+
+## Prompt profiles
+
+Starship supports named prompt profiles. A profile is a named format string defined under `[profiles]` in your `starship.toml`. You activate it by passing `--profile <name>` to `starship prompt`.
+
+### Defining a profile
+
+Add a `[profiles]` table to your `starship.toml`:
+
+```toml theme={null}
+# ~/.config/starship.toml
+
+[profiles]
+myprofile = "$character$directory$git_branch"
+```
+
+The profile value is a format string — the same syntax used for the top-level `format` option.
+
+### Activating a profile from your shell
+
+Pass `--profile` when initializing or invoking the prompt. For example, to activate `myprofile` in Bash, override the `PS1` assignment in your shell init after Starship is loaded:
+
+```bash theme={null}
+PS1='$(starship prompt --profile myprofile)'
+```
+
+In Fish:
+
+```fish theme={null}
+function fish_prompt
+    starship prompt --profile myprofile
+end
+```
+
+<Tip>
+  Profiles are useful for context-specific prompts — for example, a minimal prompt inside editor terminals or a verbose prompt in your main shell.
+</Tip>
+
+### The `claude-code` profile
+
+Starship ships with a built-in `claude-code` profile for use as a Claude Code statusline. It provides three dedicated modules: `claude_model`, `claude_context`, and `claude_cost`. This profile is activated automatically when running `starship statusline claude-code`.
+
+
+# Performance tuning
+Source: https://www.mintlify.com/starship/starship/advanced/performance
+
+Diagnose slow prompts and configure timeouts, disabled modules, and logging to keep Starship fast.
+
+Starship is designed to be fast, but some modules involve filesystem scans, git operations, or external commands that can add latency — especially in large repositories or on slow network filesystems. This page covers how to measure, diagnose, and improve prompt rendering speed.
+
+## Diagnosing slow prompts
+
+### `starship timings`
+
+Run `starship timings` to see how long each active module takes to render:
+
+```bash theme={null}
+starship timings
+```
+
+The output lists every module that contributed to the last prompt, along with the time each one took in milliseconds. Modules that took the longest appear at the top. Use this to identify which modules are worth tuning or disabling.
+
+### `starship explain`
+
+Run `starship explain` to see which modules are active in the current directory and why:
+
+```bash theme={null}
+starship explain
+```
+
+The output describes each active module and the condition that triggered it — for example, the presence of a `package.json` file activating the `nodejs` module. Use this to confirm that only the modules you want are running.
+
+## Common slow modules
+
+<AccordionGroup>
+  <Accordion title="git_status and git_metrics">
+    Git status checks can be slow in repositories with many files or submodules. The `git_status` module runs git operations on every prompt render.
+
+    To disable submodule scanning, which is often the main source of slowness in monorepos:
+
+    ```toml theme={null}
+    # ~/.config/starship.toml
+
+    [git_status]
+    ignore_submodules = true
+    ```
+
+    To disable `git_metrics` entirely (it is disabled by default, but if you have enabled it):
+
+    ```toml theme={null}
+    [git_metrics]
+    disabled = true
+    ```
+
+    To disable `git_status` entirely:
+
+    ```toml theme={null}
+    [git_status]
+    disabled = true
+    ```
+  </Accordion>
+
+  <Accordion title="package">
+    The `package` module reads files like `package.json`, `Cargo.toml`, `pyproject.toml`, and others to display the current project version. If you don't need the version in your prompt, disabling it saves a filesystem read on every render:
+
+    ```toml theme={null}
+    # ~/.config/starship.toml
+
+    [package]
+    disabled = true
+    ```
+  </Accordion>
+
+  <Accordion title="Custom modules with slow commands">
+    Custom modules that run shell commands via the `command` option are subject to `command_timeout`. If your custom module's command is slow, either optimize the command or increase the timeout:
+
+    ```toml theme={null}
+    # ~/.config/starship.toml
+
+    [custom.my_module]
+    command = "my-slow-tool --query"
+    when = "test -f .my-config"
+    ```
+
+    Speed up the `when` condition first — if the condition exits early, the `command` never runs. If the command itself is unavoidably slow, consider disabling the module in contexts where you don't need it.
+
+    <Note>
+      Custom modules also support `ignore_timeout = true` to bypass `command_timeout` entirely for a specific module. Use this only when you know the command will eventually complete.
+    </Note>
+  </Accordion>
+</AccordionGroup>
+
+## Timeout configuration
+
+Starship provides two global timeout options in `starship.toml`:
+
+| Option            | Default | Description                                                         |
+| ----------------- | ------- | ------------------------------------------------------------------- |
+| `scan_timeout`    | `30`    | Timeout for file scanning operations, in milliseconds.              |
+| `command_timeout` | `500`   | Timeout for external commands executed by modules, in milliseconds. |
+
+```toml theme={null}
+# ~/.config/starship.toml
+
+# Reduce file scan timeout for faster prompts on large directories
+scan_timeout = 10
+
+# Allow slower commands more time before they are killed
+command_timeout = 1000
+```
+
+<Tip>
+  Lowering `scan_timeout` is usually safe and can noticeably reduce prompt latency on directories with many files.
+</Tip>
+
+## Disabling modules
+
+Any module can be disabled with `disabled = true`. Disabled modules are skipped entirely and add no latency:
+
+```toml theme={null}
+# ~/.config/starship.toml
+
+[package]
+disabled = true
+
+[git_metrics]
+disabled = true
+```
+
+Only enable the modules you actively use. You can see all currently active modules with `starship explain`.
+
+## Debug logging
+
+To get detailed logs of what Starship is doing during a prompt render, set the `STARSHIP_LOG` environment variable to `debug` and redirect stderr to a file:
+
+```bash theme={null}
+STARSHIP_LOG=debug starship prompt 2>~/starship.log
+```
+
+The log file will contain timing information, module execution details, and any warnings or errors. This is useful for diagnosing unexpected slowness or modules that are not rendering as expected.
+
+By default, Starship logs warnings and errors to `~/.cache/starship/session_${STARSHIP_SESSION_KEY}.log`. You can change the log directory with the `STARSHIP_CACHE` environment variable:
+
+```bash theme={null}
+export STARSHIP_CACHE=~/.starship/cache
+```
+
+## Summary: tips for a fast prompt
+
+* Run `starship timings` to identify slow modules.
+* Disable modules you don't use with `disabled = true`.
+* Lower `scan_timeout` if you don't need deep file scanning.
+* Set `ignore_submodules = true` in `git_status` for large repositories.
+* Optimize `when` conditions in custom modules so they exit fast.
+* Use `STARSHIP_LOG=debug` to investigate unexpected slowness.
+
+
+# Transient prompt
+Source: https://www.mintlify.com/starship/starship/advanced/transient-prompt
+
+Replace previous prompts with a simpler version after each command, keeping your scrollback clean.
+
+The transient prompt feature replaces already-executed prompts in your terminal scrollback with a simpler, shorter version. Only the current prompt is rendered in full — all previous prompts are replaced with a minimal substitute. This makes it easier to scan your command history and reduces visual clutter.
+
+<Warning>
+  The configurations in this section are subject to change in future releases of Starship.
+</Warning>
+
+## How it works
+
+When you run a command, Starship replaces the full prompt above with a compact version (typically just the `character` module, showing `❯` or `>`). Your scrollback shows only the condensed prompt alongside each command's output, while the live prompt at the bottom remains complete.
+
+## Setup by shell
+
+<Tabs>
+  <Tab title="PowerShell">
+    Run `Enable-TransientPrompt` in your shell session to activate transience. To make it permanent, add it to your `$PROFILE`. You can disable it at any time with `Disable-TransientPrompt`.
+
+    By default, the left side of the input is replaced with `>`. To customize it, define `Invoke-Starship-TransientFunction`. For example, to display the `character` module:
+
+    ```powershell theme={null}
+    function Invoke-Starship-TransientFunction {
+      &starship module character
+    }
+
+    Invoke-Expression (&starship init powershell)
+
+    Enable-TransientPrompt
+    ```
+  </Tab>
+
+  <Tab title="Fish">
+    Run `enable_transience` in your shell session to activate transience. To make it permanent, add it to `~/.config/fish/config.fish`. You can disable it with `disable_transience`.
+
+    <Note>
+      In Fish, the transient prompt is only printed if the command line is non-empty and syntactically correct.
+    </Note>
+
+    By default, the left side is replaced with a bold-green `❯`. To customize it, define `starship_transient_prompt_func`. For example, to display the `character` module:
+
+    ```fish theme={null}
+    function starship_transient_prompt_func
+      starship module character
+    end
+    starship init fish | source
+    enable_transience
+    ```
+
+    To also customize the right-side transient prompt, define `starship_transient_rprompt_func`. For example, to display the time the last command was started:
+
+    ```fish theme={null}
+    function starship_transient_rprompt_func
+      starship module time
+    end
+    starship init fish | source
+    enable_transience
+    ```
+  </Tab>
+
+  <Tab title="Bash">
+    Transient prompt in Bash requires the [Ble.sh](https://github.com/akinomyoga/ble.sh) framework at v0.4 or higher.
+
+    In `~/.bashrc`, set the `prompt_ps1_transient` option:
+
+    ```bash theme={null}
+    bleopt prompt_ps1_transient=always
+    ```
+
+    The value is a colon-separated list of fields:
+
+    | Field      | Behavior                                                            |
+    | ---------- | ------------------------------------------------------------------- |
+    | `always`   | Always replace the previous prompt on leaving the command line.     |
+    | `same-dir` | Only replace the prompt if the working directory has not changed.   |
+    | `trim`     | Preserve only the last line of a multi-line prompt; erase the rest. |
+
+    To customize what the left side is replaced with, set `prompt_ps1_final` in `~/.blerc` (or `~/.config/blesh/init.sh`). For example, to display the `character` module:
+
+    ```bash theme={null}
+    bleopt prompt_ps1_final='$(starship module character)'
+    ```
+
+    To customize the right-side transient prompt, set `prompt_rps1_final`:
+
+    ```bash theme={null}
+    bleopt prompt_rps1_final='$(starship module time)'
+    ```
+  </Tab>
+
+  <Tab title="Cmd (Clink)">
+    Transient prompt in Cmd requires [Clink](https://chrisant996.github.io/clink/). Enable it by running the following command once:
+
+    ```batch theme={null}
+    clink set prompt.transient always
+    ```
+
+    The `prompt.transient` value can be one of:
+
+    | Value      | Behavior                                                        |
+    | ---------- | --------------------------------------------------------------- |
+    | `always`   | Always replace the previous prompt.                             |
+    | `same_dir` | Replace only if the working directory is the same as last time. |
+    | `off`      | Disable transience.                                             |
+
+    To customize the left-side transient prompt, define `starship_transient_prompt_func` in your `starship.lua`. For example, to display the `character` module:
+
+    ```lua theme={null}
+    function starship_transient_prompt_func(prompt)
+      return io.popen("starship module character"
+        .." --keymap="..rl.getvariable('keymap')
+      ):read("*a")
+    end
+    load(io.popen('starship init cmd'):read("*a"))()
+    ```
+
+    To customize the right-side transient prompt, define `starship_transient_rprompt_func`. For example, to display the time the last command was started:
+
+    ```lua theme={null}
+    function starship_transient_rprompt_func(prompt)
+      return io.popen("starship module time"):read("*a")
+    end
+    load(io.popen('starship init cmd'):read("*a"))()
+    ```
+  </Tab>
+
+  <Tab title="Zsh">
+    Zsh does not have native transient prompt support built into Starship. You can approximate the behavior using the `zle-line-finish` hook to redraw the prompt when a command is accepted.
+
+    Add the following to your `~/.zshrc`:
+
+    ```zsh theme={null}
+    zle-line-finish() {
+      PROMPT="%F{green}❯%f "
+      zle reset-prompt
+    }
+    zle -N zle-line-finish
+    ```
+
+    <Tip>
+      Replace the `PROMPT` value with whatever minimal format you prefer for historical prompts.
+    </Tip>
+  </Tab>
+</Tabs>
+
+
+# Custom modules
+Source: https://www.mintlify.com/starship/starship/config/custom-modules
+
+Create your own prompt modules that run shell commands, detect files, and display any information you want.
+
+Custom modules let you add any information to your prompt by running a shell command and displaying its output. They live in `[custom.<name>]` sections of your config.
+
+## Basic example
+
+```toml theme={null}
+# ~/.config/starship.toml
+
+[custom.my_project]
+description = "Shows project name from a .project file"
+command = "cat .project"
+when = "test -f .project"
+format = "[$symbol($output )]($style)"
+symbol = "📁 "
+style = "bold yellow"
+```
+
+This module:
+
+* Runs `cat .project` and captures its output
+* Only shows if the `when` command exits with code 0 (`test -f .project` succeeds when `.project` exists)
+* Renders the output styled in bold yellow with a folder symbol
+
+<Tip>
+  Multiple custom modules can be defined in the same config. They appear in the order they are defined unless you explicitly place `${custom.name}` in the top-level `format`.
+</Tip>
+
+## When a module is shown
+
+A custom module is shown when **any** of the following conditions are met:
+
+* A file matching `detect_files` exists in the current directory
+* A directory matching `detect_folders` exists in the current directory
+* A file matching `detect_extensions` exists in the current directory
+* The `when` command exits with code `0`
+* The current OS matches the `os` field (if defined)
+
+## All options
+
+<ParamField type="string">
+  The shell command to run. Its stdout is captured as `$output`. The command is passed to the shell via stdin.
+</ParamField>
+
+<ParamField type="string | boolean">
+  A condition for showing the module. Either a boolean (`true`/`false`) or a shell command string. If a string, the module shows when the command exits with code `0`.
+</ParamField>
+
+<ParamField type="string[]">
+  The shell to use when running `command` and `when`. First element is the shell path; remaining elements are arguments. Defaults to `STARSHIP_SHELL`, then `sh` on Linux/macOS, or `cmd /C` on Windows.
+
+  ```toml theme={null}
+  shell = ['pwsh', '-NoProfile', '-Command', '-']
+  ```
+</ParamField>
+
+<ParamField type="string">
+  A human-readable description shown in `starship explain` output.
+</ParamField>
+
+<ParamField type="string">
+  The format string for the module. Available variables: `$output`, `$symbol`, `$style`.
+</ParamField>
+
+<ParamField type="string">
+  A symbol displayed before the command output.
+</ParamField>
+
+<ParamField type="string">
+  The style for the module output. See [Format strings](/config/format-strings) for style syntax.
+</ParamField>
+
+<ParamField type="boolean">
+  Set to `true` to hide this custom module.
+</ParamField>
+
+<ParamField type="string">
+  Restrict the module to a specific operating system. Accepted values match Rust's `std::env::consts::OS` (e.g. `linux`, `macos`, `windows`).
+</ParamField>
+
+<ParamField type="boolean">
+  If `true`, only show the module in directories that contain a git repository. This option alone is not a sufficient display condition; combine it with `when` or detection options.
+</ParamField>
+
+<ParamField type="string[]">
+  File names to look for in the current directory. The module shows if any are found.
+</ParamField>
+
+<ParamField type="string[]">
+  Directory names to look for in the current directory. The module shows if any are found.
+</ParamField>
+
+<ParamField type="string[]">
+  File extensions to look for in the current directory. The module shows if any files match.
+</ParamField>
+
+<ParamField type="boolean">
+  Override whether the command is passed via stdin (default) or as a shell argument. Only needed for shells that don't support stdin input.
+</ParamField>
+
+<ParamField type="boolean">
+  If `true`, ignore the global `command_timeout` and let the command run as long as needed.
+</ParamField>
+
+<ParamField type="boolean">
+  If `true`, command output is printed unescaped. Only enable this if you fully trust the command's output.
+</ParamField>
+
+## The `when` condition
+
+`when` accepts either a boolean or a shell command string:
+
+```toml theme={null}
+# Always show
+when = true
+
+# Never show (default)
+when = false
+
+# Show when a file exists
+when = "test -f .project"
+
+# Show when an environment variable is set
+when = 'test -n "$MY_ENV_VAR"'
+
+# Show when inside a specific directory
+when = ''' test "$PWD" = "$HOME/work" '''
+```
+
+The module is shown when the `when` command exits with code `0`.
+
+## Specifying a shell
+
+If your `when` or `command` uses shell-specific syntax, set `shell` explicitly:
+
+<Tabs>
+  <Tab title="PowerShell">
+    ```toml theme={null}
+    [custom.time]
+    command = 'time /T'
+    detect_extensions = ['pst']
+    shell = ['pwsh', '-NoProfile', '-Command', '-']
+    ```
+  </Tab>
+
+  <Tab title="bash">
+    ```toml theme={null}
+    [custom.git_email]
+    command = 'git config user.email'
+    when = 'git rev-parse --is-inside-work-tree'
+    shell = ['bash', '--noprofile', '--norc', '-c']
+    use_stdin = false
+    ```
+  </Tab>
+
+  <Tab title="Nushell">
+    ```toml theme={null}
+    [custom.nu_version]
+    command = 'version | get version'
+    shell = ['nu', '-c']
+    use_stdin = false
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+  Make sure your custom shell configuration exits gracefully. For PowerShell, always include `-NoProfile` and `-Command` to prevent Starship from entering a recursive loop where the shell tries to load a full profile (which includes Starship, which runs the custom command again).
+</Warning>
+
+## Controlling module order
+
+By default, custom modules appear in the order they were defined. To place a custom module at a specific position in the prompt, reference it explicitly in the top-level `format`:
+
+```toml theme={null}
+# ~/.config/starship.toml
+
+# ${custom.foo} uses ${...} syntax because the name contains a dot
+format = '$directory${custom.my_project}$git_branch$character'
+
+[custom.my_project]
+command = "cat .project"
+when = "test -f .project"
+```
+
+## Practical examples
+
+### Show content of a project file
+
+```toml theme={null}
+[custom.foo]
+command = 'echo foo'
+detect_files = ['foo']
+when = ''' test "$HOME" = "$PWD" '''
+format = ' transcending [$output]($style)'
+```
+
+### Show a custom environment badge
+
+```toml theme={null}
+[custom.env_badge]
+description = "Shows the current ENVIRONMENT variable"
+command = 'echo $ENVIRONMENT'
+when = 'test -n "$ENVIRONMENT"'
+symbol = '🌍 '
+style = 'bold blue'
+format = '[$symbol$output ]($style)'
+```
+
+### Detect a monorepo workspace
+
+```toml theme={null}
+[custom.workspace]
+description = "Shows the current yarn/npm workspace name"
+command = "cat package.json | python3 -c \"import sys,json; d=json.load(sys.stdin); print(d.get('name',''))\" 2>/dev/null"
+detect_files = ['package.json']
+require_repo = true
+symbol = '📦 '
+style = 'bold cyan'
+```
+
+## Custom modules vs `env_var`
+
+Starship has a dedicated `env_var` module for displaying environment variable values without running a command. Use it when you only need to show an existing variable.
+
+```toml theme={null}
+# Show the value of $ENVIRONMENT directly
+[env_var.ENVIRONMENT]
+default = 'development'
+format = 'env: [$env_value]($style) '
+style = 'bold dimmed green'
+```
+
+| Feature                   | `[custom.*]` | `[env_var.*]` |
+| ------------------------- | :----------: | :-----------: |
+| Runs a shell command      |      Yes     |       No      |
+| Reads an env var directly |  Indirectly  |      Yes      |
+| Supports `when` condition |      Yes     |       No      |
+| Supports file detection   |      Yes     |       No      |
+| Overhead                  |    Higher    |    Minimal    |
+
+Use `[env_var.*]` when you just need a variable's value. Use `[custom.*]` when you need to run a command or apply conditional logic.
+
+### `env_var` options
+
+| Option        | Default                               | Description                                                    |
+| ------------- | ------------------------------------- | -------------------------------------------------------------- |
+| `variable`    |                                       | The environment variable to display. Defaults to the key name. |
+| `default`     |                                       | Value shown when the variable is not set.                      |
+| `format`      | `"with [$symbol$env_value]($style) "` | The format for the module.                                     |
+| `symbol`      | `""`                                  | Symbol before the variable value.                              |
+| `style`       | `"black bold dimmed"`                 | Style for the module.                                          |
+| `description` | `"<env_var module>"`                  | Description shown by `starship explain`.                       |
+| `disabled`    | `false`                               | Disables this module.                                          |
+
+Example showing multiple variables:
+
+```toml theme={null}
+[env_var.SHELL]
+variable = 'SHELL'
+default = 'unknown shell'
+
+[env_var.USER]
+default = 'unknown user'
+```
+
+
+# Format strings
+Source: https://www.mintlify.com/starship/starship/config/format-strings
+
+Understand how Starship's format string syntax works—variables, text groups, style strings, conditional rendering, and TOML string types.
+
+Every Starship module exposes a `format` option that controls what the module prints and how it looks. Format strings combine plain text, variables, and styled text groups.
+
+## Variables
+
+A variable starts with `$` followed by the variable name. Variable names can only contain letters, numbers, and `_`.
+
+```
+$version          → the value of the "version" variable
+$git_branch       → the value of the "git_branch" variable
+$git_branch $git_commit  → two variables separated by a space
+```
+
+If a variable is unset or empty, it renders as an empty string.
+
+## Text groups
+
+A text group applies a style to a piece of text (which may itself contain variables):
+
+```
+[text content](<style string>)
+```
+
+Examples from real modules:
+
+```
+[on](red bold)                      → prints "on" in bold red
+[⌘ $version](bold green)            → prints ⌘ followed by $version, in bold green
+[a [b](red) c](green)               → prints "a b c" where "b" is red, "a" and "c" green
+```
+
+### Conditional text groups
+
+A text group wrapped in `(` and `)` is **conditional**: it renders nothing if all variables inside are empty.
+
+```
+(@$region)        → renders nothing if $region is empty, otherwise "@<region>"
+(some text)       → always renders nothing—no variables inside
+```
+
+This is how modules hide optional segments when data is unavailable.
+
+## Style strings
+
+The second part of a text group is a style string. Combine tokens with spaces.
+
+### Color names
+
+| Token           | Effect                              |
+| --------------- | ----------------------------------- |
+| `black`         | Black foreground                    |
+| `red`           | Red foreground                      |
+| `green`         | Green foreground                    |
+| `yellow`        | Yellow foreground                   |
+| `blue`          | Blue foreground                     |
+| `purple`        | Purple foreground                   |
+| `cyan`          | Cyan foreground                     |
+| `white`         | White foreground                    |
+| `bright-black`  | Bright black (dark gray) foreground |
+| `bright-red`    | Bright red foreground               |
+| `bright-green`  | Bright green foreground             |
+| `bright-yellow` | Bright yellow foreground            |
+| `bright-blue`   | Bright blue foreground              |
+| `bright-purple` | Bright purple foreground            |
+| `bright-cyan`   | Bright cyan foreground              |
+| `bright-white`  | Bright white foreground             |
+
+### Text attributes
+
+| Token           | Effect                                 |
+| --------------- | -------------------------------------- |
+| `bold`          | Bold text                              |
+| `italic`        | Italic text (terminal must support it) |
+| `underline`     | Underlined text                        |
+| `dimmed`        | Dimmed/faint text                      |
+| `blink`         | Blinking text                          |
+| `hidden`        | Invisible text (still occupies space)  |
+| `strikethrough` | Strikethrough text                     |
+| `inverted`      | Swap foreground and background colors  |
+
+### Background colors
+
+Prefix any color with `bg:` to set the background:
+
+```
+bg:blue           → blue background
+bg:#bf5700        → hex color background
+```
+
+### ANSI 256 colors and hex values
+
+```
+fg:27             → ANSI color 27 (foreground)
+bg:255            → ANSI color 255 (background)
+fg:#ff8800        → hex color foreground
+bg:#bf5700        → hex color background (burnt orange)
+```
+
+### Combining tokens
+
+```
+'fg:green bg:blue'          → green text on blue background
+'bg:blue fg:bright-green'   → bright green text on blue background
+'bold fg:27'                → bold text with ANSI color 27
+'underline bg:#bf5700'      → underlined text on burnt orange background
+'bold italic fg:purple'     → bold italic purple text
+''                          → explicitly disables all styling
+```
+
+<Note>
+  Rendering depends on your terminal emulator. Some terminals brighten colors instead of bolding, and some color themes map normal and bright values to the same color.
+</Note>
+
+## Special characters that need escaping
+
+The following characters have special meaning in Starship format strings and must be escaped with `\` to appear literally:
+
+| Character | Escaped form |
+| --------- | ------------ |
+| `$`       | `\$`         |
+| `[`       | `\[`         |
+| `]`       | `\]`         |
+| `(`       | `\(`         |
+| `)`       | `\)`         |
+
+Example:
+
+```toml theme={null}
+format = '\[\$\] '    # renders: [$] 
+```
+
+## TOML string types
+
+TOML offers four string types. Choosing the right one avoids double-escaping.
+
+| Syntax      | Type               | Notes                                                       |
+| ----------- | ------------------ | ----------------------------------------------------------- |
+| `'...'`     | Literal string     | No escape sequences—backslashes are literal                 |
+| `"..."`     | Basic string       | Supports `\\`, `\n`, `\t`, etc.                             |
+| `'''...'''` | Multi-line literal | Same as literal, spans multiple lines                       |
+| `"""..."""` | Multi-line basic   | Supports escape sequences; newlines can be ignored with `\` |
+
+**Prefer literal strings** (`'...'`) for format strings—you can write Starship escape sequences without double-escaping:
+
+```toml theme={null}
+# literal string — backslash is literal, no extra escaping needed
+format = '☺\☻ '
+
+# basic string — backslash must be doubled
+format = "☺\\☻ "
+
+# escaping Starship special characters in a literal string
+format = '\[\$\] '
+```
+
+### Multi-line format strings
+
+Use multi-line strings when your format spans multiple lines:
+
+```toml theme={null}
+# literal multi-line string
+format = '''
+[┌─>](bold green)
+[└─>](bold green) '''
+
+# basic multi-line with escaped newline (no newline in output)
+format = """
+line1\
+line1
+line2\
+line2
+"""
+```
+
+## Real module format string examples
+
+### `git_branch` default format
+
+```toml theme={null}
+format = 'on [$symbol$branch(:$remote_branch)]($style) '
+```
+
+* `$symbol` — the branch icon (default: ` `)
+* `$branch` — the current branch name
+* `(:$remote_branch)` — conditional: only shows if `$remote_branch` is set
+* The whole group is styled with `$style`
+
+### `nodejs` default format
+
+```toml theme={null}
+format = 'via [$symbol($version )]($style)'
+```
+
+* `($version )` — conditional: the space only appears if `$version` is non-empty
+
+### `git_status` example
+
+```toml theme={null}
+format = '([\[$all_status$ahead_behind\]]($style) )'
+```
+
+* `\[` and `\]` are escaped brackets (rendered literally)
+* The outer `(...)` makes the whole segment conditional
+
+### Custom styled format
+
+```toml theme={null}
+[character]
+success_symbol = '[➜](bold green)'
+error_symbol = '[✗](bold red)'
+```
+
+
+# Built-in modules
+Source: https://www.mintlify.com/starship/starship/config/modules
+
+Browse Starship's 100+ built-in modules organized by category, with configuration examples and common options.
+
+Starship ships with over 100 built-in modules that display information about your environment—language versions, cloud context, git state, system status, and more. Each module is auto-detected based on files in the current directory and only appears when relevant.
+
+Every module supports these common options:
+
+| Option     | Default | Description                                                                              |
+| ---------- | ------- | ---------------------------------------------------------------------------------------- |
+| `format`   | varies  | Template string controlling module output. See [Format strings](/config/format-strings). |
+| `style`    | varies  | Style string for colors and text attributes.                                             |
+| `symbol`   | varies  | Symbol displayed before the module output.                                               |
+| `disabled` | `false` | Set to `true` to hide the module completely.                                             |
+
+<Tip>
+  Run `starship explain` to see which modules are active in your current directory and why.
+  Run `starship module <name>` to preview a single module's output in isolation.
+</Tip>
+
+## Version control
+
+<AccordionGroup>
+  <Accordion title="git_branch">
+    Shows the active branch (or commit hash in detached HEAD state).
+
+    ```toml theme={null}
+    [git_branch]
+    symbol = '🌱 '
+    truncation_length = 20
+    truncation_symbol = '…'
+    ignore_branches = ['master', 'main']
+    style = 'bold purple'
+    ```
+
+    | Option              | Default                                           | Description                                       |
+    | ------------------- | ------------------------------------------------- | ------------------------------------------------- |
+    | `format`            | `'on [$symbol$branch(:$remote_branch)]($style) '` | The format for the module.                        |
+    | `symbol`            | `' '`                                             | Symbol before the branch name.                    |
+    | `truncation_length` | `2^63 - 1`                                        | Truncate branch name to N graphemes.              |
+    | `truncation_symbol` | `'…'`                                             | Symbol appended when truncated.                   |
+    | `ignore_branches`   | `[]`                                              | Branch names to hide (e.g. `['master', 'main']`). |
+    | `only_attached`     | `false`                                           | Only show when not in detached HEAD state.        |
+    | `disabled`          | `false`                                           | Disables this module.                             |
+  </Accordion>
+
+  <Accordion title="git_commit">
+    Shows the current commit hash, and optionally the tag.
+
+    ```toml theme={null}
+    [git_commit]
+    commit_hash_length = 4
+    tag_symbol = '🔖 '
+    tag_disabled = false
+    ```
+
+    | Option               | Default   | Description                                           |
+    | -------------------- | --------- | ----------------------------------------------------- |
+    | `commit_hash_length` | `7`       | Number of characters to display from the commit hash. |
+    | `only_detached`      | `true`    | Only show hash in detached HEAD state.                |
+    | `tag_disabled`       | `true`    | Disable tag display.                                  |
+    | `tag_symbol`         | `' 🏷  '` | Symbol prefixing the tag name.                        |
+    | `disabled`           | `false`   | Disables this module.                                 |
+  </Accordion>
+
+  <Accordion title="git_status">
+    Shows symbols representing staged, unstaged, and untracked changes.
+
+    ```toml theme={null}
+    [git_status]
+    conflicted = '🏳'
+    ahead = '🏎💨'
+    behind = '😰'
+    diverged = '😵'
+    untracked = '🤷'
+    modified = '📝'
+    staged = '[++\($count\)](green)'
+    deleted = '🗑'
+    ```
+
+    | Option       | Default | Description                      |
+    | ------------ | ------- | -------------------------------- |
+    | `conflicted` | `'='`   | Branch has merge conflicts.      |
+    | `ahead`      | `'⇡'`   | Branch is ahead of remote.       |
+    | `behind`     | `'⇣'`   | Branch is behind remote.         |
+    | `diverged`   | `'⇕'`   | Branch has diverged from remote. |
+    | `untracked`  | `'?'`   | Untracked files present.         |
+    | `modified`   | `'!'`   | Modified files present.          |
+    | `staged`     | `'+'`   | Staged files present.            |
+    | `deleted`    | `'✘'`   | Deleted files staged.            |
+    | `disabled`   | `false` | Disables this module.            |
+  </Accordion>
+
+  <Accordion title="git_metrics">
+    Shows the number of added/deleted lines since the last commit.
+
+    ```toml theme={null}
+    [git_metrics]
+    added_style = 'bold blue'
+    deleted_style = 'bold red'
+    disabled = false
+    ```
+
+    <Note>This module is disabled by default. Set `disabled = false` to enable it.</Note>
+  </Accordion>
+
+  <Accordion title="git_state">
+    Shows the current operation in progress (REBASING, MERGING, BISECTING, etc.) with optional progress counters.
+
+    ```toml theme={null}
+    [git_state]
+    rebase = 'REBASING'
+    merge = 'MERGING'
+    style = 'bold yellow'
+    ```
+  </Accordion>
+
+  <Accordion title="hg_branch, fossil_branch, pijul_channel">
+    Similar to `git_branch` but for Mercurial, Fossil, and Pijul repositories respectively.
+
+    ```toml theme={null}
+    [hg_branch]
+    symbol = '🍀 '
+    style = 'bold green'
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Languages
+
+<AccordionGroup>
+  <Accordion title="nodejs">
+    Shows the current Node.js version. Auto-detected from `package.json`, `.nvmrc`, `.node-version`, `node_modules/`, and `.js`/`.ts` files.
+
+    ```toml theme={null}
+    [nodejs]
+    format = 'via [🤖 $version](bold green) '
+    detect_files = ['package.json', '.node-version', '.nvmrc']
+    detect_folders = ['node_modules']
+    disabled = false
+    ```
+
+    | Option     | Default                              | Description                       |
+    | ---------- | ------------------------------------ | --------------------------------- |
+    | `format`   | `'via [$symbol($version )]($style)'` | The format for the module.        |
+    | `symbol`   | `' '`                                | Symbol before the version number. |
+    | `style`    | `'bold green'`                       | Style for the module.             |
+    | `disabled` | `false`                              | Disables this module.             |
+  </Accordion>
+
+  <Accordion title="python">
+    Shows the Python version and active virtual environment. Auto-detected from `.py` files, `pyproject.toml`, `requirements.txt`, and others.
+
+    ```toml theme={null}
+    [python]
+    symbol = '👾 '
+    pyenv_version_name = true
+    ```
+
+    ```toml theme={null}
+    [python]
+    # Only use python3 binary
+    python_binary = 'python3'
+    ```
+
+    | Option               | Default                                                                   | Description                                |
+    | -------------------- | ------------------------------------------------------------------------- | ------------------------------------------ |
+    | `format`             | `'via [${symbol}${pyenv_prefix}(${version} )(\($virtualenv\) )]($style)'` | The format for the module.                 |
+    | `symbol`             | `'🐍 '`                                                                   | Symbol before the version.                 |
+    | `pyenv_version_name` | `false`                                                                   | Use pyenv to get the version name.         |
+    | `python_binary`      | `['python', 'python3', 'python2']`                                        | Which binary to run for version detection. |
+    | `disabled`           | `false`                                                                   | Disables this module.                      |
+  </Accordion>
+
+  <Accordion title="rust">
+    Shows the Rust version. Auto-detected from `Cargo.toml` and `.rs` files.
+
+    ```toml theme={null}
+    [rust]
+    format = 'via [⚙️ $version](red bold)'
+    symbol = '🦀 '
+    ```
+
+    | Option     | Default                              | Description                |
+    | ---------- | ------------------------------------ | -------------------------- |
+    | `format`   | `'via [$symbol($version )]($style)'` | The format for the module. |
+    | `symbol`   | `'🦀 '`                              | Symbol before the version. |
+    | `style`    | `'bold red'`                         | Style for the module.      |
+    | `disabled` | `false`                              | Disables this module.      |
+  </Accordion>
+
+  <Accordion title="go">
+    Shows the Go version. Auto-detected from `go.mod`, `go.sum`, `go.work`, and `.go` files.
+
+    ```toml theme={null}
+    [golang]
+    format = 'via [🏎💨 $version](bold cyan) '
+    ```
+  </Accordion>
+
+  <Accordion title="java">
+    Shows the Java version. Auto-detected from `pom.xml`, `build.gradle`, `.java`, `.class`, `.jar`, and similar files.
+
+    ```toml theme={null}
+    [java]
+    symbol = '☕ '
+    style = 'red dimmed'
+    ```
+  </Accordion>
+
+  <Accordion title="Other language modules">
+    Starship includes modules for all of the following languages. Each follows the same pattern: auto-detected from relevant files, configurable via `format`, `symbol`, `style`, and `disabled`.
+
+    | Module       | Language   | Default symbol |
+    | ------------ | ---------- | -------------- |
+    | `c`          | C          | `C `           |
+    | `crystal`    | Crystal    | `🔮 `          |
+    | `dart`       | Dart       | `🎯 `          |
+    | `deno`       | Deno       | `🦕 `          |
+    | `dotnet`     | .NET       | `🎃 `          |
+    | `elixir`     | Elixir     | `💧 `          |
+    | `elm`        | Elm        | `🌳 `          |
+    | `erlang`     | Erlang/OTP | ` `            |
+    | `fennel`     | Fennel     | `🧅 `          |
+    | `gleam`      | Gleam      | `⭐ `           |
+    | `haskell`    | Haskell    | `λ `           |
+    | `julia`      | Julia      | `ஃ `           |
+    | `kotlin`     | Kotlin     | `🅺 `          |
+    | `lua`        | Lua        | `🌙 `          |
+    | `nim`        | Nim        | `👑 `          |
+    | `nodejs`     | Node.js    | ` `            |
+    | `ocaml`      | OCaml      | `🐫 `          |
+    | `perl`       | Perl       | `🐪 `          |
+    | `php`        | PHP        | `🐘 `          |
+    | `purescript` | PureScript | `<= `          |
+    | `python`     | Python     | `🐍 `          |
+    | `raku`       | Raku       | `🦋 `          |
+    | `red`        | Red        | `🔴 `          |
+    | `rlang`      | R          | `📐 `          |
+    | `ruby`       | Ruby       | `💎 `          |
+    | `rust`       | Rust       | `🦀 `          |
+    | `scala`      | Scala      | `🆂 `          |
+    | `swift`      | Swift      | `🐦 `          |
+    | `typst`      | Typst      | `t `           |
+    | `vlang`      | V          | `V `           |
+    | `zig`        | Zig        | `⚡ `           |
+  </Accordion>
+</AccordionGroup>
+
+## Cloud and DevOps
+
+<AccordionGroup>
+  <Accordion title="aws">
+    Shows the current AWS region, profile, and credential expiration timer.
+
+    ```toml theme={null}
+    [aws]
+    format = 'on [$symbol($profile )(\($region\) )]($style)'
+    style = 'bold blue'
+    symbol = '🅰 '
+
+    [aws.region_aliases]
+    ap-southeast-2 = 'au'
+    us-east-1 = 'va'
+    ```
+
+    | Option           | Default                                                           | Description                                   |
+    | ---------------- | ----------------------------------------------------------------- | --------------------------------------------- |
+    | `format`         | `'on [$symbol($profile )(\($region\) )(\[$duration\] )]($style)'` | The format for the module.                    |
+    | `symbol`         | `'☁️ '`                                                           | Symbol before the profile name.               |
+    | `region_aliases` | `{}`                                                              | Map of region name aliases.                   |
+    | `force_display`  | `false`                                                           | Show even when no credentials are configured. |
+    | `disabled`       | `false`                                                           | Disables this module.                         |
+  </Accordion>
+
+  <Accordion title="gcloud">
+    Shows the current Google Cloud active configuration, project, and region.
+
+    ```toml theme={null}
+    [gcloud]
+    format = 'on [$symbol$account(@$domain)(\($region\))]($style) '
+    style = 'bold blue'
+    symbol = '☁️ '
+    ```
+  </Accordion>
+
+  <Accordion title="kubernetes">
+    Shows the current Kubernetes context and namespace.
+
+    <Note>This module is disabled by default. Set `disabled = false` to enable it.</Note>
+
+    ```toml theme={null}
+    [kubernetes]
+    format = 'on [⛵ ($user on )($cluster in )$context \($namespace\)](dimmed green) '
+    disabled = false
+    contexts = [
+      { context_pattern = "dev.local.cluster.k8s", style = "green", symbol = "💔 " },
+    ]
+    ```
+
+    | Option     | Default                                            | Description                             |
+    | ---------- | -------------------------------------------------- | --------------------------------------- |
+    | `format`   | `'[$symbol$context( \($namespace\))]($style) in '` | The format for the module.              |
+    | `symbol`   | `'☸ '`                                             | Symbol before the context name.         |
+    | `contexts` | `[]`                                               | Per-context style and symbol overrides. |
+    | `disabled` | `true`                                             | Disables this module.                   |
+  </Accordion>
+
+  <Accordion title="azure">
+    Shows the current Azure subscription name.
+
+    <Note>This module is disabled by default. Set `disabled = false` to enable it.</Note>
+
+    ```toml theme={null}
+    [azure]
+    disabled = false
+    format = 'on [$symbol($subscription)]($style) '
+    symbol = '󰠅 '
+    style = 'blue bold'
+    ```
+  </Accordion>
+
+  <Accordion title="terraform, helm, openstack, pulumi">
+    These modules display information about Terraform workspaces, Helm chart versions, OpenStack clouds, and Pulumi stacks respectively.
+
+    ```toml theme={null}
+    [terraform]
+    format = 'via [🏎💨 $workspace]($style) '
+
+    [helm]
+    format = 'via [⎈ $version](bold white) '
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## System
+
+<AccordionGroup>
+  <Accordion title="directory">
+    Shows the current working directory. This module is always shown and cannot be disabled in the same way as other modules.
+
+    ```toml theme={null}
+    [directory]
+    truncation_length = 3
+    truncate_to_repo = false
+    style = 'bold cyan'
+    read_only = '🔒'
+    ```
+
+    | Option              | Default       | Description                                   |
+    | ------------------- | ------------- | --------------------------------------------- |
+    | `truncation_length` | `3`           | Number of parent directories to show.         |
+    | `truncate_to_repo`  | `true`        | Truncate to the root of the current git repo. |
+    | `read_only`         | `'🔒'`        | Symbol shown when directory is read-only.     |
+    | `style`             | `'bold cyan'` | Style for the directory path.                 |
+  </Accordion>
+
+  <Accordion title="username">
+    Shows the active user's username. Only shown when root, on SSH, or when `show_always = true`.
+
+    ```toml theme={null}
+    [username]
+    style_user = 'white bold'
+    style_root = 'black bold'
+    format = 'user: [$user]($style) '
+    disabled = false
+    show_always = true
+    ```
+  </Accordion>
+
+  <Accordion title="hostname">
+    Shows the system hostname. Only shown on SSH sessions by default.
+
+    ```toml theme={null}
+    [hostname]
+    ssh_only = false
+    format = '[$ssh_symbol](bold blue) on [$hostname](bold red) '
+    ```
+  </Accordion>
+
+  <Accordion title="battery">
+    Shows the battery charge percentage. Only visible when battery is below 10% by default.
+
+    ```toml theme={null}
+    [battery]
+    full_symbol = '🔋 '
+    charging_symbol = '⚡️ '
+    discharging_symbol = '💀 '
+
+    [[battery.display]]
+    threshold = 30
+    style = 'bold yellow'
+    ```
+  </Accordion>
+
+  <Accordion title="cmd_duration">
+    Shows how long the last command took. Only shown when the command exceeds the threshold.
+
+    ```toml theme={null}
+    [cmd_duration]
+    min_time = 500
+    format = 'underwent [$duration](bold yellow)'
+    ```
+  </Accordion>
+
+  <Accordion title="time">
+    Shows the current time.
+
+    <Note>This module is disabled by default. Set `disabled = false` to enable it.</Note>
+
+    ```toml theme={null}
+    [time]
+    disabled = false
+    format = '🕙[\[ $time \]]($style) '
+    time_format = '%T'
+    ```
+  </Accordion>
+
+  <Accordion title="memory_usage">
+    Shows current RAM and swap usage.
+
+    <Note>This module is disabled by default. Set `disabled = false` to enable it.</Note>
+
+    ```toml theme={null}
+    [memory_usage]
+    disabled = false
+    threshold = -1
+    symbol = ' '
+    style = 'bold dimmed green'
+    ```
+  </Accordion>
+
+  <Accordion title="status">
+    Shows the exit code of the last command.
+
+    <Note>This module is disabled by default. Set `disabled = false` to enable it.</Note>
+
+    ```toml theme={null}
+    [status]
+    style = 'bg:blue'
+    symbol = '🔴 '
+    success_symbol = '🟢 SUCCESS'
+    format = '[\[$symbol$common_meaning$signal_name$maybe_int\]]($style) '
+    disabled = false
+    ```
+  </Accordion>
+
+  <Accordion title="os, shell, jobs, shlvl, localip">
+    Additional system modules:
+
+    * **`os`** — shows the current operating system name/icon (disabled by default)
+    * **`shell`** — shows which shell is running (disabled by default)
+    * **`jobs`** — shows the number of background jobs
+    * **`shlvl`** — shows the shell nesting level
+    * **`localip`** — shows the local IP address (disabled by default)
+  </Accordion>
+</AccordionGroup>
+
+## Package managers and tools
+
+<AccordionGroup>
+  <Accordion title="package">
+    Shows the version from the current project's package manifest (`package.json`, `Cargo.toml`, `pyproject.toml`, etc.).
+
+    ```toml theme={null}
+    [package]
+    format = 'via [🎁 $version](208 bold) '
+    ```
+  </Accordion>
+
+  <Accordion title="docker_context">
+    Shows the current Docker context when not set to `default`.
+
+    ```toml theme={null}
+    [docker_context]
+    format = 'via [🐋 $context](blue bold)'
+    ```
+  </Accordion>
+
+  <Accordion title="conda">
+    Shows the current conda environment when `$CONDA_DEFAULT_ENV` is set.
+
+    ```toml theme={null}
+    [conda]
+    format = '[$symbol$environment](dimmed green) '
+    ```
+  </Accordion>
+
+  <Accordion title="nix_shell">
+    Shows the nix-shell environment name.
+
+    ```toml theme={null}
+    [nix_shell]
+    impure_msg = '[impure shell](bold red)'
+    pure_msg = '[pure shell](bold green)'
+    unknown_msg = '[unknown shell](bold yellow)'
+    format = 'via [☃️ $state( \($name\))](bold blue) '
+    ```
+  </Accordion>
+
+  <Accordion title="buf, bun, cmake, daml, direnv, gradle, guix_shell, meson, mise, mojo, nats, pixi, spack, vagrant, xmake">
+    Starship also includes modules for these tools and package managers. Each follows the same auto-detection pattern.
+
+    ```toml theme={null}
+    [buf]
+    symbol = '🦬 '
+
+    [bun]
+    format = 'via [🍔 $version](bold green) '
+
+    [direnv]
+    disabled = false
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Debugging a single module
+
+To preview what a specific module outputs in the current directory:
+
+```sh theme={null}
+starship module git_branch
+starship module nodejs
+starship module python
+```
+
+To see all active modules and why they are shown:
+
+```sh theme={null}
+starship explain
+```
+
+
+# Configuration overview
+Source: https://www.mintlify.com/starship/starship/config/overview
+
+Learn where Starship stores its config file, how to create it, and the top-level options that control global prompt behavior.
+
+Starship is configured via a single [TOML](https://toml.io) file at `~/.config/starship.toml`. Every setting—from module visibility to prompt layout—lives in that file.
+
+## Creating the config file
+
+```sh theme={null}
+mkdir -p ~/.config && touch ~/.config/starship.toml
+```
+
+A minimal starting point:
+
+```toml theme={null}
+# Get editor completions based on the config schema
+"$schema" = 'https://starship.rs/config-schema.json'
+
+# Insert a blank line between shell prompts
+add_newline = true
+
+# Replace the '❯' symbol with '➜'
+[character]
+success_symbol = '[➜](bold green)'
+
+# Disable the package module entirely
+[package]
+disabled = true
+```
+
+<Tip>
+  Adding `"$schema" = 'https://starship.rs/config-schema.json'` at the top of your config enables auto-completion and validation in editors that support JSON Schema (VS Code, Neovim with LSP, etc.).
+</Tip>
+
+## Overriding the config file location
+
+Set `STARSHIP_CONFIG` to use a file at a different path.
+
+<Tabs>
+  <Tab title="bash / zsh / fish">
+    ```sh theme={null}
+    export STARSHIP_CONFIG=~/example/non/default/path/starship.toml
+    ```
+  </Tab>
+
+  <Tab title="PowerShell">
+    ```powershell theme={null}
+    $ENV:STARSHIP_CONFIG = "$HOME\example\non\default\path\starship.toml"
+    ```
+  </Tab>
+
+  <Tab title="Cmd (starship.lua)">
+    ```lua theme={null}
+    os.setenv('STARSHIP_CONFIG', 'C:\\Users\\user\\example\\non\\default\\path\\starship.toml')
+    ```
+  </Tab>
+</Tabs>
+
+## Overriding the cache location
+
+Starship logs warnings and errors to `~/.cache/starship/session_${STARSHIP_SESSION_KEY}.log` by default. Set `STARSHIP_CACHE` to change this.
+
+<Tabs>
+  <Tab title="bash / zsh / fish">
+    ```sh theme={null}
+    export STARSHIP_CACHE=~/.starship/cache
+    ```
+  </Tab>
+
+  <Tab title="PowerShell">
+    ```powershell theme={null}
+    $ENV:STARSHIP_CACHE = "$HOME\AppData\Local\Temp"
+    ```
+  </Tab>
+
+  <Tab title="Cmd (starship.lua)">
+    ```lua theme={null}
+    os.setenv('STARSHIP_CACHE', 'C:\\Users\\user\\AppData\\Local\\Temp')
+    ```
+  </Tab>
+</Tabs>
+
+## Top-level prompt options
+
+These options go at the root of your `starship.toml` (not inside any `[module]` section).
+
+| Option                | Default                | Description                                                       |
+| --------------------- | ---------------------- | ----------------------------------------------------------------- |
+| `format`              | `'$all'`               | The overall prompt format. References modules by `$module_name`.  |
+| `right_format`        | `''`                   | Content rendered on the right side of the prompt (right-prompt).  |
+| `continuation_prompt` | `'[∙](bright-black) '` | Prompt shown for continuation lines (e.g. multi-line commands).   |
+| `scan_timeout`        | `30`                   | Timeout (ms) for Starship to scan files in the current directory. |
+| `command_timeout`     | `500`                  | Timeout (ms) for commands executed by modules.                    |
+| `add_newline`         | `true`                 | Insert a blank line between shell prompts.                        |
+| `follow_symlinks`     | `true`                 | Follow symlinks when checking if a path is a git repository.      |
+| `palette`             | `''`                   | Name of a color palette defined in `[palettes.*]` to activate.    |
+| `palettes`            | `{}`                   | Map of named color palettes. Use to assign aliases to colors.     |
+
+### Example: custom format and timeouts
+
+```toml theme={null}
+# ~/.config/starship.toml
+
+format = '''
+[┌───────────────────>](bold green)
+[│](bold green)$directory$rust$package
+[└─>](bold green) '''
+
+scan_timeout = 10
+add_newline = false
+```
+
+<Note>
+  `follow_symlinks = false` is recommended if you have symlinks pointing to networked or slow filesystems, as directory detection can block the prompt.
+</Note>
+
+## Disabling a module
+
+Every module supports a `disabled` option. Set it to `true` to hide that module from the prompt entirely.
+
+```toml theme={null}
+[package]
+disabled = true
+```
+
+## Setting values from the command line
+
+Use `starship config` to set a single key without editing the file directly:
+
+```sh theme={null}
+starship config add_newline false
+starship config character.success_symbol '[➜](bold green)'
+```
+
+## Viewing the computed config
+
+`starship print-config` prints the full resolved configuration (including all defaults):
+
+```sh theme={null}
+starship print-config
+```
+
+To print only a specific module's config:
+
+```sh theme={null}
+starship print-config --default character
+```
+
+## Key terminology
+
+* **Module**: A component in the prompt that displays information based on context—for example, `nodejs` shows the current Node.js version when you're in a Node.js project.
+* **Variable**: A sub-component of a module, such as `$version` inside the `nodejs` module.
+* **Format string**: A template string used to compose module output from variables and styled text groups. See [Format strings](/config/format-strings) for full syntax.
+
+
+# FAQ
+Source: https://www.mintlify.com/starship/starship/faq
+
+Answers to common questions about Starship configuration, debugging, and compatibility.
+
+<AccordionGroup>
+  <Accordion title="What is the configuration used in the demo GIF?">
+    The demo uses the following setup:
+
+    * **Terminal emulator**: [iTerm2](https://iterm2.com/) with the Minimal theme and the [Snazzy](https://github.com/sindresorhus/iterm2-snazzy) color scheme
+    * **Font**: [FiraCode Nerd Font](https://www.nerdfonts.com/font-downloads)
+    * **Shell**: [Fish Shell](https://fishshell.com/)
+    * **Prompt**: Starship with [matchai's dotfiles](https://github.com/matchai/dotfiles/blob/b6c6a701d0af8d145a8370288c00bb9f0648b5c2/.config/fish/config.fish)
+  </Accordion>
+
+  <Accordion title="How do I get command completion as shown in the demo GIF?">
+    Completion (autosuggestions) is a feature of your shell, not Starship. The demo uses [Fish Shell](https://fishshell.com/), which provides autosuggestions by default.
+
+    If you use Zsh, [zsh-autosuggestions](https://github.com/zsh-users/zsh-autosuggestions) provides the same behavior.
+  </Accordion>
+
+  <Accordion title="Do top-level format and module.disabled do the same thing?">
+    Yes — both can disable a module. However, `<module>.disabled` is the preferred approach for these reasons:
+
+    * It is more explicit about intent than omitting the module from `format`.
+    * Newly released modules are added to the default `format` automatically, so you won't miss them if you use `disabled` instead of a manually curated format string.
+  </Accordion>
+
+  <Accordion title="The docs say Starship is cross-shell. Why isn't my preferred shell supported?">
+    The Starship binary is stateless and shell-agnostic. As long as your shell supports prompt customization and command substitution, you can integrate Starship manually. Here is a minimal Bash example:
+
+    ```bash theme={null}
+    # Get the status code from the last command executed
+    STATUS=$?
+
+    # Get the number of jobs running
+    NUM_JOBS=$(jobs -p | wc -l)
+
+    # Set the prompt to the output of `starship prompt`
+    PS1="$(starship prompt --status=$STATUS --jobs=$NUM_JOBS)"
+    ```
+
+    The built-in Bash integration is more complex to support features like the Command Duration module and compatibility with existing Bash configurations, but the above shows the core idea.
+
+    To see all flags accepted by `starship prompt`:
+
+    ```bash theme={null}
+    starship prompt --help
+    ```
+
+    All flags are optional — Starship uses whatever context is provided.
+  </Accordion>
+
+  <Accordion title="How do I run Starship on Linux distributions with older versions of glibc?">
+    If you see an error like `version 'GLIBC_2.18' not found (required by starship)` when using the prebuilt binary (for example on CentOS 6 or 7), use the `musl`-compiled binary instead:
+
+    ```bash theme={null}
+    curl -sS https://starship.rs/install.sh | sh -s -- --platform unknown-linux-musl
+    ```
+  </Accordion>
+
+  <Accordion title="Why do I see 'Executing command timed out' warnings?">
+    Starship runs external commands to gather prompt data — for example, checking the git status or reading a language version. To prevent the prompt from hanging, Starship enforces a time limit on each command. When a command exceeds that limit, Starship stops it and emits this warning.
+
+    You have a few options:
+
+    * **Increase the timeout**: Set the [`command_timeout`](/config/overview#prompt) key in your config to a higher value (in milliseconds).
+    * **Investigate the slow command**: Run `starship timings` to identify which module is slow, then check whether you can optimize it.
+    * **Suppress the warnings**: Set `STARSHIP_LOG=error` to hide warnings without changing the timeout.
+  </Accordion>
+
+  <Accordion title="I see symbols I don't understand or expect. What do they mean?">
+    Run `starship explain` to get a description of every module currently shown in your prompt, including what each symbol represents and why the module is active:
+
+    ```bash theme={null}
+    starship explain
+    ```
+  </Accordion>
+
+  <Accordion title="Starship is doing something unexpected. How can I debug it?">
+    Enable debug logging with `STARSHIP_LOG`:
+
+    ```bash theme={null}
+    # Debug a specific module
+    STARSHIP_LOG=trace starship module rust
+
+    # Debug overall prompt performance
+    STARSHIP_LOG=trace starship timings
+    ```
+
+    The `timings` command shows a breakdown of all modules that took more than 1 ms to execute or produced output.
+
+    If you find a bug, use `starship bug-report` to create a pre-populated GitHub issue:
+
+    ```bash theme={null}
+    starship bug-report
+    ```
+  </Accordion>
+
+  <Accordion title="Why don't I see a glyph or symbol in my prompt?">
+    The most common cause is a misconfigured system font or locale. Check the following:
+
+    1. **Locale**: Your locale must be a UTF-8 value (e.g., `en_US.UTF-8`). If `LC_ALL` is not a UTF-8 value, [update it](https://www.tecmint.com/set-system-locales-in-linux/).
+    2. **Emoji font**: Most systems include one by default, but some (notably Arch Linux) do not. Install a font like [Noto Emoji](https://www.google.com/get/noto/help/emoji/) through your package manager.
+    3. **Nerd Font**: Starship uses [Nerd Font](https://www.nerdfonts.com/) glyphs for many symbols. Make sure your terminal is configured to use a Nerd Font.
+
+    To test your setup, run these commands in your terminal:
+
+    ```bash theme={null}
+    echo -e "\xf0\x9f\x90\x8d"   # Should display a snake emoji 🐍
+    echo -e "\xee\x82\xa0"        # Should display a Powerline branch symbol 
+    ```
+
+    If either fails to display, your system font configuration needs adjustment. If both display correctly but you still don't see the symbols in Starship, file a bug report.
+  </Accordion>
+
+  <Accordion title="How do I uninstall Starship?">
+    1. Remove the Starship initialization line from your shell config (e.g., `~/.bashrc`, `~/.zshrc`, or `~/.config/fish/config.fish`).
+    2. Delete the Starship binary.
+
+    If you installed via a package manager, follow its uninstall instructions. If you used the install script:
+
+    ```bash theme={null}
+    sh -c 'rm "$(command -v starship)"'
+    ```
+  </Accordion>
+
+  <Accordion title="How do I install Starship without sudo?">
+    The install script only uses `sudo` when the target directory is not writable by the current user. Set the installation directory to one you own using the `-b` flag:
+
+    ```bash theme={null}
+    curl -sS https://starship.rs/install.sh | sh -s -- -b ~/.local/bin
+    ```
+
+    For a non-interactive installation, add `-y` to skip the confirmation prompt.
+  </Accordion>
+</AccordionGroup>
+
+***
+
+## Submit a bug report
+
+If you encounter unexpected behavior not covered here, use `starship bug-report` to create a pre-populated GitHub issue with your configuration, shell, OS, and Starship version:
+
+```bash theme={null}
+starship bug-report
+```
+
+
+# Installation
+Source: https://www.mintlify.com/starship/starship/installation
+
+Install Starship on Linux, macOS, Windows, Android, or BSD, then configure your shell.
+
+<Steps>
+  <Step title="Install the Starship binary">
+    Select your operating system to see available installation methods.
+
+    <Tabs>
+      <Tab title="Linux">
+        Install the latest version using the install script:
+
+        ```sh theme={null}
+        curl -sS https://starship.rs/install.sh | sh
+        ```
+
+        Or install using a package manager:
+
+        | Distribution       | Repository            | Command                                                     |
+        | ------------------ | --------------------- | ----------------------------------------------------------- |
+        | Any                | crates.io             | `cargo install starship --locked`                           |
+        | Any                | conda-forge           | `conda install -c conda-forge starship`                     |
+        | Any                | Linuxbrew             | `brew install starship`                                     |
+        | Alpine Linux 3.13+ | Alpine Linux Packages | `apk add starship`                                          |
+        | Arch Linux         | Arch Linux Extra      | `pacman -S starship`                                        |
+        | CentOS 7+          | Copr                  | `dnf copr enable atim/starship` then `dnf install starship` |
+        | Debian 13+         | Debian Main           | `apt install starship`                                      |
+        | Fedora 40+         | Copr                  | `dnf copr enable atim/starship` then `dnf install starship` |
+        | Gentoo             | Gentoo Packages       | `emerge app-shells/starship`                                |
+        | Manjaro            | —                     | `pacman -S starship`                                        |
+        | NixOS              | nixpkgs               | `nix-env -iA nixpkgs.starship`                              |
+        | openSUSE           | OSS                   | `zypper in starship`                                        |
+        | Ubuntu 25.04+      | Ubuntu Universe       | `apt install starship`                                      |
+        | Void Linux         | Void Linux Packages   | `xbps-install -S starship`                                  |
+      </Tab>
+
+      <Tab title="macOS">
+        Install the latest version using the install script:
+
+        ```sh theme={null}
+        curl -sS https://starship.rs/install.sh | sh
+        ```
+
+        Or install using a package manager:
+
+        | Repository  | Command                                 |
+        | ----------- | --------------------------------------- |
+        | crates.io   | `cargo install starship --locked`       |
+        | conda-forge | `conda install -c conda-forge starship` |
+        | Homebrew    | `brew install starship`                 |
+        | MacPorts    | `port install starship`                 |
+      </Tab>
+
+      <Tab title="Windows">
+        Install the latest version using the MSI installer from the [releases page](https://github.com/starship/starship/releases/latest).
+
+        Or install using a package manager:
+
+        | Repository  | Command                                 |
+        | ----------- | --------------------------------------- |
+        | crates.io   | `cargo install starship --locked`       |
+        | Chocolatey  | `choco install starship`                |
+        | conda-forge | `conda install -c conda-forge starship` |
+        | Scoop       | `scoop install starship`                |
+        | winget      | `winget install --id Starship.Starship` |
+      </Tab>
+
+      <Tab title="Android">
+        Install Starship using Termux:
+
+        | Repository | Command                |
+        | ---------- | ---------------------- |
+        | Termux     | `pkg install starship` |
+      </Tab>
+
+      <Tab title="BSD">
+        | Distribution | Repository | Command                           |
+        | ------------ | ---------- | --------------------------------- |
+        | Any          | crates.io  | `cargo install starship --locked` |
+        | FreeBSD      | FreshPorts | `pkg install starship`            |
+        | NetBSD       | pkgsrc     | `pkgin install starship`          |
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Set up your shell">
+    Add the Starship init line to your shell configuration file. Select your shell:
+
+    <Tabs>
+      <Tab title="Bash">
+        Add the following to the end of `~/.bashrc`:
+
+        ```sh theme={null}
+        eval "$(starship init bash)"
+        ```
+      </Tab>
+
+      <Tab title="Zsh">
+        Add the following to the end of `~/.zshrc`:
+
+        ```sh theme={null}
+        eval "$(starship init zsh)"
+        ```
+      </Tab>
+
+      <Tab title="Fish">
+        Add the following to the end of `~/.config/fish/config.fish`:
+
+        ```fish theme={null}
+        starship init fish | source
+        ```
+      </Tab>
+
+      <Tab title="PowerShell">
+        Add the following to the end of your PowerShell configuration (find it by running `$PROFILE`):
+
+        ```powershell theme={null}
+        Invoke-Expression (&starship init powershell)
+        ```
+      </Tab>
+
+      <Tab title="Nushell">
+        Add the following to the end of your Nushell configuration (find it by running `$nu.config-path`):
+
+        ```sh theme={null}
+        mkdir ($nu.data-dir | path join "vendor/autoload")
+        starship init nu | save -f ($nu.data-dir | path join "vendor/autoload/starship.nu")
+        ```
+
+        <Note>Only Nushell v0.96+ is supported.</Note>
+      </Tab>
+
+      <Tab title="Elvish">
+        Add the following to the end of `~/.config/elvish/rc.elv` (or `%AppData%\elvish\rc.elv` on Windows):
+
+        ```sh theme={null}
+        eval (starship init elvish)
+        ```
+
+        <Note>Only Elvish v0.18+ is supported. For versions prior to v0.21.0, the config file may be `~/.elvish/rc.elv` instead.</Note>
+      </Tab>
+
+      <Tab title="Ion">
+        Add the following to the end of `~/.config/ion/initrc`:
+
+        ```sh theme={null}
+        eval $(starship init ion)
+        ```
+      </Tab>
+
+      <Tab title="Cmd">
+        You need to use [Clink](https://chrisant996.github.io/clink/clink.html) (v1.2.30+) with Cmd. Create a file at `%LocalAppData%\clink\starship.lua` with the following contents:
+
+        ```lua theme={null}
+        load(io.popen('starship init cmd'):read("*a"))()
+        ```
+      </Tab>
+
+      <Tab title="Tcsh">
+        Add the following to the end of `~/.tcshrc`:
+
+        ```sh theme={null}
+        eval `starship init tcsh`
+        ```
+      </Tab>
+
+      <Tab title="Xonsh">
+        Add the following to the end of `~/.xonshrc`:
+
+        ```python theme={null}
+        execx($(starship init xonsh))
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Configure Starship (optional)">
+    Start a new shell session and your Starship prompt will appear. If you want to customize it, create `~/.config/starship.toml`:
+
+    ```toml theme={null}
+    "$schema" = 'https://starship.rs/config-schema.json'
+    add_newline = true
+
+    [character]
+    success_symbol = '[➜](bold green)'
+
+    [package]
+    disabled = true
+    ```
+
+    <Tip>See the [configuration docs](/config/overview) for a full reference of all modules and options.</Tip>
+  </Step>
+</Steps>
+
+## Prerequisites
+
+<Note>
+  A [Nerd Font](https://www.nerdfonts.com/) installed and enabled in your terminal is recommended for the best experience with icons and symbols. The [FiraCode Nerd Font](https://www.nerdfonts.com/font-downloads) is a popular choice.
+</Note>
+
+
+# Introduction
+Source: https://www.mintlify.com/starship/starship/introduction
+
+Starship is the minimal, blazing-fast, and infinitely customizable prompt for any shell.
+
+Starship is a cross-shell prompt written in Rust. It shows only the information you need, exactly when you need it — current directory, git status, language versions, cloud context, and much more — all with millisecond-level performance.
+
+## Key features
+
+* **Cross-shell support** — works with Bash, Zsh, Fish, PowerShell, Nushell, Elvish, Ion, Cmd, Tcsh, Xonsh, and more
+* **100+ modules** — built-in support for Git, Node.js, Python, Rust, Go, Kubernetes, AWS, GCloud, and many other tools
+* **Rust performance** — written in Rust for speed; your prompt renders in milliseconds even with many modules active
+* **TOML configuration** — configure every module using a single `~/.config/starship.toml` file
+* **Intelligent context-aware display** — modules appear only when they are relevant to your current directory or environment
+* **Nerd Font support** — rich icons and symbols when used with a Nerd Font-compatible terminal
+
+## Where to go next
+
+<CardGroup>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Starship on Linux, macOS, Windows, Android, or BSD using the install script or your preferred package manager.
+  </Card>
+
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get a working Starship prompt running in minutes with step-by-step instructions.
+  </Card>
+
+  <Card title="Configuration" icon="sliders" href="/config/overview">
+    Learn how to customize modules, format strings, colors, and symbols with a simple TOML file.
+  </Card>
+
+  <Card title="Presets" icon="paintbrush" href="/presets/overview">
+    Jump-start your setup with community-crafted prompt themes ready to apply in one command.
+  </Card>
+</CardGroup>
+
+
+# Minimal presets
+Source: https://www.mintlify.com/starship/starship/presets/minimal
+
+Starship presets that reduce visual clutter: plain text, no runtime versions, no empty icons, and Pure-style prompts.
+
+These presets focus on reducing visual noise. Rather than changing colors or adding icons, they strip away information you may not need — replacing symbols with plain text, hiding runtime version numbers, or suppressing icons when a tool is not active.
+
+## Plain text symbols
+
+**Preset name:** `plain-text-symbols`
+
+Replaces every symbol in every module with a plain ASCII string. This is useful when you have no access to Unicode, are using a minimal terminal, or prefer a fully text-based prompt.
+
+**When to use it:** Terminals without Unicode support, SSH sessions with restricted fonts, or any environment where special characters appear as boxes.
+
+```bash theme={null}
+starship preset plain-text-symbols -o ~/.config/starship.toml
+```
+
+<Accordion title="Full configuration">
+  ```toml theme={null}
+  "$schema" = 'https://starship.rs/config-schema.json'
+
+  continuation_prompt = "[.](bright-black) "
+
+  [character]
+  success_symbol = "[>](bold green)"
+  error_symbol = "[x](bold red)"
+  vimcmd_symbol = "[<](bold green)"
+  vimcmd_visual_symbol = "[<](bold yellow)"
+  vimcmd_replace_symbol = "[<](bold purple)"
+  vimcmd_replace_one_symbol = "[<](bold purple)"
+
+  [git_commit]
+  tag_symbol = " tag "
+
+  [git_status]
+  ahead = ">"
+  behind = "<"
+  diverged = "<>"
+  renamed = "r"
+  deleted = "x"
+
+  [aws]
+  symbol = "aws "
+
+  [azure]
+  symbol = "az "
+
+  [battery]
+  full_symbol = "full "
+  charging_symbol = "charging "
+  discharging_symbol = "discharging "
+  unknown_symbol = "unknown "
+  empty_symbol = "empty "
+
+  [buf]
+  symbol = "buf "
+
+  [bun]
+  symbol = "bun "
+
+  [c]
+  symbol = "C "
+
+  [cpp]
+  symbol = "C++ "
+
+  [cobol]
+  symbol = "cobol "
+
+  [conda]
+  symbol = "conda "
+
+  [container]
+  symbol = "container "
+
+  [crystal]
+  symbol = "cr "
+
+  [cmake]
+  symbol = "cmake "
+
+  [daml]
+  symbol = "daml "
+
+  [dart]
+  symbol = "dart "
+
+  [deno]
+  symbol = "deno "
+
+  [dotnet]
+  format = "via [$symbol($version )(target $tfm )]($style)"
+  symbol = ".NET "
+
+  [directory]
+  read_only = " ro"
+
+  [docker_context]
+  symbol = "docker "
+
+  [elixir]
+  symbol = "exs "
+
+  [elm]
+  symbol = "elm "
+
+  [erlang]
+  symbol = "erl "
+
+  [fennel]
+  symbol = "fnl "
+
+  [fortran]
+  symbol = "fortran "
+
+  [fossil_branch]
+  symbol = "fossil "
+  truncation_symbol = "..."
+
+  [gcloud]
+  symbol = "gcp "
+
+  [git_branch]
+  symbol = "git "
+  truncation_symbol = "..."
+
+  [gleam]
+  symbol = "gleam "
+
+  [golang]
+  symbol = "go "
+
+  [gradle]
+  symbol = "gradle "
+
+  [guix_shell]
+  symbol = "guix "
+
+  [haskell]
+  symbol = "haskell "
+
+  [haxe]
+  symbol = "hx "
+
+  [helm]
+  symbol = "helm "
+
+  [hg_branch]
+  symbol = "hg "
+  truncation_symbol = "..."
+
+  [hostname]
+  ssh_symbol = "ssh "
+
+  [java]
+  symbol = "java "
+
+  [jobs]
+  symbol = "*"
+
+  [julia]
+  symbol = "jl "
+
+  [kotlin]
+  symbol = "kt "
+
+  [kubernetes]
+  symbol = "kubernetes "
+
+  [lua]
+  symbol = "lua "
+
+  [maven]
+  symbol = "maven "
+
+  [nodejs]
+  symbol = "nodejs "
+
+  [memory_usage]
+  symbol = "memory "
+
+  [meson]
+  symbol = "meson "
+  truncation_symbol = "..."
+
+  [mojo]
+  symbol = "mojo "
+
+  [nats]
+  symbol = "nats "
+
+  [netns]
+  symbol = "netns "
+
+  [nim]
+  symbol = "nim "
+
+  [nix_shell]
+  symbol = "nix "
+
+  [ocaml]
+  symbol = "ml "
+
+  [odin]
+  symbol = "odin "
+
+  [opa]
+  symbol = "opa "
+
+  [openstack]
+  symbol = "openstack "
+
+  [os.symbols]
+  AIX = "aix "
+  Alpaquita = "alq "
+  AlmaLinux = "alma "
+  Alpine = "alp "
+  ALTLinux = "alt "
+  Amazon = "amz "
+  Android = "andr "
+  AOSC = "aosc "
+  Arch = "rch "
+  Artix = "atx "
+  Bluefin = "blfn "
+  CachyOS = "cach "
+  CentOS = "cent "
+  Debian = "deb "
+  DragonFly = "dfbsd "
+  Elementary = "elem "
+  Emscripten = "emsc "
+  EndeavourOS = "ndev "
+  Fedora = "fed "
+  FreeBSD = "fbsd "
+  Garuda = "garu "
+  Gentoo = "gent "
+  HardenedBSD = "hbsd "
+  Illumos = "lum "
+  Ios = "ios "
+  InstantOS = "inst "
+  Kali = "kali "
+  Linux = "lnx "
+  Mabox = "mbox "
+  Macos = "mac "
+  Manjaro = "mjo "
+  Mariner = "mrn "
+  MidnightBSD = "mid "
+  Mint = "mint "
+  NetBSD = "nbsd "
+  NixOS = "nix "
+  Nobara = "nbra "
+  OpenBSD = "obsd "
+  OpenCloudOS = "ocos "
+  openEuler = "oeul "
+  openSUSE = "osuse "
+  OracleLinux = "orac "
+  PikaOS = "pika "
+  Pop = "pop "
+  Raspbian = "rasp "
+  Redhat = "rhl "
+  RedHatEnterprise = "rhel "
+  RockyLinux = "rky "
+  Redox = "redox "
+  Solus = "sol "
+  SUSE = "suse "
+  Ubuntu = "ubnt "
+  Ultramarine = "ultm "
+  Unknown = "unk "
+  Uos = "uos "
+  Void = "void "
+  Windows = "win "
+  Zorin = "zorn "
+
+  [package]
+  symbol = "pkg "
+
+  [perl]
+  symbol = "pl "
+
+  [php]
+  symbol = "php "
+
+  [pijul_channel]
+  symbol = "pijul "
+  truncation_symbol = "..."
+
+  [pixi]
+  symbol = "pixi "
+
+  [pulumi]
+  symbol = "pulumi "
+
+  [purescript]
+  symbol = "purs "
+
+  [python]
+  symbol = "py "
+
+  [quarto]
+  symbol = "quarto "
+
+  [raku]
+  symbol = "raku "
+
+  [red]
+  symbol = "red "
+
+  [rlang]
+  symbol = "r "
+
+  [ruby]
+  symbol = "rb "
+
+  [rust]
+  symbol = "rs "
+
+  [scala]
+  symbol = "scala "
+
+  [shlvl]
+  symbol = "shlvl "
+
+  [spack]
+  symbol = "spack "
+
+  [solidity]
+  symbol = "solidity "
+
+  [status]
+  symbol = "[x](bold red) "
+  not_executable_symbol = "noexec"
+  not_found_symbol = "notfound"
+  sigint_symbol = "sigint"
+  signal_symbol = "sig"
+
+  [sudo]
+  symbol = "sudo "
+
+  [swift]
+  symbol = "swift "
+
+  [typst]
+  symbol = "typst "
+
+  [vagrant]
+  symbol = "vagrant "
+
+  [terraform]
+  symbol = "terraform "
+
+  [xmake]
+  symbol = "xmake "
+
+  [zig]
+  symbol = "zig "
+  ```
+</Accordion>
+
+***
+
+## No runtime versions
+
+**Preset name:** `no-runtime-versions`
+
+Hides version numbers for all language runtimes while still showing their icons. The module for each language still appears when you are in a relevant project directory — you just won't see the version string.
+
+**When to use it:** Containers and virtualized environments where the version is managed externally, or any setup where version numbers add noise without adding value.
+
+```bash theme={null}
+starship preset no-runtime-versions -o ~/.config/starship.toml
+```
+
+<Accordion title="Full configuration">
+  ```toml theme={null}
+  "$schema" = 'https://starship.rs/config-schema.json'
+
+  [bun]
+  format = "via [$symbol]($style)"
+
+  [buf]
+  format = "with [$symbol]($style)"
+
+  [c]
+  format = "via [$symbol($name)]($style)"
+
+  [cmake]
+  format = "via [$symbol]($style)"
+
+  [cobol]
+  format = "via [$symbol]($style)"
+
+  [cpp]
+  format = "via [$symbol($name)]($style)"
+
+  [crystal]
+  format = "via [$symbol]($style)"
+
+  [daml]
+  format = "via [$symbol]($style)"
+
+  [dart]
+  format = "via [$symbol]($style)"
+
+  [deno]
+  format = "via [$symbol]($style)"
+
+  [dotnet]
+  format = "[$symbol(🎯 $tfm )]($style)"
+
+  [elixir]
+  format = 'via [$symbol]($style)'
+
+  [elm]
+  format = 'via [$symbol]($style)'
+
+  [erlang]
+  format = 'via [$symbol]($style)'
+
+  [fennel]
+  format = 'via [$symbol]($style)'
+
+  [fortran]
+  format = 'via [$symbol]($style)'
+
+  [gleam]
+  format = 'via [$symbol]($style)'
+
+  [golang]
+  format = 'via [$symbol]($style)'
+
+  [gradle]
+  format = 'via [$symbol]($style)'
+
+  [haskell]
+  format = 'via [$symbol]($style)'
+
+  [haxe]
+  format = 'via [$symbol]($style)'
+
+  [helm]
+  format = 'via [$symbol]($style)'
+
+  [java]
+  format = 'via [$symbol]($style)'
+
+  [julia]
+  format = 'via [$symbol]($style)'
+
+  [kotlin]
+  format = 'via [$symbol]($style)'
+
+  [lua]
+  format = 'via [$symbol]($style)'
+
+  [maven]
+  format = 'via [$symbol]($style)'
+
+  [meson]
+  format = 'via [$symbol]($style)'
+
+  [mojo]
+  format = 'with [$symbol]($style)'
+
+  [nim]
+  format = 'via [$symbol]($style)'
+
+  [nodejs]
+  format = 'via [$symbol]($style)'
+
+  [ocaml]
+  format = 'via [$symbol(\($switch_indicator$switch_name\) )]($style)'
+
+  [odin]
+  format = 'via [$symbol]($style)'
+
+  [opa]
+  format = 'via [$symbol]($style)'
+
+  [perl]
+  format = 'via [$symbol]($style)'
+
+  [php]
+  format = 'via [$symbol]($style)'
+
+  [pixi]
+  format = 'via [$symbol($environment )]($style)'
+
+  [pulumi]
+  format = 'via [$symbol$stack]($style)'
+
+  [purescript]
+  format = 'via [$symbol]($style)'
+
+  [python]
+  format = 'via [$symbol]($style)'
+
+  [quarto]
+  format = 'via [$symbol]($style)'
+
+  [raku]
+  format = 'via [$symbol]($style)'
+
+  [red]
+  format = 'via [$symbol]($style)'
+
+  [rlang]
+  format = 'via [$symbol]($style)'
+
+  [ruby]
+  format = 'via [$symbol]($style)'
+
+  [rust]
+  format = 'via [$symbol]($style)'
+
+  [scala]
+  format = 'via [$symbol]($style)'
+
+  [solidity]
+  format = 'via [$symbol]($style)'
+
+  [swift]
+  format = 'via [$symbol]($style)'
+
+  [typst]
+  format = 'via [$symbol]($style)'
+
+  [vagrant]
+  format = 'via [$symbol]($style)'
+
+  [vlang]
+  format = 'via [$symbol]($style)'
+
+  [xmake]
+  format = "via [$symbol]($style)"
+
+  [zig]
+  format = 'via [$symbol]($style)'
+  ```
+</Accordion>
+
+***
+
+## No empty icons
+
+**Preset name:** `no-empty-icons`
+
+By default, Starship shows a module's icon even when it cannot determine the tool's version (for example, if the tool is not installed but a relevant file is present). This preset wraps every module's format string in an optional group so the icon is only shown when the version is actually available.
+
+**When to use it:** Keeping your prompt tidy when you work across projects that reference tools you don't have installed locally.
+
+```bash theme={null}
+starship preset no-empty-icons -o ~/.config/starship.toml
+```
+
+<Accordion title="Full configuration">
+  ```toml theme={null}
+  "$schema" = 'https://starship.rs/config-schema.json'
+
+  [buf]
+  format = '(with [$symbol($version )]($style))'
+
+  [bun]
+  format = '(via [$symbol($version )]($style))'
+
+  [c]
+  format = '(via [$symbol($version(-$name) )]($style))'
+
+  [cpp]
+  format = '(via [$symbol($version(-$name) )]($style))'
+
+  [cmake]
+  format = '(via [$symbol($version )]($style))'
+
+  [cobol]
+  format = '(via [$symbol($version )]($style))'
+
+  [crystal]
+  format = '(via [$symbol($version )]($style))'
+
+  [daml]
+  format = '(via [$symbol($version )]($style))'
+
+  [dart]
+  format = '(via [$symbol($version )]($style))'
+
+  [deno]
+  format = '(via [$symbol($version )]($style))'
+
+  [dotnet]
+  format = '(via [$symbol($version )(🎯 $tfm )]($style))'
+
+  [elixir]
+  format = '(via [$symbol($version \(OTP $otp_version\) )]($style))'
+
+  [elm]
+  format = '(via [$symbol($version )]($style))'
+
+  [erlang]
+  format = '(via [$symbol($version )]($style))'
+
+  [fennel]
+  format = '(via [$symbol($version )]($style))'
+
+  [fortran]
+  format = "(via [$symbol($version )]($style))"
+
+  [gleam]
+  format = '(via [$symbol($version )]($style))'
+
+  [golang]
+  format = '(via [$symbol($version )]($style))'
+
+  [haskell]
+  format = '(via [$symbol($version )]($style))'
+
+  [helm]
+  format = '(via [$symbol($version )]($style))'
+
+  [java]
+  format = '(via [$symbol($version )]($style))'
+
+  [julia]
+  format = '(via [$symbol($version )]($style))'
+
+  [kotlin]
+  format = '(via [$symbol($version )]($style))'
+
+  [lua]
+  format = '(via [$symbol($version )]($style))'
+
+  [nim]
+  format = '(via [$symbol($version )]($style))'
+
+  [nodejs]
+  format = '(via [$symbol($version )]($style))'
+
+  [ocaml]
+  format = '(via [$symbol($version )(\($switch_indicator$switch_name\) )]($style))'
+
+  [opa]
+  format = '(via [$symbol($version )]($style))'
+
+  [package]
+  format = '(is [$symbol$version]($style) )'
+
+  [perl]
+  format = '(via [$symbol($version )]($style))'
+
+  [php]
+  format = '(via [$symbol($version )]($style))'
+
+  [purescript]
+  format = '(via [$symbol($version )]($style))'
+
+  [python]
+  format = '(via [${symbol}${pyenv_prefix}(${version} )(\($virtualenv\) )]($style))'
+
+  [quarto]
+  format = '(via [$symbol($version )]($style))'
+
+  [raku]
+  format = '(via [$symbol($version-$vm_version )]($style))'
+
+  [red]
+  format = '(via [$symbol($version )]($style))'
+
+  [rlang]
+  format = '(via [$symbol($version )]($style))'
+
+  [ruby]
+  format = '(via [$symbol($version )]($style))'
+
+  [rust]
+  format = '(via [$symbol($version )]($style))'
+
+  [scala]
+  format = '(via [$symbol($version )]($style))'
+
+  [swift]
+  format = '(via [$symbol($version )]($style))'
+
+  [typst]
+  format = '(via [$symbol($version )]($style))'
+
+  [vagrant]
+  format = '(via [$symbol($version )]($style))'
+
+  [vlang]
+  format = '(via [$symbol($version )]($style))'
+
+  [xmake]
+  format = '(via [$symbol($version )]($style))'
+
+  [zig]
+  format = '(via [$symbol($version )]($style))'
+  ```
+</Accordion>
+
+***
+
+## Pure preset
+
+**Preset name:** `pure-preset`
+
+Emulates the look and behavior of [Pure](https://github.com/sindresorhus/pure), the minimalist zsh theme. It shows only the directory, git branch, git status, command duration, and a prompt character — nothing else unless you are in a Python virtual environment.
+
+**When to use it:** If you want a clean, distraction-free prompt that stays out of the way and only surfaces essential information.
+
+```bash theme={null}
+starship preset pure-preset -o ~/.config/starship.toml
+```
+
+<Accordion title="Full configuration">
+  ```toml theme={null}
+  "$schema" = 'https://starship.rs/config-schema.json'
+
+  format = """
+  $username\
+  $hostname\
+  $directory\
+  $git_branch\
+  $git_state\
+  $git_status\
+  $cmd_duration\
+  $line_break\
+  $python\
+  $character"""
+
+  [directory]
+  style = "blue"
+
+  [character]
+  success_symbol = "[❯](purple)"
+  error_symbol = "[❯](red)"
+  vimcmd_symbol = "[❮](green)"
+
+  [git_branch]
+  format = "[$branch]($style)"
+  style = "bright-black"
+
+  [git_status]
+  format = "[[(*$conflicted$untracked$modified$staged$renamed$deleted)](218) ($ahead_behind$stashed)]($style)"
+  style = "cyan"
+  conflicted = "​"
+  untracked = "​"
+  modified = "​"
+  staged = "​"
+  renamed = "​"
+  deleted = "​"
+  stashed = "≡"
+
+  [git_state]
+  format = '\([$state( $progress_current/$progress_total)]($style)\) '
+  style = "bright-black"
+
+  [cmd_duration]
+  format = "[$duration]($style) "
+  style = "yellow"
+
+  [python]
+  format = "[$virtualenv]($style) "
+  style = "bright-black"
+  detect_extensions = []
+  detect_files = []
+  ```
+</Accordion>
+
+
+# Nerd Font Symbols preset
+Source: https://www.mintlify.com/starship/starship/presets/nerd-font
+
+Apply rich Nerd Font icons to every Starship module in one command.
+
+The Nerd Font Symbols preset replaces the default symbols for every Starship module with [Nerd Font](https://www.nerdfonts.com/) icons. The result is a visually dense prompt where each tool, language, and context is represented by a distinctive glyph.
+
+## Requirement
+
+<Warning>
+  You must have a [Nerd Font](https://www.nerdfonts.com/) installed and selected in your terminal emulator before applying this preset. The screenshot in the Starship docs uses **Fira Code Nerd Font**. Without a Nerd Font, the symbols will appear as boxes or question marks.
+</Warning>
+
+## Apply the preset
+
+```bash theme={null}
+starship preset nerd-font-symbols -o ~/.config/starship.toml
+```
+
+## What it changes
+
+The preset sets a `symbol` value for every supported module so that Starship displays the appropriate Nerd Font glyph instead of plain text or emoji. Modules covered include all major language runtimes, version control systems, cloud providers, operating systems, and status indicators.
+
+A few representative changes:
+
+| Module                  | Default      | Nerd Font symbol |
+| ----------------------- | ------------ | ---------------- |
+| `git_branch`            | `on ` (text) | ` `              |
+| `nodejs`                | `⬢ `         | ` `              |
+| `python`                | `🐍 `        | ` `              |
+| `rust`                  | `⚙️ `        | `󱘗 `            |
+| `directory` (read-only) | `🔒`         | ` 󰌾`            |
+| `hostname` (SSH)        | `🌐 `        | ` `              |
+
+## Full configuration
+
+This is the complete TOML configuration applied by the preset:
+
+```toml theme={null}
+"$schema" = 'https://starship.rs/config-schema.json'
+
+[aws]
+symbol = " "
+
+[buf]
+symbol = " "
+
+[bun]
+symbol = " "
+
+[c]
+symbol = " "
+
+[cpp]
+symbol = " "
+
+[cmake]
+symbol = " "
+
+[conda]
+symbol = " "
+
+[crystal]
+symbol = " "
+
+[dart]
+symbol = " "
+
+[deno]
+symbol = " "
+
+[directory]
+read_only = " 󰌾"
+
+[docker_context]
+symbol = " "
+
+[elixir]
+symbol = " "
+
+[elm]
+symbol = " "
+
+[fennel]
+symbol = " "
+
+[fortran]
+symbol = " "
+
+[fossil_branch]
+symbol = " "
+
+[gcloud]
+symbol = " "
+
+[git_branch]
+symbol = " "
+
+[git_commit]
+tag_symbol = '  '
+
+[golang]
+symbol = " "
+
+[gradle]
+symbol = " "
+
+[guix_shell]
+symbol = " "
+
+[haskell]
+symbol = " "
+
+[haxe]
+symbol = " "
+
+[hg_branch]
+symbol = " "
+
+[hostname]
+ssh_symbol = " "
+
+[java]
+symbol = " "
+
+[julia]
+symbol = " "
+
+[kotlin]
+symbol = " "
+
+[lua]
+symbol = " "
+
+[maven]
+symbol = " "
+
+[memory_usage]
+symbol = "󰍛 "
+
+[meson]
+symbol = "󰔷 "
+
+[nim]
+symbol = "󰆥 "
+
+[nix_shell]
+symbol = " "
+
+[nodejs]
+symbol = " "
+
+[ocaml]
+symbol = " "
+
+[os.symbols]
+Alpaquita = " "
+Alpine = " "
+AlmaLinux = " "
+Amazon = " "
+Android = " "
+AOSC = " "
+Arch = " "
+Artix = " "
+CachyOS = " "
+CentOS = " "
+Debian = " "
+DragonFly = " "
+Elementary = " "
+Emscripten = " "
+EndeavourOS = " "
+Fedora = " "
+FreeBSD = " "
+Garuda = "󰛓 "
+Gentoo = " "
+HardenedBSD = "󰞌 "
+Illumos = "󰈸 "
+Ios = "󰀷 "
+Kali = " "
+Linux = " "
+Mabox = " "
+Macos = " "
+Manjaro = " "
+Mariner = " "
+MidnightBSD = " "
+Mint = " "
+NetBSD = " "
+NixOS = " "
+Nobara = " "
+OpenBSD = "󰈺 "
+openSUSE = " "
+OracleLinux = "󰌷 "
+Pop = " "
+Raspbian = " "
+Redhat = " "
+RedHatEnterprise = " "
+RockyLinux = " "
+Redox = "󰀘 "
+Solus = "󰠳 "
+SUSE = " "
+Ubuntu = " "
+Unknown = " "
+Void = " "
+Windows = "󰍲 "
+Zorin = " "
+
+[package]
+symbol = "󰏗 "
+
+[perl]
+symbol = " "
+
+[php]
+symbol = " "
+
+[pijul_channel]
+symbol = " "
+
+[pixi]
+symbol = "󰏗 "
+
+[python]
+symbol = " "
+
+[rlang]
+symbol = "󰟔 "
+
+[ruby]
+symbol = " "
+
+[rust]
+symbol = "󱘗 "
+
+[scala]
+symbol = " "
+
+[status]
+symbol = " "
+
+[swift]
+symbol = " "
+
+[xmake]
+symbol = " "
+
+[zig]
+symbol = " "
+```
+
+<Tip>
+  You can combine this preset with other configuration. After applying it, open `~/.config/starship.toml` and add or override any settings you want to customize further.
+</Tip>
+
+
+# No Nerd Font preset
+Source: https://www.mintlify.com/starship/starship/presets/no-nerd-font
+
+A Starship preset that uses only emoji and powerline symbols — no Nerd Font required.
+
+The No Nerd Font preset restricts module symbols to emoji and powerline character sets. Every symbol it uses is available in a standard terminal font, so you get a clean, readable prompt without installing any special font.
+
+<Tip>
+  This preset is planned to become the default Starship configuration in a future release.
+</Tip>
+
+## Apply the preset
+
+```bash theme={null}
+starship preset no-nerd-font -o ~/.config/starship.toml
+```
+
+## What it changes
+
+The preset replaces a small number of symbols that would otherwise require a Nerd Font. Most modules are unaffected — only the ones that ship with Nerd Font glyphs by default are updated.
+
+| Module                  | Symbol applied     |
+| ----------------------- | ------------------ |
+| `battery` (full)        | `• `               |
+| `battery` (charging)    | `⇡ `               |
+| `battery` (discharging) | `⇣ `               |
+| `battery` (unknown)     | `❓ `               |
+| `battery` (empty)       | `❗ `               |
+| `erlang`                | `ⓔ `               |
+| `fortran`               | `F `               |
+| `nodejs`                | `[⬢](bold green) ` |
+| `pulumi`                | `🧊 `              |
+| `typst`                 | `t `               |
+
+## Full configuration
+
+```toml theme={null}
+"$schema" = 'https://starship.rs/config-schema.json'
+
+[battery]
+full_symbol = "• "
+charging_symbol = "⇡ "
+discharging_symbol = "⇣ "
+unknown_symbol = "❓ "
+empty_symbol = "❗ "
+
+[erlang]
+symbol = "ⓔ "
+
+[fortran]
+symbol = "F "
+
+[nodejs]
+symbol = "[⬢](bold green) "
+
+[pulumi]
+symbol = "🧊 "
+
+[typst]
+symbol = "t "
+```
+
+<Note>
+  This preset only overrides the symbols that would be problematic without a Nerd Font. All other modules continue to use their default configuration. If you want to replace every symbol with plain ASCII text, see the [Minimal presets](/presets/minimal) page for the plain-text-symbols preset instead.
+</Note>
+
+
+# Presets
+Source: https://www.mintlify.com/starship/starship/presets/overview
+
+Pre-built Starship configurations you can apply in one command.
+
+Presets are community-crafted Starship configurations that change how your prompt looks and behaves. Each preset is a complete `starship.toml` file you can apply instantly without writing any configuration by hand.
+
+## How to use a preset
+
+<Steps>
+  <Step title="List available presets">
+    See all preset names built into your installed version of Starship:
+
+    ```bash theme={null}
+    starship preset --list
+    ```
+  </Step>
+
+  <Step title="Preview a preset">
+    Print a preset's TOML config to stdout without changing anything:
+
+    ```bash theme={null}
+    starship preset <preset-name>
+    ```
+  </Step>
+
+  <Step title="Apply a preset">
+    Write the preset directly to your Starship config file:
+
+    ```bash theme={null}
+    starship preset <preset-name> -o ~/.config/starship.toml
+    ```
+
+    <Warning>
+      This overwrites your existing `~/.config/starship.toml`. Back it up first if you have customizations you want to keep.
+    </Warning>
+  </Step>
+</Steps>
+
+## Available presets
+
+<CardGroup>
+  <Card title="Nerd Font Symbols" icon="font" href="/presets/nerd-font">
+    Replaces all module symbols with Nerd Font icons for a visually rich prompt. Requires a Nerd Font installed in your terminal.
+  </Card>
+
+  <Card title="No Nerd Font" icon="text-size" href="/presets/no-nerd-font">
+    Uses only emoji and powerline symbols — no Nerd Font required. Works in any standard terminal.
+  </Card>
+
+  <Card title="Minimal presets" icon="minus" href="/presets/minimal">
+    A set of presets that reduce visual clutter: plain text symbols, no runtime versions, and no empty icons.
+  </Card>
+
+  <Card title="Pure Prompt" icon="terminal" href="/presets/minimal#pure-preset">
+    Emulates the look and behavior of the Pure zsh theme — minimal, single-line, and focused.
+  </Card>
+</CardGroup>
+
+## Other presets
+
+These presets ship with Starship and can be applied with the commands shown below.
+
+### Bracketed Segments
+
+Changes the format of all built-in modules to show their segment in brackets instead of using the default Starship wording ("via", "on", etc.).
+
+```bash theme={null}
+starship preset bracketed-segments -o ~/.config/starship.toml
+```
+
+### Pastel Powerline
+
+A powerline-style prompt with pastel colors, inspired by [M365Princess](https://github.com/JanDeDobbeleer/oh-my-posh/blob/main/themes/M365Princess.omp.json). Also demonstrates path substitution.
+
+<Note>Requires a Nerd Font — the example uses Caskaydia Cove Nerd Font.</Note>
+
+```bash theme={null}
+starship preset pastel-powerline -o ~/.config/starship.toml
+```
+
+### Tokyo Night
+
+A dark, atmospheric prompt inspired by the [tokyo-night-vscode-theme](https://github.com/enkia/tokyo-night-vscode-theme).
+
+<Note>Requires a Nerd Font installed in your terminal.</Note>
+
+```bash theme={null}
+starship preset tokyo-night -o ~/.config/starship.toml
+```
+
+### Gruvbox Rainbow
+
+A colorful powerline-style preset using the Gruvbox dark palette. Heavily inspired by Pastel Powerline and Tokyo Night.
+
+<Note>Requires a Nerd Font installed in your terminal.</Note>
+
+```bash theme={null}
+starship preset gruvbox-rainbow -o ~/.config/starship.toml
+```
+
+### Jetpack
+
+A pseudo-minimalist preset inspired by the [geometry](https://github.com/geometry-zsh/geometry) and [spaceship](https://github.com/spaceship-prompt/spaceship-prompt) prompts. Uses the terminal's own color theme and places language/tool info in the right prompt.
+
+<Note>Requires a shell with right-prompt support. JetBrains Mono is recommended.</Note>
+
+```bash theme={null}
+starship preset jetpack -o ~/.config/starship.toml
+```
+
+### Catppuccin Powerline
+
+A powerline-style preset using the [Catppuccin](https://github.com/catppuccin/catppuccin) theme palette. A minimally modified version of Gruvbox Rainbow. Uses Mocha by default, but you can switch to `catppuccin_frappe`, `catppuccin_macchiato`, or `catppuccin_latte` by editing the `palette` option.
+
+<Note>Requires a Nerd Font installed in your terminal.</Note>
+
+```bash theme={null}
+starship preset catppuccin-powerline -o ~/.config/starship.toml
+```
+
+
+# Quickstart
+Source: https://www.mintlify.com/starship/starship/quickstart
+
+Get a working Starship prompt running in minutes.
+
+This guide takes you from zero to a working Starship prompt as quickly as possible.
+
+<Steps>
+  <Step title="Install the Starship binary">
+    Run the install script to download and install the latest Starship binary:
+
+    ```sh theme={null}
+    curl -sS https://starship.rs/install.sh | sh
+    ```
+
+    <Note>
+      On Windows, download the MSI installer from the [releases page](https://github.com/starship/starship/releases/latest), or use a package manager such as `winget install --id Starship.Starship`. For all installation options, see the [installation guide](/installation).
+    </Note>
+
+    Verify the installation:
+
+    ```sh theme={null}
+    starship --version
+    ```
+  </Step>
+
+  <Step title="Initialize Starship in your shell">
+    Add the init line to your shell configuration file, then open a new terminal session.
+
+    <Tabs>
+      <Tab title="Bash">
+        Add to the end of `~/.bashrc`:
+
+        ```sh theme={null}
+        eval "$(starship init bash)"
+        ```
+      </Tab>
+
+      <Tab title="Zsh">
+        Add to the end of `~/.zshrc`:
+
+        ```sh theme={null}
+        eval "$(starship init zsh)"
+        ```
+      </Tab>
+
+      <Tab title="Fish">
+        Add to the end of `~/.config/fish/config.fish`:
+
+        ```fish theme={null}
+        starship init fish | source
+        ```
+      </Tab>
+    </Tabs>
+
+    For PowerShell, Nushell, Elvish, Ion, Cmd, Tcsh, Xonsh, and other shells, see the [installation guide](/installation).
+  </Step>
+
+  <Step title="Open a new shell session">
+    Close your current terminal and open a new one, or source your config file:
+
+    <Tabs>
+      <Tab title="Bash">
+        ```sh theme={null}
+        source ~/.bashrc
+        ```
+      </Tab>
+
+      <Tab title="Zsh">
+        ```sh theme={null}
+        source ~/.zshrc
+        ```
+      </Tab>
+
+      <Tab title="Fish">
+        ```fish theme={null}
+        source ~/.config/fish/config.fish
+        ```
+      </Tab>
+    </Tabs>
+
+    You should now see the Starship prompt. It will automatically display contextual information — git branch, language versions, and more — as you navigate your filesystem.
+  </Step>
+
+  <Step title="Create a starter config (optional)">
+    Create `~/.config/starship.toml` to start customizing your prompt:
+
+    ```toml theme={null}
+    "$schema" = 'https://starship.rs/config-schema.json'
+    add_newline = true
+
+    [character]
+    success_symbol = '[➜](bold green)'
+
+    [package]
+    disabled = true
+    ```
+
+    Starship picks up changes to `starship.toml` immediately — no restart needed.
+
+    <Tip>
+      For a full list of modules and configuration options, see the [configuration docs](/config/overview). To apply a ready-made theme, browse the [presets](/presets/overview).
+    </Tip>
+  </Step>
+</Steps>
+
+
+# CLI reference
+Source: https://www.mintlify.com/starship/starship/reference/commands
+
+Complete reference for all Starship commands and flags.
+
+Starship is invoked as `starship <command> [options]`. All commands print to stdout unless otherwise noted. No flags are globally required — Starship uses as much context as is provided.
+
+***
+
+## `starship init <shell>`
+
+Prints the shell function used to initialize Starship. Your shell's config file sources this output to hook Starship into the prompt.
+
+```bash theme={null}
+eval "$(starship init bash)"
+```
+
+**Supported shells:** `bash`, `zsh`, `fish`, `powershell`, `elvish`, `ion`, `nu`, `cmd`, `tcsh`, `xonsh`
+
+| Flag                | Description                                                           |
+| ------------------- | --------------------------------------------------------------------- |
+| `--print-full-init` | Print the full initialization script instead of the lightweight stub. |
+
+The default behavior prints a minimal stub that sources the full init on first use. Pass `--print-full-init` to embed the complete script directly.
+
+***
+
+## `starship prompt`
+
+Renders and prints the full Starship prompt. Your shell calls this on every prompt draw, passing context flags so Starship can display accurate information.
+
+```bash theme={null}
+starship prompt --status=$? --jobs=$(jobs -p | wc -l)
+```
+
+### Prompt type flags
+
+| Flag               | Description                                                                                          |
+| ------------------ | ---------------------------------------------------------------------------------------------------- |
+| `--right`          | Print the right-side prompt instead of the standard left prompt.                                     |
+| `--profile <name>` | Print the prompt using a named profile. Conflicts with `--right`.                                    |
+| `--continuation`   | Print the continuation prompt (shown on multi-line input). Conflicts with `--right` and `--profile`. |
+
+### Context flags
+
+These flags provide shell context to Starship modules. All are optional.
+
+| Flag                    | Short | Description                                                                  |
+| ----------------------- | ----- | ---------------------------------------------------------------------------- |
+| `--status <code>`       | `-s`  | Exit status code of the previously run command.                              |
+| `--pipestatus <codes>`  |       | Space-separated exit codes for each process in a pipeline (Bash, Fish, Zsh). |
+| `--jobs <n>`            | `-j`  | Number of currently running background jobs.                                 |
+| `--cmd-duration <ms>`   | `-d`  | Execution duration of the last command, in milliseconds.                     |
+| `--keymap <name>`       | `-k`  | Current keymap of the shell (e.g., `viins`, `vicmd`). Default: `viins`.      |
+| `--terminal-width <n>`  | `-w`  | Width of the current interactive terminal in columns.                        |
+| `--path <path>`         | `-p`  | The filesystem path the prompt should render for.                            |
+| `--logical-path <path>` | `-P`  | Logical/virtual path representation (used when the physical path differs).   |
+| `--shlvl <n>`           |       | Current value of `SHLVL`, for shells that mis-handle it inside `$()`.        |
+
+***
+
+## `starship module <name>`
+
+Prints a single Starship module. Useful for debugging a specific module or embedding it in a custom prompt.
+
+```bash theme={null}
+starship module git_branch
+```
+
+```bash theme={null}
+# List all available modules
+starship module --list
+```
+
+| Flag     | Short | Description                               |
+| -------- | ----- | ----------------------------------------- |
+| `--list` | `-l`  | List all available module names and exit. |
+
+This command also accepts all [context flags](#context-flags) from `starship prompt`.
+
+***
+
+## `starship config [key] [value]`
+
+Edits your Starship configuration.
+
+```bash theme={null}
+# Open config file in $EDITOR
+starship config
+
+# Set a specific configuration key
+starship config add_newline false
+```
+
+| Usage                           | Description                                                           |
+| ------------------------------- | --------------------------------------------------------------------- |
+| `starship config`               | Opens `~/.config/starship.toml` (or `$STARSHIP_CONFIG`) in `$EDITOR`. |
+| `starship config <key> <value>` | Sets `key` to `value` in the config file directly.                    |
+
+<Note>
+  Both `key` and `value` must be provided together — supplying only a key is not valid.
+</Note>
+
+***
+
+## `starship print-config`
+
+Prints the fully computed Starship configuration as TOML, merging your config file with all defaults.
+
+```bash theme={null}
+starship print-config
+```
+
+```bash theme={null}
+# Print the built-in default config instead
+starship print-config --default
+```
+
+```bash theme={null}
+# Print specific keys only
+starship print-config git_branch format
+```
+
+| Flag        | Short | Description                                                               |
+| ----------- | ----- | ------------------------------------------------------------------------- |
+| `--default` | `-d`  | Print the built-in default configuration instead of your computed config. |
+| `[name...]` |       | One or more configuration key names to print (prints all if omitted).     |
+
+***
+
+## `starship toggle <name> [value]`
+
+Toggles a configuration key on a named module. By default, toggles the `disabled` key.
+
+```bash theme={null}
+# Disable the git_branch module
+starship toggle git_branch
+
+# Toggle a different key
+starship toggle git_branch show_remote_url
+```
+
+| Argument  | Description                                       |
+| --------- | ------------------------------------------------- |
+| `<name>`  | The name of the module to toggle.                 |
+| `[value]` | The config key to toggle. Defaults to `disabled`. |
+
+***
+
+## `starship preset <name>`
+
+Prints or applies a named community preset configuration.
+
+```bash theme={null}
+# Print a preset to stdout
+starship preset nerd-font-symbols
+
+# Write a preset to a file
+starship preset nerd-font-symbols --output ~/.config/starship.toml
+
+# List all available presets
+starship preset --list
+```
+
+| Flag              | Short | Description                                                                               |
+| ----------------- | ----- | ----------------------------------------------------------------------------------------- |
+| `--output <file>` | `-o`  | Write the preset config to a file instead of printing to stdout. Conflicts with `--list`. |
+| `--list`          | `-l`  | List all available preset names.                                                          |
+
+***
+
+## `starship explain`
+
+Prints a description of each module currently shown in the prompt, along with the value it is displaying and why it is active.
+
+```bash theme={null}
+starship explain
+```
+
+This command accepts all [context flags](#context-flags) from `starship prompt`.
+
+***
+
+## `starship timings`
+
+Prints the render time of every active module. Use this to identify slow modules.
+
+```bash theme={null}
+starship timings
+```
+
+Modules that took more than 1 ms to execute or that produced output are shown with their timing breakdown. This command accepts all [context flags](#context-flags) from `starship prompt`.
+
+<Tip>
+  Combine with `STARSHIP_LOG=trace` for the most detailed performance output:
+
+  ```bash theme={null}
+  STARSHIP_LOG=trace starship timings
+  ```
+</Tip>
+
+***
+
+## `starship completions <shell>`
+
+Generates shell completion scripts and prints them to stdout.
+
+```bash theme={null}
+starship completions bash > ~/.local/share/bash-completion/completions/starship
+```
+
+**Supported shells:** `bash`, `elvish`, `fish`, `nushell`, `powershell` (aliases: `pwsh`, `power-shell`), `zsh`
+
+<Tabs>
+  <Tab title="Bash">
+    ```bash theme={null}
+    starship completions bash > ~/.local/share/bash-completion/completions/starship
+    ```
+  </Tab>
+
+  <Tab title="Zsh">
+    ```zsh theme={null}
+    starship completions zsh > ~/.zfunc/_starship
+    # Ensure ~/.zfunc is in your $fpath before calling compinit
+    ```
+  </Tab>
+
+  <Tab title="Fish">
+    ```fish theme={null}
+    starship completions fish > ~/.config/fish/completions/starship.fish
+    ```
+  </Tab>
+
+  <Tab title="PowerShell">
+    ```powershell theme={null}
+    starship completions powershell | Out-String | Invoke-Expression
+    ```
+  </Tab>
+
+  <Tab title="Nushell">
+    ```nu theme={null}
+    starship completions nushell | save -f ~/.cache/starship/completions.nu
+    # Then source the file in your config.nu
+    ```
+  </Tab>
+
+  <Tab title="Elvish">
+    ```elvish theme={null}
+    starship completions elvish >> ~/.elvish/rc.elv
+    ```
+  </Tab>
+</Tabs>
+
+***
+
+## `starship bug-report`
+
+Opens a pre-populated GitHub issue in your browser with details about your Starship version, shell, operating system, and configuration. Use this when filing a bug.
+
+```bash theme={null}
+starship bug-report
+```
+
+***
+
+## `starship statusline <provider>`
+
+Prints a statusline prompt for a specific external tool integration. Currently supports the `claude-code` provider (also aliased as `claude`).
+
+```bash theme={null}
+starship statusline claude-code
+```
+
+| Argument           | Description                                                                           |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| `<provider>`       | The statusline provider. Accepted value: `claude-code` (alias: `claude`).             |
+| `--profile <name>` | Use a named prompt profile. Defaults to `claude-code` for the `claude-code` provider. |
+
+This command also accepts all [context flags](#context-flags) from `starship prompt`.
+
+<Note>
+  `starship statusline` is used internally by Claude Code to render a statusline prompt. It is not needed for normal shell prompt usage.
+</Note>
+
+***
+
+## `starship session`
+
+Generates a random 16-character alphanumeric session key and prints it to stdout. This is used internally by shell init scripts to name per-session log files.
+
+```bash theme={null}
+starship session
+```
+
+<Note>
+  You do not normally need to call this directly. Shell init scripts call it automatically to set `STARSHIP_SESSION_KEY`.
+</Note>
+
+
+# Environment variables
+Source: https://www.mintlify.com/starship/starship/reference/environment-variables
+
+Environment variables that control Starship's behavior, config location, cache, and logging.
+
+Starship reads several environment variables at startup to determine where to find its configuration, where to write logs, and how verbose those logs should be.
+
+## Variable reference
+
+| Variable               | Description                                                      | Default                           |
+| ---------------------- | ---------------------------------------------------------------- | --------------------------------- |
+| `STARSHIP_CONFIG`      | Path to the Starship configuration file.                         | `~/.config/starship.toml`         |
+| `STARSHIP_CACHE`       | Path to the cache and log directory.                             | `~/.cache/starship`               |
+| `STARSHIP_LOG`         | Minimum log level: `trace`, `debug`, `info`, `warn`, or `error`. | `warn` (written to log file only) |
+| `STARSHIP_SESSION_KEY` | Session key used to name the per-session log file.               | Auto-generated by shell init      |
+
+***
+
+## `STARSHIP_CONFIG`
+
+Override the default location of `starship.toml`. Set this if you keep your dotfiles in a non-standard location or want to switch between multiple configurations.
+
+<Tabs>
+  <Tab title="Bash / Zsh">
+    ```bash theme={null}
+    export STARSHIP_CONFIG=~/dotfiles/starship.toml
+    ```
+
+    Add this line to `~/.bashrc` or `~/.zshrc`.
+  </Tab>
+
+  <Tab title="Fish">
+    ```fish theme={null}
+    set -gx STARSHIP_CONFIG ~/dotfiles/starship.toml
+    ```
+
+    Add this to `~/.config/fish/config.fish`.
+  </Tab>
+
+  <Tab title="PowerShell">
+    ```powershell theme={null}
+    $ENV:STARSHIP_CONFIG = "$HOME\dotfiles\starship.toml"
+    ```
+
+    Add this line to your `$PROFILE`.
+  </Tab>
+</Tabs>
+
+***
+
+## `STARSHIP_CACHE`
+
+Override the directory Starship uses for its cache and log files. By default, Starship writes session logs to `~/.cache/starship/session_${STARSHIP_SESSION_KEY}.log`.
+
+<Tabs>
+  <Tab title="Bash / Zsh">
+    ```bash theme={null}
+    export STARSHIP_CACHE=~/.starship/cache
+    ```
+  </Tab>
+
+  <Tab title="Fish">
+    ```fish theme={null}
+    set -gx STARSHIP_CACHE ~/.starship/cache
+    ```
+  </Tab>
+
+  <Tab title="PowerShell">
+    ```powershell theme={null}
+    $ENV:STARSHIP_CACHE = "$HOME\AppData\Local\Temp"
+    ```
+  </Tab>
+</Tabs>
+
+***
+
+## `STARSHIP_LOG`
+
+Controls the minimum severity of messages written to Starship's log file. Accepted values (from most to least verbose):
+
+| Value   | Description                                                    |
+| ------- | -------------------------------------------------------------- |
+| `trace` | All internal trace events. Very verbose.                       |
+| `debug` | Debug-level messages useful for investigating module behavior. |
+| `info`  | General informational messages.                                |
+| `warn`  | Warnings only (the default).                                   |
+| `error` | Errors only. Use this to suppress timeout warnings.            |
+
+<Note>
+  Log output goes to the session log file, not to your terminal. To see it, either redirect stderr or read the log file directly.
+</Note>
+
+### Debugging a specific module
+
+```bash theme={null}
+STARSHIP_LOG=trace starship module rust
+```
+
+### Debugging prompt performance
+
+```bash theme={null}
+STARSHIP_LOG=trace starship timings
+```
+
+### Capturing debug output to a file
+
+```bash theme={null}
+STARSHIP_LOG=debug starship prompt 2>starship.log
+```
+
+### Suppressing timeout warnings
+
+If you see `Executing command "..." timed out.` warnings and want to silence them:
+
+```bash theme={null}
+export STARSHIP_LOG=error
+```
+
+***
+
+## `STARSHIP_SESSION_KEY`
+
+A 16-character alphanumeric key that uniquely identifies the current terminal session. Starship's shell init scripts generate this automatically using `starship session` (or an equivalent random source).
+
+The session key determines the name of the per-session log file:
+
+```
+~/.cache/starship/session_<STARSHIP_SESSION_KEY>.log
+```
+
+<Warning>
+  Setting `STARSHIP_SESSION_KEY` manually will cause all terminal sessions that share the same key to write to the same log file, which may produce confusing output. Let the shell init script manage this value.
+</Warning>
+
+To inspect the current session's log file:
+
+```bash theme={null}
+cat ~/.cache/starship/session_${STARSHIP_SESSION_KEY}.log
+```
+
+Starship automatically removes old session log files on startup to keep the cache directory tidy.
+
+

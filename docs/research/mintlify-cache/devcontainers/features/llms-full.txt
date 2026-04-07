@@ -1,0 +1,3256 @@
+# Contributing
+Source: https://www.mintlify.com/devcontainers/features/contributing/overview
+
+How to contribute bug fixes and improvements to Dev Container Features
+
+<Note>
+  This repository only accepts improvements and bug fixes for the [existing set of maintained Features](https://github.com/devcontainers/features/tree/main/src). If you want to create a new Feature, add it to a repository you control. See [Self-authoring Features](/guides/self-authoring) for guidance.
+</Note>
+
+## Contribution workflow
+
+<Steps>
+  <Step title="Fork the repository">
+    Fork [devcontainers/features](https://github.com/devcontainers/features) on GitHub, then clone your fork locally:
+
+    ```bash theme={null}
+    git clone https://github.com/<your-username>/features.git
+    cd features
+    ```
+  </Step>
+
+  <Step title="Open in your editor or dev container">
+    Open the repository in your editor. The repository includes a dev container configuration, so you can open it directly in VS Code with the Dev Containers extension or in GitHub Codespaces for a pre-configured environment with all required tools.
+  </Step>
+
+  <Step title="Make your changes">
+    Each Feature lives under `src/<feature-id>/`. Edit the relevant `install.sh` and `devcontainer-feature.json` files. Keep changes focused — one bug fix or improvement per pull request makes review faster.
+  </Step>
+
+  <Step title="Test with devcontainer features test">
+    Run the test suite for the Feature you changed before opening a pull request. See [Testing Features](/contributing/testing) for full details.
+
+    ```bash theme={null}
+    devcontainer features test --workspace-folder . --features <feature-id>
+    ```
+  </Step>
+
+  <Step title="Bump the version in devcontainer-feature.json">
+    Update the `version` field in `src/<feature-id>/devcontainer-feature.json` according to [semantic versioning](https://semver.org/):
+
+    * **Patch** (`1.0.x`) — bug fixes with no behavior change
+    * **Minor** (`1.x.0`) — backward-compatible improvements
+    * **Major** (`x.0.0`) — breaking changes
+
+    ```json src/<feature-id>/devcontainer-feature.json theme={null}
+    {
+      "id": "go",
+      "version": "1.3.1",
+      ...
+    }
+    ```
+  </Step>
+
+  <Step title="Commit and push">
+    Commit your changes with a clear message describing what was fixed or improved, then push to your fork:
+
+    ```bash theme={null}
+    git add .
+    git commit -m "fix(go): handle version resolution on AlmaLinux 9"
+    git push origin my-fix-branch
+    ```
+  </Step>
+
+  <Step title="Open a pull request">
+    Open a pull request from your fork to the `main` branch of `devcontainers/features`. The CI pipeline will run tests automatically against several base images. Address any failures before requesting review.
+  </Step>
+</Steps>
+
+<Note>
+  When contributing code to this project, you may be asked to sign a Contributor License Agreement (CLA). You can review and sign it at [opensource.microsoft.com/cla](https://opensource.microsoft.com/cla/).
+</Note>
+
+## Reporting issues
+
+Found a bug or want to request an improvement to an existing Feature? [Open an issue](https://github.com/devcontainers/features/issues/new) on GitHub. Include the Feature name, the base image you are using, and steps to reproduce the problem.
+
+## Security issues
+
+<Warning>
+  Do not report security vulnerabilities or bugs involving sensitive information in the public issue tracker. Instead, report them to the [Microsoft Security Response Center](https://msrc.microsoft.com/create-report). You can read more about the security policy in [`SECURITY.md`](https://github.com/devcontainers/spec/blob/main/SECURITY.md).
+</Warning>
+
+## Getting help
+
+Have a question or want to discuss an idea before opening an issue? Join the [dev container community Slack channel](https://aka.ms/devcontainer_community) to connect with maintainers and other contributors.
+
+
+# Testing Features
+Source: https://www.mintlify.com/devcontainers/features/contributing/testing
+
+How to write and run tests for Dev Container Features
+
+Every Feature in this repository has a corresponding test directory under `test/`. The [devcontainer CLI](https://github.com/devcontainers/cli) executes these tests by building a temporary container with the Feature applied and running the test script inside it.
+
+## Test directory structure
+
+The `test/` directory mirrors `src/` — one subfolder per Feature:
+
+```
+.
+├── src
+│   ├── go
+│   │   ├── devcontainer-feature.json
+│   │   └── install.sh
+│   └── python
+│       ├── devcontainer-feature.json
+│       └── install.sh
+└── test
+    ├── go
+    │   ├── scenarios.json
+    │   ├── install_go_alma-8.sh
+    │   ├── install_go_fedora.sh
+    │   └── test.sh
+    └── python
+        ├── scenarios.json
+        ├── install_jupyterlab.sh
+        └── test.sh
+```
+
+Each Feature's test folder contains at minimum a `test.sh` file. Features with more complex requirements also include a `scenarios.json` file and per-scenario test scripts.
+
+## Writing test.sh
+
+`test.sh` is the default test script. It runs against the Feature installed on the default base image. Use the `dev-container-features-test-lib` helper to declare checks.
+
+Here is the real `test.sh` for the `go` Feature:
+
+```bash test/go/test.sh theme={null}
+#!/bin/bash
+
+set -e
+
+# Optional: Import test library
+source dev-container-features-test-lib
+
+# go
+check "version" go version
+
+# revive
+check "revive version" revive --version
+check "revive is installed at correct path" bash -c "which revive | grep /go/bin/revive"
+
+# gomodifytags
+check "gomodifytags is installed at correct path" bash -c "which gomodifytags | grep /go/bin/gomodifytags"
+
+# goplay
+check "goplay is installed at correct path" bash -c "which goplay | grep /go/bin/goplay"
+
+# gotests
+check "gotests is installed at correct path" bash -c "which gotests | grep /go/bin/gotests"
+
+# impl
+check "impl is installed at correct path" bash -c "which impl | grep /go/bin/impl"
+
+# Report result
+reportResults
+```
+
+Each `check` call takes a label and a command. The test passes when every command exits with code `0`. `reportResults` prints a summary and exits non-zero if any check failed.
+
+## Running tests
+
+Install the [devcontainer CLI](https://github.com/devcontainers/cli) if you have not already:
+
+```bash theme={null}
+npm install -g @devcontainers/cli
+```
+
+<CodeGroup>
+  ```bash Single feature theme={null}
+  devcontainer features test \
+    --workspace-folder . \
+    --features go
+  ```
+
+  ```bash All features theme={null}
+  devcontainer features test \
+    --workspace-folder .
+  ```
+</CodeGroup>
+
+By default the CLI uses `mcr.microsoft.com/devcontainers/base:ubuntu` as the base image. Pass `--base-image` to test against a specific image:
+
+```bash theme={null}
+devcontainer features test \
+  --workspace-folder . \
+  --features go \
+  --base-image ubuntu:jammy
+```
+
+<Tip>
+  Always test inside a clean container. Running tests on your local machine or inside an existing dev container can mask failures caused by pre-installed tools or environment variables that will not be present for other users.
+</Tip>
+
+## Scenario-based testing
+
+When a Feature needs to be tested with different option combinations or on different base images, add a `scenarios.json` file alongside `test.sh`. Each entry in `scenarios.json` defines an image, a set of Feature options, and an optional `postCreateCommand`. The CLI runs the matching `<scenario-name>.sh` script inside the configured container.
+
+Here is an excerpt from `test/go/scenarios.json`:
+
+```json test/go/scenarios.json theme={null}
+{
+    "install_go_alma-8": {
+        "image": "almalinux:8",
+        "features": {
+            "go": {
+                "version": "latest",
+                "golangciLintVersion": "1.50.0"
+            }
+        }
+    },
+    "install_go_fedora": {
+        "image": "fedora",
+        "features": {
+            "go": {
+                "version": "latest",
+                "golangciLintVersion": "1.50.0"
+            }
+        }
+    },
+    "install_go_twice": {
+        "image": "mcr.microsoft.com/devcontainers/go:1.18",
+        "features": {
+            "go": {
+                "version": "1.19"
+            }
+        }
+    },
+    "install_go_tool_in_postCreate": {
+        "image": "ubuntu:focal",
+        "features": {
+            "go": {
+                "version": "latest",
+                "golangciLintVersion": "1.50.0"
+            }
+        },
+        "postCreateCommand": "go install filippo.io/mkcert@v1.4.2"
+    }
+}
+```
+
+For each scenario key (e.g. `install_go_alma-8`), create a corresponding shell script at `test/go/install_go_alma-8.sh` with the checks to run inside that container. To run only scenario tests and skip the auto-generated default test:
+
+```bash theme={null}
+devcontainer features test \
+  --workspace-folder . \
+  --features go \
+  --skip-autogenerated
+```
+
+To run only the default `test.sh` and skip scenarios:
+
+```bash theme={null}
+devcontainer features test \
+  --workspace-folder . \
+  --features go \
+  --skip-scenarios
+```
+
+## CI on pull requests
+
+Tests run automatically in GitHub Actions on every pull request. The [`test-pr.yaml`](https://github.com/devcontainers/features/blob/main/.github/workflows/test-pr.yaml) workflow detects which Features changed and runs two jobs:
+
+* **`test`** — runs `test.sh` against seven base images (`ubuntu:focal`, `ubuntu:jammy`, `debian:11`, `debian:12`, and three `mcr.microsoft.com/devcontainers/base` variants) for each changed Feature.
+* **`test-scenarios`** — runs all scenarios defined in `scenarios.json` for each changed Feature.
+
+You do not need to manually trigger CI — pushing to your pull request branch starts the workflow automatically.
+
+
+# Anaconda
+Source: https://www.mintlify.com/devcontainers/features/features/anaconda
+
+Installs the Anaconda distribution, including the conda package manager and a full-featured Python environment for data science.
+
+This feature installs the [Anaconda Distribution](https://www.anaconda.com/), which bundles the `conda` package manager, Python, and a large collection of pre-built data science libraries. Anaconda is placed at `/usr/local/conda` and added to the `PATH`.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+"features": {
+  "ghcr.io/devcontainers/features/anaconda:1": {
+    "version": "latest"
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Select or enter an Anaconda version to install.
+</ParamField>
+
+## Environment variables
+
+| Variable    | Value                          |
+| ----------- | ------------------------------ |
+| `CONDA_DIR` | `/usr/local/conda`             |
+| `PATH`      | `/usr/local/conda/bin:${PATH}` |
+
+## Using conda
+
+The `conda` package manager is available on the `PATH` after the container starts. Additional packages can be installed from the default Anaconda channel or any channel you configure:
+
+```bash theme={null}
+conda install numpy pandas scikit-learn
+```
+
+To use a different Python version than the one bundled with Anaconda:
+
+```bash theme={null}
+conda install python=3.7
+```
+
+To add or change channels, see the [conda channel configuration docs](https://docs.conda.io/projects/conda/en/latest/user-guide/concepts/channels.html).
+
+## Anaconda repository licensing
+
+Access to the Anaconda repository is covered by the [Anaconda Terms of Service](https://legal.anaconda.com/policies/en/?name=terms-of-service), which may require some organizations to obtain a commercial license. However, when used with **GitHub Codespaces** or **GitHub Actions**, all users are permitted to use the Anaconda repository, including organizations that would otherwise require a paid license for commercial activities.
+
+<Note>
+  This feature works on recent versions of Debian/Ubuntu-based distributions and RHEL-based distributions (AlmaLinux, Rocky Linux, Fedora) with `bash` available. The `apt` package manager is required on Debian/Ubuntu.
+</Note>
+
+
+# AWS CLI
+Source: https://www.mintlify.com/devcontainers/features/features/aws-cli
+
+Installs the AWS CLI along with needed dependencies. Useful for base Dockerfiles that often are missing required install dependencies like gpg.
+
+This feature installs the AWS Command Line Interface (CLI) v2 and all required system dependencies (including `gpg`) that are commonly absent from minimal base images. After installation, the `aws` command is available on the `PATH`.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+"features": {
+  "ghcr.io/devcontainers/features/aws-cli:1": {
+    "version": "latest"
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Select or enter an AWS CLI version to install. Available versions are listed in the [AWS CLI v2 changelog](https://github.com/aws/aws-cli/blob/v2/CHANGELOG.rst).
+</ParamField>
+
+<ParamField type="boolean">
+  Suppress verbose output during installation when set to `true`.
+</ParamField>
+
+## VS Code extensions
+
+| Extension                              | Description                                                                                              |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `AmazonWebServices.aws-toolkit-vscode` | AWS Toolkit for VS Code — browse resources, invoke Lambda functions, and work with CloudFormation stacks |
+
+## Notes
+
+<Note>
+  This feature works on recent versions of Debian/Ubuntu-based distributions with the `apt` package manager. `bash` is required to execute the install script.
+</Note>
+
+
+# Azure CLI
+Source: https://www.mintlify.com/devcontainers/features/features/azure-cli
+
+Installs the Azure CLI along with needed dependencies. Useful for base Dockerfiles that often are missing required install dependencies like gpg.
+
+This feature installs the Azure Command Line Interface (CLI) and all required system dependencies (including `gpg`) that are commonly absent from minimal base images. Optionally installs [Azure Bicep](https://learn.microsoft.com/azure/azure-resource-manager/bicep/overview) and additional Azure CLI extensions.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+"features": {
+  "ghcr.io/devcontainers/features/azure-cli:1": {
+    "version": "latest",
+    "installBicep": false
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Select or enter an Azure CLI version. Available versions may vary by Linux distribution.
+</ParamField>
+
+<ParamField type="string">
+  Optional comma-separated list of Azure CLI extensions to install (e.g. `azure-devops,containerapp`).
+</ParamField>
+
+<ParamField type="boolean">
+  Optionally install Azure Bicep alongside the Azure CLI.
+</ParamField>
+
+<ParamField type="string">
+  Select or enter a Bicep version to install when `installBicep` is `true`. Accepts `latest` or a specific version such as `v0.31.92`.
+</ParamField>
+
+<ParamField type="boolean">
+  Install the Azure CLI using Python instead of pipx.
+</ParamField>
+
+## VS Code extensions
+
+| Extension            | Description                                                                        |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| `ms-vscode.azurecli` | Azure CLI extension for VS Code — run Azure CLI commands with IntelliSense support |
+
+## Notes
+
+<Note>
+  This feature works on recent versions of Debian/Ubuntu-based distributions with the `apt` package manager. `bash` is required to execute the install script.
+</Note>
+
+
+# Common Utilities
+Source: https://www.mintlify.com/devcontainers/features/features/common-utils
+
+Installs a set of common command line utilities, Oh My Zsh!, and sets up a non-root user.
+
+The `common-utils` feature installs a curated set of command line utilities, configures Oh My Zsh!, and creates a non-root user with a customized shell prompt. It is a foundational feature used by many dev container images and is typically installed first.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+"features": {
+  "ghcr.io/devcontainers/features/common-utils:2": {
+    "installZsh": true,
+    "configureZshAsDefaultShell": false,
+    "installOhMyZsh": true,
+    "installOhMyZshConfig": true,
+    "upgradePackages": true,
+    "username": "automatic",
+    "userUid": "automatic",
+    "userGid": "automatic",
+    "nonFreePackages": false,
+    "installSsl": true
+  }
+}
+```
+
+## Options
+
+<ParamField type="boolean">
+  Install ZSH.
+</ParamField>
+
+<ParamField type="boolean">
+  Change the default shell to ZSH.
+</ParamField>
+
+<ParamField type="boolean">
+  Install Oh My Zsh!.
+</ParamField>
+
+<ParamField type="boolean">
+  Allow installing the default dev container `.zshrc` templates.
+</ParamField>
+
+<ParamField type="boolean">
+  Upgrade OS packages during setup.
+</ParamField>
+
+<ParamField type="string">
+  Name of the non-root user to configure. Set to `none` to skip user creation. Use `automatic` to detect or create a default user. Common values: `devcontainer`, `vscode`, `codespace`.
+</ParamField>
+
+<ParamField type="string">
+  UID for the non-root user. Use `automatic` to assign the next available UID.
+</ParamField>
+
+<ParamField type="string">
+  GID for the non-root user. Use `automatic` to assign the next available GID.
+</ParamField>
+
+<ParamField type="boolean">
+  Add packages from the non-free Debian repository. Applies to Debian only.
+</ParamField>
+
+<ParamField type="boolean">
+  Install SSL certificates and tooling.
+</ParamField>
+
+## Notes
+
+<Warning>
+  Many dev container base images have already allocated UID and GID `1000`. Adding this feature with `userUid: "1000"` or `userGid: "1000"` on top of such images will cause a build error. Use `automatic` or choose a different UID/GID such as `1001`.
+</Warning>
+
+### Customizing the command prompt
+
+By default, the shell prompt shows information about the current git repository. For large repositories, this can cause a slow prompt. You can adjust the behavior from a terminal or in `postStartCommand`:
+
+```bash theme={null}
+# Enable the "dirty" indicator (uncommitted changes)
+git config devcontainers-theme.show-dirty 1
+
+# Disable git info in the prompt entirely
+git config devcontainers-theme.hide-status 1
+```
+
+For ZSH, the default theme is a standard Oh My Zsh! theme. Change it by editing the `ZSH_THEME` variable in `~/.zshrc`.
+
+### OS support
+
+This feature works on recent versions of Debian/Ubuntu, Red Hat Enterprise Linux, Fedora, RockyLinux, and Alpine Linux.
+
+
+# Conda
+Source: https://www.mintlify.com/devcontainers/features/features/conda
+
+A cross-platform, language-agnostic binary package manager.
+
+This feature installs [Miniconda](https://docs.conda.io/en/latest/miniconda.html), providing the `conda` package manager without the full Anaconda distribution. Conda is placed at `/opt/conda` and added to the `PATH`, keeping the image lean while still enabling environment and package management for Python, R, and other languages.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+"features": {
+  "ghcr.io/devcontainers/features/conda:1": {
+    "version": "latest",
+    "addCondaForge": false
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Select or enter a conda version to install. Common values: `latest`, `4.12.0`, `4.11.0`.
+</ParamField>
+
+<ParamField type="boolean">
+  Add the [conda-forge](https://conda-forge.org/) community channel to the conda configuration.
+</ParamField>
+
+## Environment variables
+
+| Variable       | Value                               |
+| -------------- | ----------------------------------- |
+| `CONDA_DIR`    | `/opt/conda`                        |
+| `CONDA_SCRIPT` | `/opt/conda/etc/profile.d/conda.sh` |
+| `PATH`         | `/opt/conda/bin:${PATH}`            |
+
+## Using conda
+
+Install packages from the default Anaconda channel or from any configured channel:
+
+```bash theme={null}
+conda install numpy pandas scikit-learn
+```
+
+To install a specific Python version:
+
+```bash theme={null}
+conda install python=3.7
+```
+
+To manage channels, see the [conda channel configuration docs](https://docs.conda.io/projects/conda/en/latest/user-guide/concepts/channels.html).
+
+## Anaconda repository licensing
+
+Access to the Anaconda repository is covered by the [Anaconda Terms of Service](https://legal.anaconda.com/policies/en/?name=terms-of-service), which may require some organizations to obtain a commercial license. However, when used with **GitHub Codespaces** or **GitHub Actions**, all users are permitted to use the Anaconda repository, including organizations that would otherwise require a paid license for commercial activities.
+
+<Note>
+  This feature works on recent versions of Debian/Ubuntu-based distributions with the `apt` package manager. `bash` is required to execute the install script.
+</Note>
+
+
+# GitHub Copilot CLI
+Source: https://www.mintlify.com/devcontainers/features/features/copilot-cli
+
+Installs the GitHub Copilot CLI.
+
+The GitHub Copilot CLI feature installs the `copilot` CLI tool into your dev container. It provides AI-powered suggestions for shell commands directly in your terminal.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+{
+  "features": {
+    "ghcr.io/devcontainers/features/copilot-cli:1": {
+      "version": "latest"
+    }
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Select the version of the GitHub Copilot CLI to install. Accepts `latest` or `prerelease`.
+</ParamField>
+
+## Notes
+
+<Note>
+  The GitHub Copilot CLI requires authentication with a GitHub account that has access to GitHub Copilot. Run `gh copilot --help` inside the container to get started.
+</Note>
+
+This feature installs after `ghcr.io/devcontainers/features/common-utils` when both are present.
+
+
+# Light-weight Desktop
+Source: https://www.mintlify.com/devcontainers/features/features/desktop-lite
+
+Adds a lightweight Fluxbox-based desktop to the container, accessible via a VNC viewer or web browser. GUI commands run from the VS Code terminal open on the desktop automatically.
+
+The `desktop-lite` feature installs a lightweight [Fluxbox](http://fluxbox.org/) desktop environment inside the container. The desktop is exposed over VNC and via a browser-based [noVNC](https://novnc.com/) client. Any GUI application launched from the VS Code integrated terminal automatically appears on the desktop.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+"features": {
+  "ghcr.io/devcontainers/features/desktop-lite:1": {
+    "password": "vscode",
+    "webPort": "6080",
+    "vncPort": "5901",
+    "noVncVersion": "1.6.0"
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Currently unused. Reserved for future use.
+</ParamField>
+
+<ParamField type="string">
+  The version of noVNC to use for the browser-based VNC client.
+</ParamField>
+
+<ParamField type="string">
+  Password for desktop connections. Set to `noPassword` to allow passwordless connections from localhost. Common values: `vscode`, `codespaces`, `password`.
+</ParamField>
+
+<ParamField type="string">
+  Port for the noVNC web client. Forward this port to access the desktop from a browser.
+</ParamField>
+
+<ParamField type="string">
+  Port for the TigerVNC server. Forward this port to connect with a VNC viewer application.
+</ParamField>
+
+## Environment variables
+
+<ParamField type="string">
+  Set to `:1`. Tells GUI applications which X display to render to, ensuring they appear on the Fluxbox desktop.
+</ParamField>
+
+## Connecting to the desktop
+
+### Browser (noVNC)
+
+<Steps>
+  <Step title="Forward the noVNC port">
+    Add port `6080` to `devcontainer.json`:
+
+    ```jsonc devcontainer.json theme={null}
+    "forwardPorts": [6080],
+    "portsAttributes": {
+      "6080": {
+        "label": "desktop"
+      }
+    }
+    ```
+
+    Or use the **Ports** view in VS Code (F1 → "Ports: Focus on Ports View").
+  </Step>
+
+  <Step title="Open in browser">
+    In the Ports view, select port `6080` and click the Globe icon to open the noVNC client.
+  </Step>
+
+  <Step title="Connect">
+    Click **Connect** and enter the desktop password (`vscode` by default).
+  </Step>
+</Steps>
+
+### VNC viewer
+
+<Steps>
+  <Step title="Forward the VNC port">
+    Forward port `5901` to your local machine. For the Dev Container CLI, use the `appPort` property instead of `forwardPorts`.
+  </Step>
+
+  <Step title="Connect with a VNC viewer">
+    Open your VNC viewer (e.g., [RealVNC Viewer](https://www.realvnc.com/en/connect/download/viewer/)) and connect to `localhost:5901`. Set the color depth to 24-bit for full color.
+  </Step>
+
+  <Step title="Authenticate">
+    Enter the desktop password (`vscode` by default).
+  </Step>
+</Steps>
+
+## Customizing Fluxbox
+
+Right-click anywhere on the desktop to open the application menu. Configuration files are located in `$HOME/.fluxbox`. If you add custom Fluxbox configuration to this path in your base image or Dockerfile, the feature uses it instead of the default configuration.
+
+See the [Fluxbox menu documentation](http://www.fluxbox.org/help/man-fluxbox-menu.php) for format details.
+
+## Installing a browser
+
+**Firefox ESR** — add to your `.devcontainer/Dockerfile`:
+
+```dockerfile theme={null}
+RUN apt-get update && export DEBIAN_FRONTEND=noninteractive && apt-get install -y firefox-esr
+```
+
+**Google Chrome** — add to your `.devcontainer/Dockerfile`:
+
+```dockerfile theme={null}
+RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+    && curl -sSL https://dl.google.com/linux/direct/google-chrome-stable_current_$(dpkg --print-architecture).deb -o /tmp/chrome.deb \
+    && apt-get -y install /tmp/chrome.deb
+```
+
+<Note>
+  Chrome sandbox support requires a non-root user. Use the `common-utils` feature to set one up, or launch Chrome with `google-chrome --no-sandbox`.
+</Note>
+
+## Notes
+
+<Warning>
+  If applications crash inside the desktop, you may need to increase shared memory. Add the following to `devcontainer.json`:
+
+  ```jsonc devcontainer.json theme={null}
+  "runArgs": ["--shm-size=1g"]
+  ```
+
+  Or with Docker Compose:
+
+  ```yaml theme={null}
+  services:
+    your-service-here:
+      shm_size: '1gb'
+  ```
+</Warning>
+
+<Note>
+  The desktop environment is started via the feature's entrypoint script (`/usr/local/share/desktop-init.sh`) each time the container starts. The feature sets `init: true` to enable proper process management.
+</Note>
+
+<Note>
+  The `desktop-lite` feature installs after `common-utils` when both are present in the same dev container configuration.
+</Note>
+
+### OS support
+
+This feature works on recent versions of Debian/Ubuntu-based distributions with the `apt` package manager installed. `bash` is required to execute the install script.
+
+
+# Docker (Docker-in-Docker)
+Source: https://www.mintlify.com/devcontainers/features/features/docker-in-docker
+
+Create child containers inside a container, independent from the host's docker instance. Installs Docker extension in the container along with needed CLIs.
+
+The Docker-in-Docker feature runs a dedicated Docker daemon **inside** your dev container. Containers you start are isolated from the host Docker instance, which means bind mounts and networking behave consistently regardless of where the dev container is running.
+
+<Warning>
+  This feature requires `"privileged": true` on the dev container. A dedicated volume (`dind-var-lib-docker-<devcontainerId>`) is mounted at `/var/lib/docker` to persist the Docker layer cache across rebuilds.
+</Warning>
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+"features": {
+  "ghcr.io/devcontainers/features/docker-in-docker:2": {
+    "version": "latest",
+    "moby": true,
+    "dockerDashComposeVersion": "v2"
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Select or enter a Docker/Moby Engine version. Availability can vary by OS version. Common values: `latest`, `none`, `20.10`.
+</ParamField>
+
+<ParamField type="boolean">
+  Install the OSS Moby build instead of Docker CE.
+</ParamField>
+
+<ParamField type="string">
+  Install a specific version of moby-buildx when using Moby.
+</ParamField>
+
+<ParamField type="string">
+  Default version of Docker Compose. Accepted values: `v1`, `v2`, `none`.
+</ParamField>
+
+<ParamField type="boolean">
+  Allow automatically setting the dockerd DNS server when the installation script detects it is running in Azure.
+</ParamField>
+
+<ParamField type="string">
+  Define default address pools for Docker networks. Example: `base=192.168.0.0/16,size=24`.
+</ParamField>
+
+<ParamField type="boolean">
+  Install Docker Buildx.
+</ParamField>
+
+<ParamField type="boolean">
+  Install Compose Switch, a replacement for the Compose V1 `docker-compose` (Python) executable. Translates commands to Compose V2 `docker compose`.
+</ParamField>
+
+<ParamField type="boolean">
+  Disable ip6tables. This option is only applicable for Docker versions 27 and greater.
+</ParamField>
+
+## Environment variables
+
+| Variable          | Value |
+| ----------------- | ----- |
+| `DOCKER_BUILDKIT` | `1`   |
+
+## VS Code extensions
+
+| Extension                         | Description                                                        |
+| --------------------------------- | ------------------------------------------------------------------ |
+| `ms-azuretools.vscode-containers` | Docker extension for building and managing containers from VS Code |
+
+## Notes
+
+<Note>
+  The host and the container must be running on the same chip architecture. You cannot use Docker-in-Docker with an emulated `linux/amd64` image on an Apple Silicon Mac (e.g. `FROM --platform=linux/amd64 ...`).
+</Note>
+
+<Tip>
+  This feature works on recent versions of Debian/Ubuntu-based distributions with the `apt` package manager. `bash` is required to execute the install script.
+</Tip>
+
+
+# Docker (docker-outside-of-docker)
+Source: https://www.mintlify.com/devcontainers/features/features/docker-outside-of-docker
+
+Re-use the host docker socket, adding the Docker CLI to a container. Feature invokes a script to enable using a forwarded Docker socket within a container to run Docker commands.
+
+The docker-outside-of-docker feature forwards the host's Docker socket into the dev container and installs the Docker CLI, letting you run `docker` commands that actually execute on the **host** Docker daemon. This avoids the overhead of a nested daemon and shares the host's image cache.
+
+<Note>
+  This feature was previously published as `docker-from-docker`. The legacy ID is still recognized for backward compatibility.
+</Note>
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+"features": {
+  "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+    "version": "latest",
+    "moby": true,
+    "dockerDashComposeVersion": "latest"
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Select or enter a Docker/Moby CLI version. Availability can vary by OS version. Common values: `latest`, `none`, `20.10`.
+</ParamField>
+
+<ParamField type="boolean">
+  Install the OSS Moby build instead of Docker CE.
+</ParamField>
+
+<ParamField type="string">
+  Install a specific version of moby-buildx when using Moby.
+</ParamField>
+
+<ParamField type="string">
+  Compose version to use for docker-compose. Accepted values: `latest`, `v1`, `v2`, `none`.
+</ParamField>
+
+<ParamField type="boolean">
+  Install Docker Buildx.
+</ParamField>
+
+<ParamField type="boolean">
+  Install Compose Switch, a replacement for the Compose V1 `docker-compose` (Python) executable. Translates commands to Compose V2 `docker compose`.
+</ParamField>
+
+<ParamField type="string">
+  Path where the Docker socket is mounted inside the container. For rootless Docker, override the mount in `devcontainer.json` to map your host socket to this path.
+</ParamField>
+
+## VS Code extensions
+
+| Extension                         | Description                                                        |
+| --------------------------------- | ------------------------------------------------------------------ |
+| `ms-azuretools.vscode-containers` | Docker extension for building and managing containers from VS Code |
+
+## Rootless Docker support
+
+By default the feature binds `/var/run/docker.sock` on the host to `/var/run/docker-host.sock` inside the container. For rootless Docker installations the socket is typically at `/run/user/$UID/docker.sock`. Override the mount in `devcontainer.json`:
+
+```jsonc devcontainer.json theme={null}
+{
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+  "mounts": [
+    {
+      "source": "/run/user/1000/docker.sock",
+      "target": "/var/run/docker-host.sock",
+      "type": "bind"
+    }
+  ]
+}
+```
+
+Replace `1000` with your actual user ID (`id -u`).
+
+## Bind mounts from the workspace folder
+
+Because Docker commands run on the host daemon, bind mount paths must be **host** paths, not container paths. Use the `LOCAL_WORKSPACE_FOLDER` environment variable to pass the host path through:
+
+```jsonc devcontainer.json theme={null}
+"remoteEnv": { "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}" }
+```
+
+```bash theme={null}
+docker run -it --rm -v ${LOCAL_WORKSPACE_FOLDER}:/workspace debian bash
+```
+
+<Warning>
+  This feature does not support bind mounting folders outside the workspace folder. If you need that capability, consider using the [Docker-in-Docker](/features/docker-in-docker) feature instead.
+</Warning>
+
+## Notes
+
+<Note>
+  The host and the container must be running on the same chip architecture. You cannot use this feature with an emulated image on a different architecture.
+</Note>
+
+
+# Dotnet CLI
+Source: https://www.mintlify.com/devcontainers/features/features/dotnet
+
+This Feature installs the latest .NET SDK, which includes the .NET CLI and the shared runtime. Options are provided to choose a different version or additional versions.
+
+The Dotnet CLI feature installs the .NET SDK into your dev container, including the .NET CLI and shared runtime. You can install a single version, multiple SDK versions, standalone runtimes, ASP.NET Core runtimes, and optional workloads.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+{
+  "features": {
+    "ghcr.io/devcontainers/features/dotnet:2": {
+      "version": "latest"
+    }
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Select or enter a .NET SDK version. Accepts `latest`, `lts`, `none`, or a specific version such as `9.0`, `8.0`, or `6.0.412`. Use `X.Y-preview` or `X.Y-daily` for prerelease builds.
+</ParamField>
+
+<ParamField type="string">
+  Additional .NET SDK versions to install, separated by commas. Accepts the same values as `version`.
+</ParamField>
+
+<ParamField type="string">
+  Additional .NET runtime versions to install, separated by commas. Useful when you need to run .NET apps without building them from source. Accepts the same values as `version`.
+</ParamField>
+
+<ParamField type="string">
+  Additional ASP.NET Core runtime versions to install, separated by commas. Accepts the same values as `version`.
+</ParamField>
+
+<ParamField type="string">
+  Additional .NET SDK workloads to install, separated by commas. Run `dotnet workload search` to discover available workloads.
+</ParamField>
+
+<ParamField type="boolean">
+  Install shell tab completions for the `dotnet` CLI. Requires .NET SDK 10 or newer.
+</ParamField>
+
+## Environment variables
+
+| Variable                          | Value                |
+| --------------------------------- | -------------------- |
+| `DOTNET_ROOT`                     | `/usr/share/dotnet`  |
+| `PATH`                            | `$PATH:$DOTNET_ROOT` |
+| `DOTNET_RUNNING_IN_CONTAINER`     | `true`               |
+| `DOTNET_USE_POLLING_FILE_WATCHER` | `true`               |
+
+## VS Code extensions
+
+* `ms-dotnettools.csharp`
+
+## Notes
+
+This feature works on recent versions of Debian/Ubuntu-based distributions with the `apt` package manager installed. `bash` is required to execute the install script.
+
+
+# Git (from source)
+Source: https://www.mintlify.com/devcontainers/features/features/git
+
+Install an up-to-date version of Git, built from source as needed. Auto-detects the latest stable version and installs needed dependencies.
+
+The `git` feature installs an up-to-date version of Git. When the desired version is not available through the system package manager or a PPA, it builds Git from source automatically. This is useful when you need the latest features or a specific version not yet available in distribution repositories.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+"features": {
+  "ghcr.io/devcontainers/features/git:1": {
+    "version": "os-provided",
+    "ppa": true
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  The version of Git to install. Accepts a version number (e.g., `2.44.0`), or one of the following values:
+
+  * `os-provided` — Use the version shipped with the OS package manager (default).
+  * `latest` — Install the latest stable release, building from source if needed.
+  * `system` — Alias for `os-provided`.
+</ParamField>
+
+<ParamField type="boolean">
+  Install Git from the official Git PPA when available. Applies only to Ubuntu distributions. When `false`, the version from the default APT repositories is used.
+</ParamField>
+
+## Notes
+
+<Note>
+  The `git` feature installs after `common-utils` when both are present in the same dev container configuration.
+</Note>
+
+### OS support
+
+This feature works on recent versions of Alpine, Debian/Ubuntu, Red Hat Enterprise Linux, Fedora, Alma, and RockyLinux with the `apk`, `apt`, `yum`, `dnf`, or `microdnf` package manager installed. `bash` is required to execute the install script.
+
+
+# Git Large File Support (LFS)
+Source: https://www.mintlify.com/devcontainers/features/features/git-lfs
+
+Installs Git Large File Support (Git LFS) along with needed dependencies. Useful for base Dockerfiles that often are missing required install dependencies like git and curl.
+
+The `git-lfs` feature installs [Git LFS](https://git-lfs.com/), which replaces large files (audio, video, datasets, graphics) with lightweight text pointers in the repository while storing the actual file contents on a remote server. It also ensures that required dependencies such as `git` and `curl` are present.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+"features": {
+  "ghcr.io/devcontainers/features/git-lfs:1": {
+    "version": "latest",
+    "autoPull": true,
+    "installDirectlyFromGitHubRelease": false
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  The version of Git LFS to install. Use `latest` to install the most recent release, or specify a version number (e.g., `3.5.1`). Set to `none` to skip installation.
+</ParamField>
+
+<ParamField type="boolean">
+  Automatically pull LFS files when the container is created (via `postCreateCommand`). When set to `false`, you can pull LFS assets manually by running `git lfs pull` inside the container.
+</ParamField>
+
+<ParamField type="boolean">
+  Install `git-lfs` directly from GitHub releases instead of using the system package manager feeds.
+</ParamField>
+
+## Notes
+
+<Tip>
+  When `autoPull` is `true`, the feature registers a `postCreateCommand` that runs `/usr/local/share/pull-git-lfs-artifacts.sh` to fetch LFS objects after the container is built.
+</Tip>
+
+<Note>
+  The `git-lfs` feature installs after `common-utils` when both are present in the same dev container configuration.
+</Note>
+
+### OS support
+
+This feature works on recent versions of Debian/Ubuntu-based distributions with the `apt` package manager installed. `bash` is required to execute the install script.
+
+
+# GitHub CLI
+Source: https://www.mintlify.com/devcontainers/features/features/github-cli
+
+Installs the GitHub CLI. Auto-detects latest version and installs needed dependencies.
+
+This feature installs the GitHub CLI (`gh`) and its required dependencies. The CLI is installed directly from the GitHub releases page by default. You can also install additional `gh` extensions at provisioning time.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+"features": {
+  "ghcr.io/devcontainers/features/github-cli:1": {
+    "version": "latest"
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Select a version of the GitHub CLI to install. Use `latest` to always install the newest release, or `none` to skip installation.
+</ParamField>
+
+<ParamField type="boolean">
+  Install the GitHub CLI directly from the GitHub releases page rather than a package manager repository.
+</ParamField>
+
+<ParamField type="string">
+  Comma-separated list of GitHub CLI extensions to install at provisioning time (e.g. `dlvhdr/gh-dash,github/gh-copilot`).
+</ParamField>
+
+## Notes
+
+<Tip>
+  When using `gh api -f`, note that it does not support object values. Use multiple `-f` flags with hierarchical keys and string values instead.
+</Tip>
+
+<Tip>
+  When using GitHub Actions `actions/upload-artifact` or `actions/download-artifact`, use v4 or later.
+</Tip>
+
+<Note>
+  This feature works on recent versions of Debian/Ubuntu-based distributions with the `apt` package manager. `bash` is required to execute the install script.
+</Note>
+
+
+# Go
+Source: https://www.mintlify.com/devcontainers/features/features/go
+
+Installs Go and common Go utilities. Auto-detects latest version and installs needed dependencies.
+
+The Go feature installs Go and common Go utilities into your dev container. It auto-detects the latest available version and installs all required dependencies, including `golangci-lint` for static analysis.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+{
+  "features": {
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "latest",
+      "golangciLintVersion": "latest"
+    }
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Select or enter a Go version to install. Accepts `latest`, `none`, or a specific version such as `1.24` or `1.23`.
+</ParamField>
+
+<ParamField type="string">
+  Version of golangci-lint to install. Accepts `latest` or a specific version string.
+</ParamField>
+
+## Environment variables
+
+| Variable | Value                               |
+| -------- | ----------------------------------- |
+| `GOROOT` | `/usr/local/go`                     |
+| `GOPATH` | `/go`                               |
+| `PATH`   | `/usr/local/go/bin:/go/bin:${PATH}` |
+
+## VS Code extensions
+
+* `golang.Go`
+
+## Notes
+
+This feature adds `SYS_PTRACE` capability and sets `seccomp=unconfined` to support Go debuggers such as Delve.
+
+```jsonc devcontainer.json theme={null}
+{
+  "features": {
+    "ghcr.io/devcontainers/features/go:1": {}
+  },
+  "capAdd": ["SYS_PTRACE"],
+  "securityOpt": ["seccomp=unconfined"]
+}
+```
+
+This feature works on recent versions of Debian/Ubuntu, Red Hat Enterprise Linux, Fedora, Alma, and Rocky Linux distributions with the `apt`, `yum`, `dnf`, or `microdnf` package manager installed. `bash` is required to execute the install script.
+
+
+# Hugo
+Source: https://www.mintlify.com/devcontainers/features/features/hugo
+
+Installs Hugo, a popular open-source static site generator written in Go.
+
+The `hugo` feature installs [Hugo](https://gohugo.io/), a fast open-source static site generator. You can install the standard build or the extended edition, which adds support for SASS/SCSS compilation and other advanced features.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+"features": {
+  "ghcr.io/devcontainers/features/hugo:1": {
+    "version": "latest",
+    "extended": false
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  The version of Hugo to install. Use `latest` for the most recent release, or specify a version number (e.g., `0.124.1`).
+</ParamField>
+
+<ParamField type="boolean">
+  Install the Hugo extended edition. Required for projects that use SASS/SCSS processing or other features exclusive to the extended build.
+</ParamField>
+
+## Environment variables
+
+<ParamField type="string">
+  Set to `/usr/local/hugo`. The root directory where Hugo is installed.
+</ParamField>
+
+<ParamField type="string">
+  Extended to include `/usr/local/hugo/bin` so that the `hugo` binary is available on the path.
+</ParamField>
+
+## Notes
+
+<Tip>
+  If your site uses custom themes that rely on SASS/SCSS (for example, many Hugo themes do), set `extended` to `true` to avoid build errors.
+</Tip>
+
+<Note>
+  The `hugo` feature installs after `common-utils` when both are present in the same dev container configuration.
+</Note>
+
+### OS support
+
+This feature works on recent versions of Debian/Ubuntu-based distributions with the `apt` package manager installed. `bash` is required to execute the install script.
+
+
+# Java
+Source: https://www.mintlify.com/devcontainers/features/features/java
+
+Installs Java, SDKMAN! (if not installed), and needed dependencies.
+
+The Java feature installs Java via SDKMAN!, along with optional build tools including Gradle, Maven, Ant, and Groovy. Multiple JDK distributions and versions are supported.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+{
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "latest",
+      "jdkDistro": "ms"
+    }
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Select or enter a Java version to install. Accepts `latest`, `none`, or a specific version such as `21`, `17`, `11`, or `8`.
+</ParamField>
+
+<ParamField type="string">
+  Additional Java versions to install, separated by commas.
+</ParamField>
+
+<ParamField type="string">
+  Select or enter a JDK distribution. Accepts `ms` (Microsoft), `open` (Eclipse Temurin / OpenJDK), `oracle`, `tem` (Temurin), or `amzn` (Amazon Corretto).
+</ParamField>
+
+<ParamField type="boolean">
+  Install Gradle, a build automation tool for multi-language software development.
+</ParamField>
+
+<ParamField type="string">
+  Select or enter a Gradle version. Accepts `latest` or a specific version such as `7.5.1` or `6.9.3`.
+</ParamField>
+
+<ParamField type="boolean">
+  Install Maven, a project management and build tool for Java.
+</ParamField>
+
+<ParamField type="string">
+  Select or enter a Maven version. Accepts `latest` or a specific version such as `3.8.6` or `3.6.3`.
+</ParamField>
+
+<ParamField type="boolean">
+  Install Ant, a build automation tool for Java projects.
+</ParamField>
+
+<ParamField type="string">
+  Select or enter an Ant version. Accepts `latest` or a specific version such as `1.10.12`.
+</ParamField>
+
+<ParamField type="boolean">
+  Install Groovy, a powerful, optionally typed and dynamic language with static-typing and static compilation capabilities.
+</ParamField>
+
+<ParamField type="string">
+  Select or enter a Groovy version. Accepts `latest` or a specific version such as `4.0.16` or `3.0.19`.
+</ParamField>
+
+## Environment variables
+
+| Variable     | Value                                                                                                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SDKMAN_DIR` | `/usr/local/sdkman`                                                                                                                                                                                                       |
+| `JAVA_HOME`  | `/usr/local/sdkman/candidates/java/current`                                                                                                                                                                               |
+| `PATH`       | `/usr/local/sdkman/bin:/usr/local/sdkman/candidates/java/current/bin:/usr/local/sdkman/candidates/gradle/current/bin:/usr/local/sdkman/candidates/maven/current/bin:/usr/local/sdkman/candidates/ant/current/bin:${PATH}` |
+
+## VS Code extensions
+
+* `vscjava.vscode-java-pack`
+
+## Notes
+
+For licensing information on the available JDK distributions, see the [NOTICE.txt](https://github.com/devcontainers/features/tree/main/src/java/NOTICE.txt) file in the source repository.
+
+This feature works on Debian/Ubuntu, Red Hat Enterprise Linux, Fedora, Alma, and Rocky Linux distributions with the `apt`, `yum`, `dnf`, or `microdnf` package manager installed.
+
+
+# Kubectl, Helm, and Minikube
+Source: https://www.mintlify.com/devcontainers/features/features/kubectl-helm-minikube
+
+Installs latest version of kubectl, Helm, and optionally minikube. Auto-detects latest versions and installs needed dependencies.
+
+This feature installs the Kubernetes CLI (`kubectl`), the Helm package manager, and optionally Minikube for running a local single-node cluster. All tools are auto-detected and pinned to their latest stable releases unless you specify a version.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+"features": {
+  "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {
+    "version": "latest",
+    "helm": "latest",
+    "minikube": "latest"
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Select or enter a Kubernetes version (`kubectl`) to install. Common values: `latest`, `none`, `1.23`, `1.22`, `1.21`.
+</ParamField>
+
+<ParamField type="string">
+  Select or enter a Helm version to install. Use `none` to skip Helm installation.
+</ParamField>
+
+<ParamField type="string">
+  Select or enter a Minikube version to install. Use `none` to skip Minikube installation.
+</ParamField>
+
+<ParamField type="string">
+  Fallback kubectl version to use when the latest stable version cannot be fetched from upstream.
+</ParamField>
+
+## Ingress and port forwarding
+
+When configuring [Ingress](https://kubernetes.io/docs/concepts/services-networking/ingress/) for your cluster, Kubernetes binds to a specific interface's IP rather than `localhost`. Use the Kubernetes node's IP when connecting, even with a single-node Minikube cluster.
+
+In VS Code Dev Containers you can forward `<ip>:<port>` directly via the `forwardPorts` property or the port-forwarding UI. In GitHub Codespaces, forward the port to localhost using `kubectl`:
+
+```bash theme={null}
+minikube start
+minikube addons enable ingress
+# Forward to localhost in the background
+nohup kubectl port-forward --pod-running-timeout=24h -n ingress-nginx service/ingress-nginx-controller :80 &
+```
+
+<Tip>
+  A `minikube-config` volume is mounted at `/home/vscode/.minikube` so your Minikube configuration persists across container rebuilds.
+</Tip>
+
+## Notes
+
+<Note>
+  This feature works on recent versions of Debian/Ubuntu-based distributions with the `apt` package manager. `bash` is required to execute the install script.
+</Note>
+
+
+# Nix Package Manager
+Source: https://www.mintlify.com/devcontainers/features/features/nix
+
+Installs the Nix package manager and optionally a set of packages.
+
+The `nix` feature installs the [Nix](https://nixos.org/) package manager and optionally installs a list of packages or a Nix Flake into the profile. Nix provides reproducible, declarative package management and supports both multi-user and single-user installation models.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+"features": {
+  "ghcr.io/devcontainers/features/nix:1": {
+    "version": "latest",
+    "multiUser": true,
+    "packages": "nixpkgs.ripgrep,nixpkgs.fd",
+    "useAttributePath": false,
+    "flakeUri": "",
+    "extraNixConfig": ""
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Version of Nix to install. Use `latest` for the most recent stable release, or specify a version number such as `2.11`.
+</ParamField>
+
+<ParamField type="boolean">
+  Perform a multi-user install instead of a single-user install. See the [installation model comparison](#multi-user-vs-single-user-installs) below.
+</ParamField>
+
+<ParamField type="string">
+  Optional comma-separated list of Nix packages to install into the profile. For example: `nixpkgs.hello,nixpkgs.curl`.
+</ParamField>
+
+<ParamField type="boolean">
+  Use the exact attribute path of a package in the Nixpkgs repository. Aligns with the `nix-env -iA` command. When enabled, package names must be fully-qualified attribute paths (e.g., `nixpkgs.hello`).
+</ParamField>
+
+<ParamField type="string">
+  Optional URI to a Nix Flake to install into the profile. Remote URIs work best (e.g., `github:nixos/nixpkgs/nixpkgs-unstable#hello`). Local file paths require the file to be present in the image.
+</ParamField>
+
+<ParamField type="string">
+  Optional comma-separated list of extra configuration lines to append to `/etc/nix/nix.conf`.
+</ParamField>
+
+## Environment variables
+
+<ParamField type="string">
+  Extended to include `/nix/var/nix/profiles/default/bin` and `/nix/var/nix/profiles/default/sbin` so that Nix-installed binaries are available on the path.
+</ParamField>
+
+## Multi-user vs. single-user installs
+
+| Model                    | Pros                                                               | Cons                                                                                                         |
+| ------------------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| **Multi-user** (default) | Works with any user including root. Unaffected by UID/GID changes. | Requires Nix 2.11+. Container must run as root or have `sudo` with passwordless access for the `remoteUser`. |
+| **Single-user**          | No root or `sudo` required.                                        | Only works for the user specified in `remoteUser`. UID/GID changes break Nix access.                         |
+
+### Manually starting the Nix daemon
+
+If `sudo` requires a password, the Nix daemon cannot start automatically. Start it manually from a terminal:
+
+```bash theme={null}
+sudo /usr/local/share/nix-entrypoint.sh
+```
+
+Use the same command to restart a stopped daemon. Logs are written to `/tmp/nix-daemon.log`.
+
+## Notes
+
+<Tip>
+  For Flake URIs, remote paths work best. To use a local Flake from your source tree, add the install command to `postCreateCommand` in `devcontainer.json` instead of using the `flakeUri` option.
+</Tip>
+
+<Note>
+  Nix packages are stored in a named Docker volume (`nix-store-${devcontainerId}`) mounted at `/nix`. This volume persists across container rebuilds.
+</Note>
+
+<Note>
+  The `nix` feature installs after `common-utils` when both are present in the same dev container configuration.
+</Note>
+
+### OS support
+
+This feature works on recent versions of Debian/Ubuntu, Red Hat Enterprise Linux, Fedora, RockyLinux, and Alpine Linux.
+
+
+# Node.js
+Source: https://www.mintlify.com/devcontainers/features/features/node
+
+Installs Node.js, nvm, yarn, pnpm, and needed dependencies.
+
+The Node.js feature installs Node.js via nvm, along with yarn and pnpm. It supports multiple Node.js versions and provides flexible installation options for package managers and native module compilation dependencies.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+{
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    }
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Select or enter a Node.js version to install. Accepts `lts`, `latest`, `none`, or a specific major version such as `22` or `20`.
+</ParamField>
+
+<ParamField type="boolean">
+  Install dependencies required to compile native Node.js modules (node-gyp).
+</ParamField>
+
+<ParamField type="string">
+  The path where NVM will be installed.
+</ParamField>
+
+<ParamField type="string">
+  Select or enter the pnpm version to install. Accepts `latest`, `none`, or a specific version such as `8.8.0`.
+</ParamField>
+
+<ParamField type="string">
+  Version of NVM to install. Accepts `latest` or a specific version such as `0.39`.
+</ParamField>
+
+<ParamField type="boolean">
+  On Debian and Ubuntu, install Yarn globally via APT instead of Corepack. On other Linux distributions, Yarn is always installed via Corepack with an NPM fallback.
+</ParamField>
+
+## Environment variables
+
+| Variable              | Value                                      |
+| --------------------- | ------------------------------------------ |
+| `NVM_DIR`             | `/usr/local/share/nvm`                     |
+| `NVM_SYMLINK_CURRENT` | `true`                                     |
+| `PATH`                | `/usr/local/share/nvm/current/bin:${PATH}` |
+
+## VS Code extensions
+
+* `dbaeumer.vscode-eslint`
+
+## Notes
+
+### Using nvm from lifecycle commands
+
+Lifecycle commands such as `postCreateCommand` run in non-interactive, non-login shells where nvm is not automatically sourced. Source the nvm startup script explicitly before using it:
+
+```jsonc devcontainer.json theme={null}
+{
+  "postCreateCommand": ". ${NVM_DIR}/nvm.sh && nvm install --lts"
+}
+```
+
+Note that the default shell in these contexts is `sh`, not `bash` — use `. ${NVM_DIR}/nvm.sh` instead of `source ${NVM_DIR}/nvm.sh`.
+
+Alternatively, start an interactive bash shell:
+
+```jsonc devcontainer.json theme={null}
+{
+  "postCreateCommand": "bash -i -c 'nvm install --lts'"
+}
+```
+
+This feature works on Debian/Ubuntu, Red Hat Enterprise Linux, Fedora, Alma, and Rocky Linux distributions with the `apt`, `yum`, `dnf`, or `microdnf` package manager installed. Red Hat 7 family distributions must use Node.js versions below 18 due to system library constraints.
+
+
+# NVIDIA CUDA
+Source: https://www.mintlify.com/devcontainers/features/features/nvidia-cuda
+
+Installs shared libraries for NVIDIA CUDA.
+
+This feature installs NVIDIA CUDA shared libraries, making GPU-accelerated computing available inside the dev container. It is only useful when the dev container runs on a host machine with a physical NVIDIA GPU and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/overview.html) installed on the host.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+"features": {
+  "ghcr.io/devcontainers/features/nvidia-cuda:3": {
+    "cudaVersion": "12.5",
+    "installCudnn": false,
+    "installToolkit": false
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Version of CUDA to install. Supported versions: `12.5`, `12.4`, `12.3`, `12.2`, `12.1`, `12.0`, `11.8`, `11.7`, `11.6`, `11.5`, `11.4`, `11.3`, `11.2`.
+</ParamField>
+
+<ParamField type="boolean">
+  Additionally install the CUDA Deep Neural Network (cuDNN) shared library.
+</ParamField>
+
+<ParamField type="boolean">
+  Additionally install cuDNN development libraries and headers (required when compiling code that links against cuDNN).
+</ParamField>
+
+<ParamField type="boolean">
+  Additionally install the NVIDIA Tools Extension (NVTX) for profiling and annotation.
+</ParamField>
+
+<ParamField type="boolean">
+  Additionally install the full NVIDIA CUDA Toolkit (compilers, profilers, and development tools).
+</ParamField>
+
+<ParamField type="string">
+  Version of cuDNN to install when `installCudnn` or `installCudnnDev` is `true`. Use `automatic` to select a compatible version for the chosen `cudaVersion`. Specific versions supported: `9.4.0.58`, `9.3.0.75`, `9.2.1.18`, `9.2.0.82`, `9.1.1.17`, `9.1.0.70`, `9.0.0.312`, `8.9.5.29` and earlier 8.x releases.
+</ParamField>
+
+## Enabling GPU passthrough
+
+Add `hostRequirements` to your `devcontainer.json` to request GPU access:
+
+```jsonc devcontainer.json theme={null}
+{
+  "hostRequirements": {
+    "gpu": "optional"
+  }
+}
+```
+
+<Tip>
+  Using `"gpu": "optional"` allows the container to start on both GPU and CPU hosts. Using `"gpu": true` will fail on CPU-only machines.
+</Tip>
+
+After the container starts, verify GPU visibility with:
+
+```bash theme={null}
+nvidia-smi
+```
+
+## Installing the NVIDIA Container Toolkit
+
+If `nvidia-smi` is not available inside the container, install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/overview.html) on the **host** machine first. Ensure the NVIDIA driver for your Linux distribution is installed before installing the toolkit.
+
+<Warning>
+  This feature installs CUDA libraries only. It does not install NVIDIA drivers — those must be installed on the host machine separately.
+</Warning>
+
+## Notes
+
+<Note>
+  This feature works on recent versions of Debian/Ubuntu-based distributions with the `apt` package manager. `bash` is required to execute the install script.
+</Note>
+
+
+# Oryx
+Source: https://www.mintlify.com/devcontainers/features/features/oryx
+
+Installs the oryx CLI.
+
+This feature installs the [Oryx](https://github.com/microsoft/Oryx) CLI — Microsoft's automatic build system that detects and builds source code for multiple language runtimes. Oryx is placed at `/usr/local/oryx` and added to the `PATH`, with dynamic SDK installation enabled so it can download and use additional SDKs at runtime.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+"features": {
+  "ghcr.io/devcontainers/features/oryx:2": {}
+}
+```
+
+This feature has no configurable options. All behavior is controlled through the environment variables listed below.
+
+## Environment variables
+
+| Variable                          | Value                           | Description                                                             |
+| --------------------------------- | ------------------------------- | ----------------------------------------------------------------------- |
+| `ORYX_SDK_STORAGE_BASE_URL`       | `https://oryx-cdn.microsoft.io` | Base URL for the Oryx SDK storage CDN                                   |
+| `ENABLE_DYNAMIC_INSTALL`          | `true`                          | Allows Oryx to download and install SDKs dynamically at build time      |
+| `DYNAMIC_INSTALL_ROOT_DIR`        | `/opt`                          | Root directory where dynamically installed SDKs are placed              |
+| `ORYX_PREFER_USER_INSTALLED_SDKS` | `true`                          | Prefers SDKs already installed by the user over those installed by Oryx |
+| `ORYX_DIR`                        | `/usr/local/oryx`               | Installation directory for the Oryx CLI                                 |
+| `DEBIAN_FLAVOR`                   | `bookworm`                      | Debian flavor used when resolving package compatibility                 |
+| `PATH`                            | `/usr/local/oryx:${PATH}`       | Oryx CLI directory prepended to the PATH                                |
+
+## Notes
+
+<Warning>
+  Oryx does not support Debian "jammy" (Ubuntu 22.04). Check the [supported platform versions](https://github.com/microsoft/Oryx/blob/main/doc/supportedPlatformVersions.md) in the Oryx repository before using this feature with a non-Debian-bookworm base image.
+</Warning>
+
+<Note>
+  `bash` is required to execute the install script.
+</Note>
+
+
+# PHP
+Source: https://www.mintlify.com/devcontainers/features/features/php
+
+Installs PHP and optionally Composer into your dev container.
+
+The PHP feature installs PHP from source into your dev container. Composer, the PHP dependency manager, is installed by default.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+{
+  "features": {
+    "ghcr.io/devcontainers/features/php:1": {
+      "version": "latest",
+      "installComposer": true
+    }
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Select or enter a PHP version to install. Accepts `latest`, `none`, or a specific version such as `8`, `8.2`, or `8.2.0`.
+</ParamField>
+
+<ParamField type="boolean">
+  Install PHP Composer, the dependency manager for PHP.
+</ParamField>
+
+## Environment variables
+
+| Variable   | Value                                |
+| ---------- | ------------------------------------ |
+| `PHP_PATH` | `/usr/local/php/current`             |
+| `PATH`     | `/usr/local/php/current/bin:${PATH}` |
+
+## VS Code extensions
+
+* `xdebug.php-debug`
+* `bmewburn.vscode-intelephense-client`
+* `xdebug.php-pack`
+* `devsense.phptools-vscode`
+
+## Notes
+
+This feature works on recent versions of Debian/Ubuntu-based distributions with the `apt` package manager installed. `bash` is required to execute the install script.
+
+
+# PowerShell
+Source: https://www.mintlify.com/devcontainers/features/features/powershell
+
+Installs PowerShell along with needed dependencies. Useful for base Dockerfiles that often are missing required install dependencies like gpg.
+
+The `powershell` feature installs [PowerShell](https://learn.microsoft.com/en-us/powershell/) (pwsh) and its dependencies. It also installs the PowerShell VS Code extension and optionally sets up a PowerShell profile and additional modules.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+"features": {
+  "ghcr.io/devcontainers/features/powershell:2": {
+    "version": "latest",
+    "modules": "",
+    "powershellProfileURL": ""
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  The version of PowerShell to install. Accepted values:
+
+  * `latest` — Most recent stable release (default).
+  * `lts` — Latest long-term support release.
+  * `preview` — Latest preview release.
+  * `stable` — Alias for `latest`.
+  * `none` — Skip installation.
+  * A specific version number such as `7.5` or `7.4`.
+</ParamField>
+
+<ParamField type="string">
+  Optional comma-separated list of PowerShell modules to install. To pin a module version, use `==` syntax. For example: `Az.Resources==2.5.0,Pester`.
+</ParamField>
+
+<ParamField type="string">
+  Optional publicly accessible URL to download a PowerShell profile file. The file is fetched and placed as the user's PowerShell profile during setup.
+</ParamField>
+
+## VS Code extensions
+
+The following extension is automatically installed when this feature is added to a dev container:
+
+* [`ms-vscode.powershell`](https://marketplace.visualstudio.com/items?itemName=ms-vscode.powershell) — PowerShell language support, debugging, and IntelliSense.
+
+## Notes
+
+<Note>
+  The `powershell` feature installs after `common-utils` when both are present in the same dev container configuration.
+</Note>
+
+### OS support
+
+This feature works on recent versions of Debian/Ubuntu-based distributions with the `apt` package manager installed. `bash` is required to execute the install script.
+
+
+# Python
+Source: https://www.mintlify.com/devcontainers/features/features/python
+
+Installs the provided version of Python, as well as PIPX, and other common Python utilities. JupyterLab is conditionally installed with the python feature. Note: May require source code compilation.
+
+The Python feature installs Python, PIPX, and a curated set of common Python development tools into your dev container. JupyterLab can be enabled optionally. Some versions may require source code compilation.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+{
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "latest",
+      "installTools": true
+    }
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Select a Python version to install. Accepts `latest`, `os-provided`, `none`, or a specific version such as `3.12` or `3.11`.
+</ParamField>
+
+<ParamField type="boolean">
+  Whether to install the tools specified by `toolsToInstall`.
+</ParamField>
+
+<ParamField type="string">
+  Comma-separated list of Python tools to install when `installTools` is `true`.
+</ParamField>
+
+<ParamField type="boolean">
+  Optimize Python for performance when compiled. Enabling this significantly increases build time.
+</ParamField>
+
+<ParamField type="boolean">
+  Enable building a shared Python library (`libpython`).
+</ParamField>
+
+<ParamField type="string">
+  The path where Python will be installed.
+</ParamField>
+
+<ParamField type="boolean">
+  Install JupyterLab, a web-based interactive development environment for notebooks.
+</ParamField>
+
+<ParamField type="string">
+  Configure JupyterLab to accept HTTP requests from the specified origin.
+</ParamField>
+
+<ParamField type="string">
+  Connect to GPG keyservers using a proxy for fetching source code signatures.
+</ParamField>
+
+## Environment variables
+
+| Variable       | Value                                                                              |
+| -------------- | ---------------------------------------------------------------------------------- |
+| `PYTHON_PATH`  | `/usr/local/python/current`                                                        |
+| `PIPX_HOME`    | `/usr/local/py-utils`                                                              |
+| `PIPX_BIN_DIR` | `/usr/local/py-utils/bin`                                                          |
+| `PATH`         | `/usr/local/python/current/bin:/usr/local/py-utils/bin:/usr/local/jupyter:${PATH}` |
+
+## VS Code extensions
+
+* `ms-python.python`
+* `ms-python.vscode-pylance`
+* `ms-python.autopep8`
+
+## Notes
+
+This feature works on recent versions of Debian/Ubuntu, Red Hat Enterprise Linux, Fedora, Alma, and Rocky Linux distributions with the `apt`, `yum`, `dnf`, or `microdnf` package manager installed. `bash` is required to execute the install script.
+
+
+# Ruby (via rvm)
+Source: https://www.mintlify.com/devcontainers/features/features/ruby
+
+Installs Ruby, rvm, rbenv, common Ruby utilities, and needed dependencies.
+
+The Ruby feature installs Ruby via rvm, along with rbenv and common Ruby utilities. It manages Ruby versions through rvm and makes the selected version available on the `PATH`.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+{
+  "features": {
+    "ghcr.io/devcontainers/features/ruby:1": {
+      "version": "latest"
+    }
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Select or enter a Ruby version to install. Accepts `latest`, `none`, or a specific version such as `3.4` or `3.2`.
+</ParamField>
+
+## Environment variables
+
+| Variable       | Value                                                                                                                                         |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GEM_PATH`     | `/usr/local/rvm/gems/default:/usr/local/rvm/gems/default@global`                                                                              |
+| `GEM_HOME`     | `/usr/local/rvm/gems/default`                                                                                                                 |
+| `MY_RUBY_HOME` | `/usr/local/rvm/rubies/default`                                                                                                               |
+| `PATH`         | `/usr/local/rvm/gems/default/bin:/usr/local/rvm/gems/default@global/bin:/usr/local/rvm/rubies/default/bin:/usr/local/share/rbenv/bin:${PATH}` |
+
+## VS Code extensions
+
+* `shopify.ruby-lsp`
+
+## Notes
+
+This feature works on recent versions of Debian/Ubuntu-based distributions with the `apt` package manager installed. `bash` is required to execute the install script.
+
+
+# Rust
+Source: https://www.mintlify.com/devcontainers/features/features/rust
+
+Installs Rust, common Rust utilities, and their required dependencies
+
+The Rust feature installs Rust via rustup, along with common utilities such as `rust-analyzer`, `rustfmt`, and `clippy`. You can choose a specific Rust version, rustup profile, additional compilation targets, and toolchain components.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+{
+  "features": {
+    "ghcr.io/devcontainers/features/rust:1": {
+      "version": "latest",
+      "profile": "minimal"
+    }
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Select or enter a version of Rust to install. Accepts `latest`, `none`, or a specific version such as `1.87` or `1.80`.
+</ParamField>
+
+<ParamField type="string">
+  Select a rustup install profile. Accepts `minimal`, `default`, or `complete`.
+</ParamField>
+
+<ParamField type="string">
+  Optional comma-separated list of additional Rust targets to install. For example: `aarch64-unknown-linux-gnu,armv7-unknown-linux-gnueabihf`.
+</ParamField>
+
+<ParamField type="string">
+  Optional comma-separated list of Rust toolchain components to install. For example: `rust-analyzer,rust-src,rustfmt,clippy`.
+</ParamField>
+
+## Environment variables
+
+| Variable      | Value                          |
+| ------------- | ------------------------------ |
+| `CARGO_HOME`  | `/usr/local/cargo`             |
+| `RUSTUP_HOME` | `/usr/local/rustup`            |
+| `PATH`        | `/usr/local/cargo/bin:${PATH}` |
+
+## VS Code extensions
+
+* `vadimcn.vscode-lldb`
+* `rust-lang.rust-analyzer`
+* `tamasfe.even-better-toml`
+
+## Notes
+
+This feature adds `SYS_PTRACE` capability and sets `seccomp=unconfined` to support native debuggers such as `lldb` and `gdb` for Rust debugging.
+
+```jsonc devcontainer.json theme={null}
+{
+  "features": {
+    "ghcr.io/devcontainers/features/rust:1": {}
+  },
+  "capAdd": ["SYS_PTRACE"],
+  "securityOpt": ["seccomp=unconfined"]
+}
+```
+
+<Warning>
+  Alpine Linux is not supported because the `rustup-init` binary requires glibc, which Alpine replaces with musl libc.
+</Warning>
+
+This feature works on recent versions of Debian/Ubuntu, Red Hat Enterprise Linux, Fedora, Alma, Rocky Linux, and Mariner distributions with the `apt`, `yum`, `dnf`, `microdnf`, or `tdnf` package manager installed. `bash` is required to execute the install script.
+
+
+# SSH server
+Source: https://www.mintlify.com/devcontainers/features/features/sshd
+
+Adds an SSH server into a container so that you can use an external terminal, sftp, or SSHFS to interact with it.
+
+The `sshd` feature installs and starts an OpenSSH server inside the dev container. This lets you connect with any SSH-capable client, transfer files via SFTP, or mount the container filesystem over SSHFS — all without requiring a dedicated IDE connection.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+"features": {
+  "ghcr.io/devcontainers/features/sshd:1": {
+    "gatewayPorts": "no"
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Currently unused. Reserved for future use.
+</ParamField>
+
+<ParamField type="string">
+  Controls whether other hosts on the same network can connect to forwarded ports. Accepted values:
+
+  * `no` — Only the local machine can connect to forwarded ports (default).
+  * `yes` — Any host in the network can connect.
+  * `clientspecified` — The connecting client decides which addresses to bind.
+</ParamField>
+
+## Connecting to the container
+
+<Steps>
+  <Step title="Set a password">
+    The first time you start the container, set a password for your user. If running as a non-root user with `sudo`:
+
+    ```bash theme={null}
+    sudo passwd $(whoami)
+    ```
+
+    Or as root:
+
+    ```bash theme={null}
+    passwd
+    ```
+  </Step>
+
+  <Step title="Forward the SSH port">
+    Forward port `2222` (the default SSH port) to your local machine. Add it to `devcontainer.json`:
+
+    ```jsonc devcontainer.json theme={null}
+    "forwardPorts": [2222]
+    ```
+
+    Or use the **Ports** view in VS Code (F1 → "Ports: Focus on Ports View").
+  </Step>
+
+  <Step title="Connect with SSH">
+    Use a local terminal to connect with the password you set:
+
+    ```bash theme={null}
+    ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o GlobalKnownHostsFile=/dev/null vscode@localhost
+    ```
+
+    Replace `vscode` with your actual container username. The `-o` flags suppress known-hosts warnings when connecting to different containers.
+  </Step>
+</Steps>
+
+### Using SSHFS
+
+[SSHFS](https://en.wikipedia.org/wiki/SSHFS) lets you mount the container filesystem on your local machine using only the SSH connection.
+
+**Install an SSHFS client:**
+
+* **Windows** — Install [WinFsp](https://github.com/billziss-gh/winfsp/releases) and [SSHFS-Win](https://github.com/billziss-gh/sshfs-win/releases).
+* **macOS** — `brew install macfuse gromgit/fuse/sshfs-mac`
+* **Linux** — `sudo apt-get install sshfs`
+
+**Mount on macOS / Linux:**
+
+```bash theme={null}
+mkdir -p ~/sshfs/devcontainer
+sshfs "vscode@localhost:/workspaces" "$HOME/sshfs/devcontainer" \
+  -p 2222 \
+  -o follow_symlinks \
+  -o StrictHostKeyChecking=no \
+  -o UserKnownHostsFile=/dev/null \
+  -o GlobalKnownHostsFile=/dev/null \
+  -C
+```
+
+**Mount on Windows** (Run dialog, Win+R):
+
+```
+\\sshfs.r\vscode@localhost!2222\workspaces
+```
+
+Replace `vscode` with your container username and `2222` with the forwarded local port.
+
+## Notes
+
+<Note>
+  The SSH server is started via the feature's entrypoint script (`/usr/local/share/ssh-init.sh`) each time the container starts.
+</Note>
+
+<Note>
+  The `sshd` feature installs after `common-utils` when both are present in the same dev container configuration.
+</Note>
+
+### OS support
+
+This feature works on recent versions of Debian/Ubuntu-based distributions with the `apt` package manager installed. `bash` is required to execute the install script.
+
+
+# Terraform, tflint, and Terragrunt
+Source: https://www.mintlify.com/devcontainers/features/features/terraform
+
+Installs the Terraform CLI and optionally TFLint and Terragrunt. Auto-detects latest version and installs needed dependencies.
+
+This feature installs the Terraform CLI along with optional tooling for linting (`tflint`), workflow management (`terragrunt`), policy enforcement (`sentinel`), security scanning (`tfsec`), and documentation generation (`terraform-docs`). Versions are auto-detected unless you specify one explicitly.
+
+## Usage
+
+```jsonc devcontainer.json theme={null}
+"features": {
+  "ghcr.io/devcontainers/features/terraform:1": {
+    "version": "latest",
+    "tflint": "latest",
+    "terragrunt": "latest"
+  }
+}
+```
+
+## Options
+
+<ParamField type="string">
+  Terraform version to install. Common values: `latest`, `none`, `1.1`, `1.0`, `0.15`.
+</ParamField>
+
+<ParamField type="string">
+  TFLint version to install. See the [TFLint releases](https://github.com/terraform-linters/tflint/releases) page for available versions. Common values: `latest`, `0.47.0`, `0.46.1`.
+</ParamField>
+
+<ParamField type="string">
+  Terragrunt version to install.
+</ParamField>
+
+<ParamField type="boolean">
+  Install HashiCorp Sentinel — a language and framework for policy built to be embedded in existing software to enable fine-grained, logic-based policy decisions.
+</ParamField>
+
+<ParamField type="boolean">
+  Install tfsec — a static analysis tool that spots potential misconfigurations in your Terraform code.
+</ParamField>
+
+<ParamField type="boolean">
+  Install terraform-docs — a utility to generate documentation from Terraform modules.
+</ParamField>
+
+<ParamField type="string">
+  Connect to a keyserver using a proxy by configuring this option.
+</ParamField>
+
+<ParamField type="string">
+  Custom server URL for downloading Terraform and Sentinel packages, including protocol (e.g. `https://releases.hashicorp.com`). Defaults to the official HashiCorp download server when left empty.
+</ParamField>
+
+## VS Code extensions
+
+| Extension             | Description                                                         |
+| --------------------- | ------------------------------------------------------------------- |
+| `HashiCorp.terraform` | Official HashiCorp Terraform extension with language server support |
+
+## Custom download server
+
+The `customDownloadServer` option lets you specify an alternative server for downloading Terraform and Sentinel packages. This is useful for organizations that maintain internal mirrors or proxy HashiCorp downloads. The server must mirror the HashiCorp releases directory structure.
+
+```jsonc devcontainer.json theme={null}
+"features": {
+  "ghcr.io/devcontainers/features/terraform:1": {
+    "customDownloadServer": "https://my-mirror.example.com"
+  }
+}
+```
+
+<Warning>
+  Always verify that a custom download server is trustworthy and maintained by your organization. The feature performs SHA256 integrity checks, but these are only as reliable as the source providing the checksums. When possible, use the official HashiCorp download server.
+</Warning>
+
+## Licensing
+
+On August 10, 2023, HashiCorp moved Terraform from the MPL v2 open-source license to the BSL v1.1 license, starting with version 1.6. Review the [Terraform license](https://github.com/hashicorp/terraform/blob/main/LICENSE) before using Terraform 1.6 or later in commercial contexts.
+
+## Notes
+
+<Note>
+  This feature works on recent versions of Debian/Ubuntu-based distributions with the `apt` package manager. `bash` is required to execute the install script.
+</Note>
+
+
+# Combining Features
+Source: https://www.mintlify.com/devcontainers/features/guides/combining-features
+
+How to compose multiple Features in a single devcontainer.json
+
+Multiple Features can coexist in a single `devcontainer.json`. You add them all to the same `"features"` object, and the supporting tool installs each one in turn. Environment variables, VS Code extensions, and settings contributed by each Feature are merged automatically.
+
+## Basic multi-Feature example
+
+The following configuration combines Go, Python, Docker-in-Docker, and the GitHub CLI into one dev container:
+
+```jsonc .devcontainer/devcontainer.json theme={null}
+{
+  "name": "full-stack",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "configureZshAsDefaultShell": true,
+      "username": "automatic"
+    },
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.12",
+      "installTools": true
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "moby": true,
+      "dockerDashComposeVersion": "v2"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  }
+}
+```
+
+<Note>
+  `common-utils` is a frequently used base dependency. It installs Zsh, Oh My Zsh!, sets up a non-root user, and configures other shell conveniences. Many other Features declare `common-utils` in their `installsAfter` list, so including it ensures a consistent shell environment before language tools are layered on top.
+</Note>
+
+## Install ordering with `installsAfter`
+
+By default, when multiple Features have no ordering constraints, the supporting tool may install them in any order or in parallel. To guarantee that one Feature installs before another, Features declare an `installsAfter` list in their manifests.
+
+For example, the Go Feature's manifest includes:
+
+```json theme={null}
+"installsAfter": [
+  "ghcr.io/devcontainers/features/common-utils"
+]
+```
+
+This tells the supporting tool: if `common-utils` is also present in the `devcontainer.json`, install it first, then install `go`. The same pattern applies to Python, Node, Docker-in-Docker, Rust, Terraform, and most other Features in this collection — they all declare `common-utils` as an `installsAfter` dependency.
+
+<Note>
+  `installsAfter` is an ordering hint, not an implicit dependency pull. If `common-utils` is not in your `devcontainer.json`, the ordering hint is ignored — the dependency is not installed automatically.
+</Note>
+
+## Use-case examples
+
+<Tabs>
+  <Tab title="Frontend dev">
+    Node.js with Docker for running local services and the GitHub CLI for pull request workflows:
+
+    ```jsonc .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "frontend",
+      "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+      "features": {
+        "ghcr.io/devcontainers/features/common-utils:2": {
+          "installZsh": true,
+          "configureZshAsDefaultShell": true,
+          "username": "automatic"
+        },
+        "ghcr.io/devcontainers/features/node:1": {
+          "version": "lts",
+          "nodeGypDependencies": true
+        },
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {
+          "moby": true,
+          "dockerDashComposeVersion": "v2"
+        },
+        "ghcr.io/devcontainers/features/github-cli:1": {}
+      }
+    }
+    ```
+  </Tab>
+
+  <Tab title="Backend dev">
+    Go with Docker for container builds and GitHub CLI for repository operations:
+
+    ```jsonc .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "backend",
+      "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+      "features": {
+        "ghcr.io/devcontainers/features/common-utils:2": {
+          "installZsh": true,
+          "configureZshAsDefaultShell": true,
+          "username": "automatic"
+        },
+        "ghcr.io/devcontainers/features/go:1": {
+          "version": "latest",
+          "golangciLintVersion": "latest"
+        },
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {
+          "moby": true,
+          "dockerDashComposeVersion": "v2"
+        },
+        "ghcr.io/devcontainers/features/github-cli:1": {}
+      }
+    }
+    ```
+  </Tab>
+
+  <Tab title="DevOps">
+    Terraform and the cloud CLIs for infrastructure-as-code workflows:
+
+    ```jsonc .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "devops",
+      "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+      "features": {
+        "ghcr.io/devcontainers/features/common-utils:2": {
+          "installZsh": true,
+          "configureZshAsDefaultShell": true,
+          "username": "automatic"
+        },
+        "ghcr.io/devcontainers/features/terraform:1": {
+          "version": "latest",
+          "tflint": "latest",
+          "terragrunt": "latest"
+        },
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {
+          "moby": true,
+          "dockerDashComposeVersion": "v2"
+        },
+        "ghcr.io/devcontainers/features/github-cli:1": {},
+        "ghcr.io/devcontainers/features/aws-cli:1": {}
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Merged VS Code extensions
+
+When you combine Features, each Feature's `customizations.vscode.extensions` list is merged. Opening the container in VS Code installs all extensions from all Features automatically. For example, combining `go`, `python`, and `docker-in-docker` results in these extensions being installed:
+
+| Feature            | Extension                                                            |
+| ------------------ | -------------------------------------------------------------------- |
+| `go`               | `golang.Go`                                                          |
+| `python`           | `ms-python.python`, `ms-python.vscode-pylance`, `ms-python.autopep8` |
+| `docker-in-docker` | `ms-azuretools.vscode-containers`                                    |
+
+No manual extension installation is required.
+
+
+# Self-authoring Features
+Source: https://www.mintlify.com/devcontainers/features/guides/self-authoring
+
+How to create, test, and publish your own Dev Container Features
+
+Anyone can create their own Dev Container Features and distribute them via the GitHub Container Registry. You do not need to contribute to the official `devcontainers/features` repository — your Features live in a repository you control.
+
+<Steps>
+  <Step title="Create a repo from the starter template">
+    The [`devcontainers/feature-starter`](https://github.com/devcontainers/feature-starter) repository is a GitHub template with the scaffolding, GitHub Actions workflows, and documentation needed to author and publish Features.
+
+    Click **Use this template** on the repository page, or use the GitHub CLI:
+
+    ```bash theme={null}
+    gh repo create my-features \
+      --template devcontainers/feature-starter \
+      --public \
+      --clone
+    ```
+
+    The template includes:
+
+    * An example Feature with `devcontainer-feature.json` and `install.sh`
+    * A publish workflow (`.github/workflows/release.yaml`) using the `devcontainers/action` GitHub Action
+    * A test workflow (`.github/workflows/test.yaml`)
+  </Step>
+
+  <Step title="Author your Feature">
+    Each Feature lives in its own subfolder under `src/`. The folder name becomes the Feature's ID. At minimum, each Feature requires two files:
+
+    ```
+    src/
+    └── my-tool/
+        ├── devcontainer-feature.json
+        └── install.sh
+    ```
+
+    ### Minimal `devcontainer-feature.json`
+
+    ```json src/my-tool/devcontainer-feature.json theme={null}
+    {
+      "id": "my-tool",
+      "version": "1.0.0",
+      "name": "My Tool",
+      "description": "Installs my-tool and its dependencies.",
+      "options": {
+        "version": {
+          "type": "string",
+          "default": "latest",
+          "description": "Version of my-tool to install"
+        }
+      }
+    }
+    ```
+
+    | Field         | Required | Description                                    |
+    | ------------- | -------- | ---------------------------------------------- |
+    | `id`          | Yes      | Unique identifier — must match the folder name |
+    | `version`     | Yes      | Semantic version of the Feature package itself |
+    | `name`        | Yes      | Human-readable display name                    |
+    | `description` | No       | Short description shown in tooling UIs         |
+    | `options`     | No       | User-configurable installation options         |
+
+    ### Minimal `install.sh`
+
+    The `install.sh` script runs inside the container as root. Option values are injected as environment variables — the option name is uppercased (e.g. the `version` option becomes `$VERSION`).
+
+    ```bash src/my-tool/install.sh theme={null}
+    #!/bin/bash
+    set -e
+
+    VERSION="${VERSION:-"latest"}"
+
+    echo "Installing my-tool version: ${VERSION}"
+
+    # Resolve latest if needed
+    if [ "${VERSION}" = "latest" ]; then
+      VERSION=$(curl -sSL https://api.github.com/repos/example/my-tool/releases/latest \
+        | grep '"tag_name"' | sed 's/.*"tag_name": "\(.*\)".*/\1/')
+    fi
+
+    # Download and install
+    curl -sSL "https://example.com/my-tool/${VERSION}/install.sh" | bash
+
+    echo "Done."
+    ```
+
+    <Tip>
+      Start the script with `set -e` so it exits immediately on any error. This prevents partially installed tools from being silently ignored during container builds.
+    </Tip>
+  </Step>
+
+  <Step title="Test your Feature">
+    Use the `devcontainer features test` command from the [devcontainer CLI](https://github.com/devcontainers/cli) to run your test scripts locally before publishing.
+
+    Create a test script at `test/my-tool/test.sh`:
+
+    ```bash test/my-tool/test.sh theme={null}
+    #!/bin/bash
+    set -e
+
+    # Source the test library
+    source dev-container-features-test-lib
+
+    # Verify the tool is on PATH
+    check "my-tool version" my-tool --version
+
+    reportResults
+    ```
+
+    Run the tests:
+
+    ```bash theme={null}
+    devcontainer features test \
+      --features my-tool \
+      --base-image mcr.microsoft.com/devcontainers/base:ubuntu \
+      --project-folder .
+    ```
+
+    The CLI builds a temporary container with your Feature applied and executes `test.sh` inside it. Tests pass when every `check` call exits successfully.
+  </Step>
+
+  <Step title="Publish to GitHub Container Registry">
+    The `devcontainers/action` GitHub Action handles OCI packaging and publishing. The starter template already includes the release workflow — push a tag to trigger it.
+
+    ```bash theme={null}
+    git tag v1.0.0
+    git push origin v1.0.0
+    ```
+
+    The action packages each Feature under `src/` and pushes them to:
+
+    ```
+    ghcr.io/<your-github-username>/<repo-name>/<feature-id>:<version>
+    ```
+
+    For example, if your GitHub username is `myorg` and your repo is `my-features`, the Feature is available at:
+
+    ```
+    ghcr.io/myorg/my-features/my-tool:1
+    ```
+
+    Reference it in any `devcontainer.json`:
+
+    ```jsonc theme={null}
+    "features": {
+      "ghcr.io/myorg/my-features/my-tool:1": {
+        "version": "latest"
+      }
+    }
+    ```
+
+    <Note>
+      The repository must be public, or the container image must be made public in your package settings, for other users to reference your Feature without authentication.
+    </Note>
+  </Step>
+
+  <Step title="Share with the community">
+    Once your Feature is published, you can add it to the [community index at containers.dev/features](https://containers.dev/features). The index makes your Feature discoverable to other developers and to tooling that surfaces suggested Features.
+
+    To add your Feature to the index, follow the instructions in the [feature-starter README](https://github.com/devcontainers/feature-starter#adding-features-to-the-index). The process involves submitting a pull request to the [devcontainers/devcontainers.github.io](https://github.com/devcontainers/devcontainers.github.io) repository with a reference to your Feature collection.
+  </Step>
+</Steps>
+
+## Feature structure reference
+
+A complete Feature folder can include additional optional files:
+
+```
+src/
+└── my-tool/
+    ├── devcontainer-feature.json   # Required — manifest
+    ├── install.sh                  # Required — installation script
+    ├── README.md                   # Optional — shown on containers.dev
+    └── NOTES.md                    # Optional — additional implementation notes
+```
+
+The `README.md` is displayed on the [containers.dev/features](https://containers.dev/features) index page for your Feature, so it is worth including usage examples and a full option table.
+
+
+# Using Features
+Source: https://www.mintlify.com/devcontainers/features/guides/using-features
+
+How to add Dev Container Features to your devcontainer.json
+
+Features are added to a dev container by including a `"features"` block in your `devcontainer.json`. Each entry in the block references a Feature by its URI and supplies any options you want to override.
+
+## The `features` property
+
+The `features` property is a JSON object where each key is a Feature reference URI and each value is an options object:
+
+```jsonc .devcontainer/devcontainer.json theme={null}
+{
+  "name": "my-project",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "latest"
+    }
+  }
+}
+```
+
+If you have no options to pass, use an empty object `{}` as the value.
+
+## Feature reference URI format
+
+Every Feature published to the GitHub Container Registry follows this URI format:
+
+```
+ghcr.io/devcontainers/features/<id>:<version>
+```
+
+| Segment                          | Description                                                                     |
+| -------------------------------- | ------------------------------------------------------------------------------- |
+| `ghcr.io/devcontainers/features` | The registry and collection path for the official devcontainers Feature set     |
+| `<id>`                           | The Feature identifier — matches the folder name under `src/` in the repository |
+| `:<version>`                     | The version tag — see [Versioning](/guides/versioning) for pinning strategies   |
+
+For example, the Go Feature's full reference is `ghcr.io/devcontainers/features/go:1`.
+
+## Passing options
+
+Each Feature exposes a set of named options you can configure. Pass them as key-value pairs in the options object.
+
+### Go Feature options
+
+The `go` Feature (`ghcr.io/devcontainers/features/go`) supports these options:
+
+| Option                | Type   | Default    | Description                                     |
+| --------------------- | ------ | ---------- | ----------------------------------------------- |
+| `version`             | string | `"latest"` | Go version to install (e.g. `"1.24"`, `"1.23"`) |
+| `golangciLintVersion` | string | `"latest"` | Version of golangci-lint to install             |
+
+```jsonc theme={null}
+"ghcr.io/devcontainers/features/go:1": {
+  "version": "1.23",
+  "golangciLintVersion": "latest"
+}
+```
+
+### Python Feature options
+
+The `python` Feature (`ghcr.io/devcontainers/features/python`) supports these options:
+
+| Option              | Type    | Default         | Description                                                     |
+| ------------------- | ------- | --------------- | --------------------------------------------------------------- |
+| `version`           | string  | `"os-provided"` | Python version to install (e.g. `"3.12"`, `"3.11"`)             |
+| `installTools`      | boolean | `true`          | Install common Python tools (flake8, black, mypy, pytest, etc.) |
+| `installJupyterlab` | boolean | `false`         | Install JupyterLab                                              |
+
+```jsonc theme={null}
+"ghcr.io/devcontainers/features/python:1": {
+  "version": "3.12",
+  "installTools": true,
+  "installJupyterlab": false
+}
+```
+
+## Complete example
+
+The following `devcontainer.json` adds both Go and Python to a base Ubuntu image:
+
+<Tabs>
+  <Tab title="Ubuntu">
+    ```jsonc .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "my-project",
+      "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+      "features": {
+        "ghcr.io/devcontainers/features/go:1": {
+          "version": "1.23",
+          "golangciLintVersion": "latest"
+        },
+        "ghcr.io/devcontainers/features/python:1": {
+          "version": "3.12",
+          "installTools": true,
+          "installJupyterlab": false
+        }
+      }
+    }
+    ```
+  </Tab>
+
+  <Tab title="Debian">
+    ```jsonc .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "my-project",
+      "image": "mcr.microsoft.com/devcontainers/base:debian",
+      "features": {
+        "ghcr.io/devcontainers/features/go:1": {
+          "version": "1.23",
+          "golangciLintVersion": "latest"
+        },
+        "ghcr.io/devcontainers/features/python:1": {
+          "version": "3.12",
+          "installTools": true,
+          "installJupyterlab": false
+        }
+      }
+    }
+    ```
+  </Tab>
+
+  <Tab title="devcontainers base">
+    ```jsonc .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "my-project",
+      "image": "mcr.microsoft.com/devcontainers/base:jammy",
+      "features": {
+        "ghcr.io/devcontainers/features/go:1": {
+          "version": "1.23",
+          "golangciLintVersion": "latest"
+        },
+        "ghcr.io/devcontainers/features/python:1": {
+          "version": "3.12",
+          "installTools": true,
+          "installJupyterlab": false
+        }
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## What happens when a Feature is added
+
+When a supporting tool builds your dev container with Features, it:
+
+1. **Runs `install.sh`** inside the container for each requested Feature. The script receives your option values as environment variables and performs all installation steps.
+2. **Sets environment variables** declared in the Feature's `containerEnv`. For example, the Go Feature sets `GOROOT`, `GOPATH`, and prepends Go binaries to `PATH` — these are available in every terminal session and process inside the container.
+3. **Installs VS Code extensions** listed in the Feature's `customizations.vscode.extensions`. Adding the Go Feature automatically installs the `golang.Go` extension; adding the Python Feature installs `ms-python.python` and `ms-python.vscode-pylance`.
+4. **Applies VS Code settings** from each Feature's `customizations.vscode.settings`. Extensions and settings from all Features are merged before being applied.
+
+## Supported environments
+
+A [tool that supports the dev container specification](https://containers.dev/supporting) is required to build and run a dev container with Features. The most widely used supporting tools are:
+
+* **VS Code Dev Containers** — the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) for Visual Studio Code builds and connects to dev containers locally using Docker.
+* **GitHub Codespaces** — cloud-hosted dev containers backed by the same specification. Add Features to `devcontainer.json` in your repository and they are applied when creating a Codespace.
+* **devcontainer CLI** — the [reference CLI implementation](https://github.com/devcontainers/cli) for building and testing dev containers from the command line.
+
+For the full list of supporting tools, see [containers.dev/supporting](https://containers.dev/supporting).
+
+
+# Versioning
+Source: https://www.mintlify.com/devcontainers/features/guides/versioning
+
+How to pin, update, and manage Feature versions
+
+Dev Container Features follow [semantic versioning](https://semver.org/) (`major.minor.patch`). You control how aggressively your container tracks updates by choosing how precisely you pin the version tag in your Feature reference URI.
+
+## Version tag formats
+
+Append a version tag after the Feature ID with a colon:
+
+```
+ghcr.io/devcontainers/features/<id>:<tag>
+```
+
+The supported tag formats are:
+
+| Tag           | Example   | Behavior                                                                   |
+| ------------- | --------- | -------------------------------------------------------------------------- |
+| Major only    | `:1`      | Receives all minor and patch updates within that major version             |
+| Major + minor | `:1.0`    | Receives patch updates only within that minor version                      |
+| Full patch    | `:1.0.0`  | Pinned to an exact release; never updates automatically                    |
+| Latest        | `:latest` | Always resolves to the highest published version across all major releases |
+| Omitted       | *(none)*  | Equivalent to `:latest`                                                    |
+
+## Pinning strategies
+
+### Major version (`:1`)
+
+Pinning to a major version is the recommended approach for most projects. You receive backwards-compatible improvements and bug fixes automatically, while major breaking changes require an explicit update on your part.
+
+```jsonc .devcontainer/devcontainer.json theme={null}
+{
+  "features": {
+    // Go Feature — currently at 1.3.3; receives 1.x.x updates automatically
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "latest"
+    },
+    // Docker-in-Docker — currently at 2.16.1; receives 2.x.x updates automatically
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "moby": true
+    }
+  }
+}
+```
+
+### Minor version (`:1.0`)
+
+Pinning to a minor version lets patch releases through but blocks minor version bumps. Use this when you want security fixes without feature changes.
+
+```jsonc .devcontainer/devcontainer.json theme={null}
+{
+  "features": {
+    "ghcr.io/devcontainers/features/go:1.3": {
+      "version": "latest"
+    }
+  }
+}
+```
+
+### Exact patch version (`:1.0.0`)
+
+Pinning to a full patch version freezes the Feature entirely. The container builds identically every time, regardless of what is published to the registry.
+
+```jsonc .devcontainer/devcontainer.json theme={null}
+{
+  "features": {
+    // Frozen at Go Feature 1.3.3
+    "ghcr.io/devcontainers/features/go:1.3.3": {
+      "version": "latest"
+    },
+    // Frozen at Docker-in-Docker Feature 2.16.1
+    "ghcr.io/devcontainers/features/docker-in-docker:2.16.1": {
+      "moby": true
+    }
+  }
+}
+```
+
+<Warning>
+  Do not use `:latest` (or omit the version tag) in production or shared environments. The `:latest` tag always resolves to the highest published version across all major releases. A future major release may introduce breaking changes that cause your container build to fail or behave unexpectedly without any change on your part.
+</Warning>
+
+## Versioning semantics
+
+The version tag refers to the **Feature package version**, not the version of the tool being installed. These are independent:
+
+* `ghcr.io/devcontainers/features/go:1` pins the Go *Feature* to major version 1.
+* The `"version": "1.23"` option inside the object controls which version of the *Go language* is installed.
+
+```jsonc theme={null}
+// Feature package version: 1 (major pin)
+// Go language version: 1.23
+"ghcr.io/devcontainers/features/go:1": {
+  "version": "1.23"
+}
+```
+
+## Finding available versions
+
+Published versions of each Feature are listed in the GitHub Container Registry under the `devcontainers/features` package namespace.
+
+To browse available versions for the Go Feature, visit:
+
+```
+https://github.com/devcontainers/features/pkgs/container/features%2Fgo/versions
+```
+
+Replace `go` in the URL path with the ID of any other Feature to see its version history.
+
+You can also list versions using the GitHub CLI:
+
+```bash theme={null}
+gh api /orgs/devcontainers/packages/container/features%2Fgo/versions \
+  --jq '.[].metadata.container.tags[]' | sort -V
+```
+
+
+# How Features work
+Source: https://www.mintlify.com/devcontainers/features/how-features-work
+
+Understand the Feature lifecycle, manifest format, and installation model
+
+<Note>
+  The authoritative specification for Dev Container Features is published at [containers.dev/implementors/features](https://containers.dev/implementors/features/).
+</Note>
+
+A Dev Container Feature is a folder containing exactly two required files:
+
+* **`devcontainer-feature.json`** — the manifest that declares the Feature's identity, options, environment variables, and VS Code customizations
+* **`install.sh`** — the shell script that runs inside the container to install the tool
+
+Supporting tools read the manifest, resolve dependencies, then execute `install.sh` for each requested Feature.
+
+## Anatomy of a Feature
+
+The folder structure for a Feature looks like this:
+
+```
+src/
+└── go/
+    ├── devcontainer-feature.json
+    └── install.sh
+```
+
+The folder name becomes the Feature's distribution identifier. The manifest contains all metadata; the script contains all installation logic.
+
+## The `devcontainer-feature.json` manifest
+
+Below is the real manifest for the Go Feature (`ghcr.io/devcontainers/features/go`):
+
+```jsonc src/go/devcontainer-feature.json theme={null}
+{
+    "id": "go",
+    "version": "1.3.3",
+    "name": "Go",
+    "documentationURL": "https://github.com/devcontainers/features/tree/main/src/go",
+    "description": "Installs Go and common Go utilities. Auto-detects latest version and installs needed dependencies.",
+    "options": {
+        "version": {
+            "type": "string",
+            "proposals": [
+                "latest",
+                "none",
+                "1.24",
+                "1.23"
+            ],
+            "default": "latest",
+            "description": "Select or enter a Go version to install"
+        },
+        "golangciLintVersion": {
+            "type": "string",
+            "default": "latest",
+            "description": "Version of golangci-lint to install"
+        }
+    },
+    "init": true,
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "golang.Go"
+            ],
+            "settings": {
+                "github.copilot.chat.codeGeneration.instructions": [
+                    {
+                        "text": "This dev container includes Go and common Go utilities pre-installed and available on the `PATH`, along with the Go language extension for Go development."
+                    }
+                ]
+            }
+        }
+    },
+    "containerEnv": {
+        "GOROOT": "/usr/local/go",
+        "GOPATH": "/go",
+        "PATH": "/usr/local/go/bin:/go/bin:${PATH}"
+    },
+    "capAdd": [
+        "SYS_PTRACE"
+    ],
+    "securityOpt": [
+        "seccomp=unconfined"
+    ],
+    "installsAfter": [
+        "ghcr.io/devcontainers/features/common-utils"
+    ]
+}
+```
+
+### Field reference
+
+<AccordionGroup>
+  <Accordion title="id">
+    A short, unique identifier for the Feature within its collection. Combined with the registry host and collection path to form the full Feature reference:
+
+    ```
+    ghcr.io/devcontainers/features/go
+    ```
+
+    The `id` must match the folder name under `src/`.
+  </Accordion>
+
+  <Accordion title="version">
+    The semantic version of the Feature itself — not the version of the tool being installed. Follows [semver](https://semver.org/) conventions.
+
+    When you reference a Feature in `devcontainer.json`, you pin to a version of the Feature package:
+
+    ```jsonc theme={null}
+    // Pin to the major version of the Feature package
+    "ghcr.io/devcontainers/features/go:1": {}
+    ```
+  </Accordion>
+
+  <Accordion title="name">
+    A human-readable display name shown in tooling UIs and documentation. Does not affect installation behavior.
+  </Accordion>
+
+  <Accordion title="description">
+    A short description of what the Feature installs or configures. Used in tooling UIs and the generated documentation.
+  </Accordion>
+
+  <Accordion title="options">
+    A map of user-configurable options. Each option has:
+
+    * `type` — `"string"`, `"boolean"`, or `"integer"`
+    * `default` — the value used when the option is not specified
+    * `description` — shown in tooling UIs
+    * `proposals` (optional) — a list of suggested values for string options
+    * `enum` (optional) — a strict list of allowed values for string options
+
+    Options are passed to `install.sh` as environment variables. A string option named `golangciLintVersion` becomes the variable `$GOLANGCILINTVERSION` (uppercased).
+
+    ```jsonc devcontainer.json theme={null}
+    "ghcr.io/devcontainers/features/go:1": {
+        "version": "1.23",
+        "golangciLintVersion": "latest"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="containerEnv">
+    A map of environment variables that are set in the container at runtime. These persist for all processes in the container, not just the installation script.
+
+    The Go Feature sets `GOROOT`, `GOPATH`, and prepends the Go binaries to `PATH`:
+
+    ```jsonc theme={null}
+    "containerEnv": {
+        "GOROOT": "/usr/local/go",
+        "GOPATH": "/go",
+        "PATH": "/usr/local/go/bin:/go/bin:${PATH}"
+    }
+    ```
+
+    The special token `${PATH}` references the container's existing `PATH` value so prepending does not discard existing entries.
+  </Accordion>
+
+  <Accordion title="customizations">
+    Tool-specific configuration applied when the dev container is opened. The `vscode` key is the most common and supports two sub-keys:
+
+    * `extensions` — a list of VS Code extension IDs to install automatically
+    * `settings` — VS Code workspace settings to apply
+
+    For the Go Feature, this installs the `golang.Go` extension and configures a Copilot code generation hint:
+
+    ```jsonc theme={null}
+    "customizations": {
+        "vscode": {
+            "extensions": ["golang.Go"],
+            "settings": { ... }
+        }
+    }
+    ```
+
+    Extensions and settings from all Features are merged together by the supporting tool.
+  </Accordion>
+
+  <Accordion title="installsAfter">
+    An ordered list of Feature references that must be fully installed before this Feature runs its `install.sh`. This is how Features declare dependencies.
+
+    The Go Feature declares:
+
+    ```jsonc theme={null}
+    "installsAfter": [
+        "ghcr.io/devcontainers/features/common-utils"
+    ]
+    ```
+
+    If `common-utils` is also in your `devcontainer.json`, the supporting tool installs it first. If it is not in your `devcontainer.json`, the ordering hint is ignored — `installsAfter` does not implicitly pull in dependencies.
+  </Accordion>
+</AccordionGroup>
+
+## Installation lifecycle
+
+When a supporting tool builds a dev container with Features, it follows this sequence:
+
+1. **Parse** `devcontainer.json` and collect all requested Features.
+2. **Fetch** each Feature's `devcontainer-feature.json` manifest from the OCI registry.
+3. **Resolve install order** using `installsAfter` declarations to build a dependency-aware sequence. Features with no ordering constraints may be installed in any order or in parallel.
+4. **Run `install.sh`** for each Feature in sequence, inside the container. The script receives the user-supplied option values as environment variables.
+5. **Apply `containerEnv`** values so they are available at runtime, not just during installation.
+6. **Apply VS Code customizations** (extensions and settings) when the container is opened in VS Code.
+
+## Environment variables set by Features
+
+Each Feature can contribute runtime environment variables via `containerEnv`. These are set for the container's lifetime — every terminal session and every process inside the container sees them.
+
+| Feature | Variable | Value                               |
+| ------- | -------- | ----------------------------------- |
+| `go`    | `GOROOT` | `/usr/local/go`                     |
+| `go`    | `GOPATH` | `/go`                               |
+| `go`    | `PATH`   | `/usr/local/go/bin:/go/bin:${PATH}` |
+
+Variables from multiple Features are merged. If two Features set the same variable, behavior depends on the supporting tool's implementation — to avoid conflicts, use `${EXISTING_VAR}` references rather than hardcoding values.
+
+## VS Code customizations
+
+When you open a dev container in VS Code, extensions listed in each Feature's `customizations.vscode.extensions` are installed automatically in the container's VS Code server. Settings in `customizations.vscode.settings` are applied as workspace settings.
+
+This means adding the Go Feature to your `devcontainer.json` automatically installs the `golang.Go` extension — no manual extension installation required.
+
+Extensions and settings from all Features and from the top-level `devcontainer.json` `customizations` block are merged before being applied.
+
+
+# Dev Container Features
+Source: https://www.mintlify.com/devcontainers/features/introduction
+
+A curated collection of reusable Dev Container Features that instantly add languages, tools, and CLIs to any development container.
+
+Dev Container Features are self-contained units of installation code and configuration that install atop any base container image. Missing Go, Node.js, or Terraform in your container? Add the relevant Feature to your `devcontainer.json` — no Dockerfile editing required.
+
+These Features are maintained by the Dev Container spec maintainers and distributed via the GitHub Container Registry at `ghcr.io/devcontainers/features`.
+
+<CardGroup>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Add your first Feature to a dev container in under 5 minutes
+  </Card>
+
+  <Card title="How Features Work" icon="gear" href="/how-features-work">
+    Understand the Feature lifecycle, manifest format, and installation model
+  </Card>
+
+  <Card title="Features Reference" icon="book" href="/features/go">
+    Browse all 28 available Features with full option documentation
+  </Card>
+
+  <Card title="Combining Features" icon="layer-group" href="/guides/combining-features">
+    Compose multiple Features together in a single devcontainer.json
+  </Card>
+</CardGroup>
+
+## What are Dev Container Features?
+
+A Feature is a folder containing:
+
+* A `devcontainer-feature.json` manifest defining the Feature ID, version, options, and VS Code customizations
+* An `install.sh` script that runs inside the container to install the tool
+
+When a supporting tool (like VS Code Dev Containers or GitHub Codespaces) builds your dev container, it runs each Feature's installation script in sequence, resulting in a fully-configured environment.
+
+```jsonc devcontainer.json theme={null}
+{
+  "name": "my-project",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "dockerDashComposeVersion": "v2"
+    }
+  }
+}
+```
+
+## Available Features
+
+<CardGroup>
+  <Card title="Languages" icon="code" href="/features/go">
+    Go, Python, Node.js, Java, .NET, Rust, Ruby, PHP
+  </Card>
+
+  <Card title="Containers & Kubernetes" icon="docker" href="/features/docker-in-docker">
+    Docker-in-Docker, Docker-outside-of-Docker, Kubectl, Helm, Minikube
+  </Card>
+
+  <Card title="Cloud & DevOps" icon="cloud" href="/features/terraform">
+    Terraform, AWS CLI, Azure CLI, GitHub CLI
+  </Card>
+
+  <Card title="Utilities & Tools" icon="wrench" href="/features/common-utils">
+    Common Utils, Git, Git LFS, SSHD, Nix, PowerShell, Hugo, Desktop Lite
+  </Card>
+
+  <Card title="Data Science & ML" icon="chart-line" href="/features/anaconda">
+    Anaconda, Conda, NVIDIA CUDA, Oryx
+  </Card>
+
+  <Card title="Self-Authoring" icon="pen" href="/guides/self-authoring">
+    Create and publish your own Features
+  </Card>
+</CardGroup>
+
+## How to reference a Feature
+
+All Features in this repository are referenced by their `ghcr.io` URI with a version tag:
+
+```jsonc theme={null}
+"features": {
+    "ghcr.io/devcontainers/features/node:1": {
+        "version": "lts"
+    }
+}
+```
+
+See [versioning](/guides/versioning) for how to pin to major, minor, or patch versions.
+
+
+# Quickstart
+Source: https://www.mintlify.com/devcontainers/features/quickstart
+
+Get up and running with Dev Container Features in minutes
+
+<Note>
+  A supporting tool is required to build dev containers. Use the [VS Code Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers), [GitHub Codespaces](https://github.com/features/codespaces), or any other [tool that supports the dev container specification](https://containers.dev/supporting).
+</Note>
+
+<Steps>
+  <Step title="Prerequisites">
+    You need a `devcontainer.json` file at the root of your project (inside a `.devcontainer/` folder or at `.devcontainer.json`).
+
+    If you don't have one yet, create `.devcontainer/devcontainer.json` with a base image:
+
+    ```jsonc .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "my-project",
+      "image": "mcr.microsoft.com/devcontainers/base:ubuntu"
+    }
+    ```
+
+    Any generic Debian-based image works as a starting point. Features install on top of it.
+  </Step>
+
+  <Step title="Add a Feature">
+    Add a `"features"` block to your `devcontainer.json`. Each key is a Feature reference in the form `ghcr.io/devcontainers/features/<id>:<major-version>`, and the value is an object of options.
+
+    The example below adds Go and the Common Utilities Feature (which installs Zsh, Oh My Zsh!, and sets up a non-root user):
+
+    ```jsonc .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "my-project",
+      "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+      "features": {
+        "ghcr.io/devcontainers/features/go:1": {
+          "version": "latest"
+        },
+        "ghcr.io/devcontainers/features/common-utils:2": {
+          "installZsh": true,
+          "configureZshAsDefaultShell": true,
+          "username": "automatic"
+        }
+      }
+    }
+    ```
+
+    <Tip>
+      Pin to a major version like `:1` rather than `:latest`. Major-version tags receive backwards-compatible updates automatically, whereas `:latest` always resolves to the highest published version and may include breaking changes across major releases.
+    </Tip>
+  </Step>
+
+  <Step title="Rebuild the container">
+    After editing `devcontainer.json`, rebuild the container to apply the new Features.
+
+    <Tabs>
+      <Tab title="VS Code">
+        Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run:
+
+        ```
+        Dev Containers: Rebuild Container
+        ```
+      </Tab>
+
+      <Tab title="CLI">
+        Run the following from your project root:
+
+        ```bash theme={null}
+        devcontainer build --workspace-folder .
+        ```
+
+        The [devcontainer CLI](https://github.com/devcontainers/cli) is the reference implementation of the dev container specification.
+      </Tab>
+
+      <Tab title="GitHub Codespaces">
+        Commit your updated `devcontainer.json` and create a new Codespace, or rebuild an existing one from the Codespace settings menu.
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Verify installation">
+    Once the container is running, open a terminal inside it and confirm the tools are available:
+
+    ```bash theme={null}
+    # Verify Go is installed
+    go version
+
+    # Verify Zsh is installed (from common-utils)
+    zsh --version
+    ```
+
+    You should see output similar to:
+
+    ```
+    go version go1.24.1 linux/amd64
+    zsh 5.9 (x86_64-ubuntu-linux-gnu)
+    ```
+  </Step>
+</Steps>
+
+## Next steps
+
+<CardGroup>
+  <Card title="How Features work" icon="gear" href="/how-features-work">
+    Learn about the Feature manifest, installation lifecycle, and VS Code customizations
+  </Card>
+
+  <Card title="Combining Features" icon="layer-group" href="/guides/combining-features">
+    Compose multiple Features and understand install ordering
+  </Card>
+
+  <Card title="Features reference" icon="book" href="/features/go">
+    Browse all available Features with full option documentation
+  </Card>
+
+  <Card title="Versioning" icon="tag" href="/guides/versioning">
+    Pin to major, minor, or patch versions
+  </Card>
+</CardGroup>
+
+

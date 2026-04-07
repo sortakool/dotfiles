@@ -1,0 +1,1790 @@
+# CI integration
+Source: https://wagoodman-dive.atlas.mintlify.me/configuration/ci-integration
+
+Run dive in CI pipelines to enforce image efficiency rules with pass/fail output.
+
+dive includes a CI mode that skips the interactive TUI and instead analyzes your image against a set of configurable rules, exiting with a non-zero code if any rule fails. Use this to gate deployments on image quality.
+
+## Basic usage
+
+Set the `CI` environment variable to `true` when running any valid dive command:
+
+```bash theme={null}
+CI=true dive <your-image>
+```
+
+You can also pass the `--ci` flag directly:
+
+```bash theme={null}
+dive --ci <your-image>
+```
+
+dive will print a summary of the analysis and exit with code `0` if all rules pass, or a non-zero code if any rule fails.
+
+## CI rules
+
+Pass/fail is determined by three configurable rules. Create a `.dive-ci` file at the root of your repository to set thresholds:
+
+```yaml theme={null}
+rules:
+  # If the efficiency is measured below X%, mark as failed.
+  # Expressed as a ratio between 0-1.
+  lowestEfficiency: 0.95
+
+  # If the amount of wasted space is at least X or larger than X, mark as failed.
+  # Expressed in B, KB, MB, and GB.
+  highestWastedBytes: 20MB
+
+  # If the amount of wasted space makes up for X% or more of the image, mark as failed.
+  # Note: the base image layer is NOT included in the total image size.
+  # Expressed as a ratio between 0-1; fails if the threshold is met or crossed.
+  highestUserWastedPercent: 0.20
+```
+
+<Note>
+  The `.dive-ci` file uses camelCase keys (`lowestEfficiency`, `highestWastedBytes`, `highestUserWastedPercent`). These are different from the snake-case keys used in the main dive config file.
+</Note>
+
+### Rule reference
+
+<ParamField type="number">
+  The lowest allowable image efficiency score. Expressed as a ratio between `0` and `1`. dive fails if the measured efficiency falls below this threshold.
+</ParamField>
+
+<ParamField type="string">
+  The maximum allowable wasted bytes. Expressed as a value with a unit suffix: `B`, `KB`, `MB`, or `GB`. dive fails if wasted space meets or exceeds this threshold. Set to `disabled` to skip this rule.
+</ParamField>
+
+<ParamField type="number">
+  The maximum allowable percentage of the image that is wasted space. Expressed as a ratio between `0` and `1`. The base image layer is excluded from the total image size. dive fails if the wasted percentage meets or exceeds this threshold.
+</ParamField>
+
+<Note>
+  Set any rule value to `disabled` to skip that rule entirely.
+</Note>
+
+## Exit codes
+
+| Code     | Meaning                  |
+| -------- | ------------------------ |
+| `0`      | All rules passed         |
+| non-zero | One or more rules failed |
+
+## Config file path
+
+By default, dive looks for `.dive-ci` at the current working directory. Override this with the `--ci-config` flag:
+
+```bash theme={null}
+CI=true dive --ci-config /path/to/my-ci-rules.yaml <your-image>
+```
+
+## CLI flag overrides
+
+You can set rule thresholds directly on the command line without a config file. These flags are only evaluated when CI mode is active.
+
+```bash theme={null}
+CI=true dive \
+  --lowestEfficiency 0.95 \
+  --highestWastedBytes 20MB \
+  --highestUserWastedPercent 0.20 \
+  <your-image>
+```
+
+## GitHub Actions example
+
+<Steps>
+  <Step title="Build your image">
+    Build the image in an earlier step and tag it for reference.
+
+    ```yaml theme={null}
+    - name: Build Docker image
+      run: docker build -t ${{ env.IMAGE_TAG }} .
+    ```
+  </Step>
+
+  <Step title="Analyze with dive">
+    Run dive in CI mode against the built image.
+
+    ```yaml theme={null}
+    - name: Analyze Docker image
+      run: CI=true dive ${{ env.IMAGE_TAG }}
+      env:
+        CI: "true"
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  You can combine the build and analysis steps into a single command using `dive build`. This builds the image and immediately analyzes it:
+
+  ```bash theme={null}
+  CI=true dive build -t <your-image-tag> .
+  ```
+</Tip>
+
+
+# Configuration file
+Source: https://wagoodman-dive.atlas.mintlify.me/configuration/config-file
+
+Customize dive behavior with a YAML configuration file.
+
+No configuration is required to run dive, but you can create a config file to override the default settings for any session.
+
+## Config file locations
+
+dive searches for a config file in the following locations, in order:
+
+* `$XDG_CONFIG_HOME/dive/*.yaml`
+* `$XDG_CONFIG_DIRS/dive/*.yaml`
+* `~/.config/dive/*.yaml`
+* `~/.dive.yaml`
+
+You can use `.yml` instead of `.yaml` if you prefer.
+
+## Full configuration example
+
+```yaml theme={null}
+# supported options are "docker" and "podman"
+container-engine: docker
+
+# continue with analysis even if there are errors parsing the image archive
+ignore-errors: false
+
+log:
+  enabled: true
+  path: ./dive.log
+  level: info
+
+# Note: you can specify multiple bindings by separating values with a comma.
+# Note: UI hinting is derived from the first binding
+keybinding:
+  # Global bindings
+  quit: ctrl+c
+  toggle-view: tab
+  filter-files: ctrl+f, ctrl+slash
+  close-filter-files: esc
+  up: up,k
+  down: down,j
+  left: left,h
+  right: right,l
+
+  # Layer view specific bindings
+  compare-all: ctrl+a
+  compare-layer: ctrl+l
+
+  # File view specific bindings
+  toggle-collapse-dir: space
+  toggle-collapse-all-dir: ctrl+space
+  toggle-added-files: ctrl+a
+  toggle-removed-files: ctrl+r
+  toggle-modified-files: ctrl+m
+  toggle-unmodified-files: ctrl+u
+  toggle-filetree-attributes: ctrl+b
+  toggle-sort-order: ctrl+o
+  toggle-wrap-tree: ctrl+p
+  extract-file: ctrl+e
+  page-up: pgup,u
+  page-down: pgdn,d
+
+diff:
+  # You can change the default files shown in the filetree (right pane).
+  # All diff types are shown by default.
+  hide:
+    - added
+    - removed
+    - modified
+    - unmodified
+
+filetree:
+  # The default directory-collapse state
+  collapse-dir: false
+
+  # The percentage of screen width the filetree should take on the screen (must be >0 and <1)
+  pane-width: 0.5
+
+  # Show the file attributes next to the filetree
+  show-attributes: true
+
+layer:
+  # Enable showing all changes from this layer and every previous layer
+  show-aggregated-changes: false
+```
+
+## Config options
+
+### Top-level options
+
+<ParamField type="string">
+  The container engine to use when pulling images. Accepted values are `docker` and `podman`.
+</ParamField>
+
+<ParamField type="boolean">
+  When `true`, dive continues analysis even if there are errors parsing the image archive.
+</ParamField>
+
+### log
+
+<ParamField type="boolean">
+  Enable or disable log output to a file.
+</ParamField>
+
+<ParamField type="string">
+  Path to the log file.
+</ParamField>
+
+<ParamField type="string">
+  Log level. Accepted values are `trace`, `debug`, `info`, `warn`, and `error`.
+</ParamField>
+
+### diff
+
+<ParamField type="string[]">
+  List of diff types to hide by default in the filetree pane. All diff types are shown by default. Accepted values are `added`, `removed`, `modified`, and `unmodified`.
+</ParamField>
+
+### filetree
+
+<ParamField type="boolean">
+  Default directory-collapse state in the filetree. Set to `true` to start with all directories collapsed.
+</ParamField>
+
+<ParamField type="number">
+  Percentage of the screen width that the filetree pane occupies. Must be greater than `0` and less than `1`.
+</ParamField>
+
+<ParamField type="boolean">
+  Show file attributes (permissions, owner, size) next to each entry in the filetree.
+</ParamField>
+
+### layer
+
+<ParamField type="boolean">
+  When `true`, the layer view shows all changes from the selected layer and every previous layer combined, instead of only the current layer's changes.
+</ParamField>
+
+### keybinding
+
+You can override any keybinding by adding a `keybinding` section to your config file. Separate multiple keys for the same action with a comma. The first binding listed is used for UI hints.
+
+See [Keybindings](/configuration/keybindings) for the full list of binding names and their defaults.
+
+
+# Keybindings
+Source: https://wagoodman-dive.atlas.mintlify.me/configuration/keybindings
+
+Keyboard shortcuts for navigating dive, and how to customize them.
+
+## Default keybindings
+
+### Global
+
+These bindings work from any view.
+
+| Key               | Action                                      |
+| ----------------- | ------------------------------------------- |
+| `Ctrl+C` or `Q`   | Exit                                        |
+| `Tab`             | Switch between the layer and filetree views |
+| `Ctrl+F`          | Filter files                                |
+| `ESC`             | Close file filter                           |
+| `PageUp` or `U`   | Scroll up a page                            |
+| `PageDown` or `D` | Scroll down a page                          |
+| `Up` or `K`       | Move up one line                            |
+| `Down` or `J`     | Move down one line                          |
+
+### Layer view
+
+| Key      | Action                                                          |
+| -------- | --------------------------------------------------------------- |
+| `Ctrl+A` | Show aggregated image modifications (all layers up to selected) |
+| `Ctrl+L` | Show current layer modifications only                           |
+
+### Filetree view
+
+| Key               | Action                                 |
+| ----------------- | -------------------------------------- |
+| `Space`           | Collapse or uncollapse a directory     |
+| `Ctrl+Space`      | Collapse or uncollapse all directories |
+| `Ctrl+A`          | Show or hide added files               |
+| `Ctrl+R`          | Show or hide removed files             |
+| `Ctrl+M`          | Show or hide modified files            |
+| `Ctrl+U`          | Show or hide unmodified files          |
+| `Ctrl+B`          | Show or hide file attributes           |
+| `Ctrl+O`          | Toggle sort order                      |
+| `Ctrl+P`          | Toggle word wrap on long paths         |
+| `Ctrl+E`          | Extract the selected file              |
+| `PageUp` or `U`   | Scroll up a page                       |
+| `PageDown` or `D` | Scroll down a page                     |
+
+## Customizing keybindings
+
+Add a `keybinding` section to your [config file](/configuration/config-file) to override any default binding.
+
+```yaml theme={null}
+keybinding:
+  # Global bindings
+  quit: ctrl+c
+  toggle-view: tab
+  filter-files: ctrl+f, ctrl+slash
+  close-filter-files: esc
+  up: up,k
+  down: down,j
+  left: left,h
+  right: right,l
+
+  # Layer view bindings
+  compare-all: ctrl+a
+  compare-layer: ctrl+l
+
+  # Filetree view bindings
+  toggle-collapse-dir: space
+  toggle-collapse-all-dir: ctrl+space
+  toggle-added-files: ctrl+a
+  toggle-removed-files: ctrl+r
+  toggle-modified-files: ctrl+m
+  toggle-unmodified-files: ctrl+u
+  toggle-filetree-attributes: ctrl+b
+  toggle-sort-order: ctrl+o
+  toggle-wrap-tree: ctrl+p
+  extract-file: ctrl+e
+  page-up: pgup,u
+  page-down: pgdn,d
+```
+
+<Note>
+  You can assign multiple keys to the same action by separating them with a comma — for example, `up: up,k`. The first binding in the list is used for UI hints shown at the bottom of the screen.
+</Note>
+
+## Binding names reference
+
+| Config key                   | Default              | Description                                |
+| ---------------------------- | -------------------- | ------------------------------------------ |
+| `quit`                       | `ctrl+c`             | Exit dive                                  |
+| `toggle-view`                | `tab`                | Switch between layer and filetree views    |
+| `filter-files`               | `ctrl+f, ctrl+slash` | Open file filter                           |
+| `close-filter-files`         | `esc`                | Close file filter                          |
+| `up`                         | `up,k`               | Move cursor up                             |
+| `down`                       | `down,j`             | Move cursor down                           |
+| `left`                       | `left,h`             | Move cursor left                           |
+| `right`                      | `right,l`            | Move cursor right                          |
+| `page-up`                    | `pgup,u`             | Scroll up a page                           |
+| `page-down`                  | `pgdn,d`             | Scroll down a page                         |
+| `compare-all`                | `ctrl+a`             | Show aggregated layer changes              |
+| `compare-layer`              | `ctrl+l`             | Show current layer changes                 |
+| `toggle-collapse-dir`        | `space`              | Collapse or expand a directory             |
+| `toggle-collapse-all-dir`    | `ctrl+space`         | Collapse or expand all directories         |
+| `toggle-added-files`         | `ctrl+a`             | Show or hide added files                   |
+| `toggle-removed-files`       | `ctrl+r`             | Show or hide removed files                 |
+| `toggle-modified-files`      | `ctrl+m`             | Show or hide modified files                |
+| `toggle-unmodified-files`    | `ctrl+u`             | Show or hide unmodified files              |
+| `toggle-filetree-attributes` | `ctrl+b`             | Show or hide file attributes               |
+| `toggle-sort-order`          | `ctrl+o`             | Toggle the sort order of files in the tree |
+| `toggle-wrap-tree`           | `ctrl+p`             | Toggle word wrap on long file paths        |
+| `extract-file`               | `ctrl+e`             | Extract the selected file's contents       |
+
+
+# Installation
+Source: https://wagoodman-dive.atlas.mintlify.me/installation
+
+Install dive on Linux, macOS, Windows, or run it as a Docker container.
+
+<Tabs>
+  <Tab title="Linux">
+    **Ubuntu/Debian**
+
+    Download and install the latest `.deb` package:
+
+    ```bash theme={null}
+    DIVE_VERSION=$(curl -sL "https://api.github.com/repos/wagoodman/dive/releases/latest" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+    curl -fOL "https://github.com/wagoodman/dive/releases/download/v${DIVE_VERSION}/dive_${DIVE_VERSION}_linux_amd64.deb"
+    sudo apt install ./dive_${DIVE_VERSION}_linux_amd64.deb
+    ```
+
+    **RHEL/CentOS**
+
+    Download and install the latest `.rpm` package:
+
+    ```bash theme={null}
+    DIVE_VERSION=$(curl -sL "https://api.github.com/repos/wagoodman/dive/releases/latest" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+    curl -fOL "https://github.com/wagoodman/dive/releases/download/v${DIVE_VERSION}/dive_${DIVE_VERSION}_linux_amd64.rpm"
+    rpm -i dive_${DIVE_VERSION}_linux_amd64.rpm
+    ```
+
+    **Arch Linux**
+
+    dive is available in the [extra repository](https://archlinux.org/packages/extra/x86_64/dive/):
+
+    ```bash theme={null}
+    pacman -S dive
+    ```
+
+    **Snap**
+
+    <Warning>
+      Do not use the Snap method if you installed Docker via `apt-get`. Installing Docker via Snap alongside an existing `apt-get` Docker installation may break your Docker daemon. See [GitHub issue #546](https://github.com/wagoodman/dive/issues/546) for details.
+    </Warning>
+
+    If you use Docker via Snap, you can install dive and connect it to the Docker snap:
+
+    ```bash theme={null}
+    sudo snap install docker
+    sudo snap install dive
+    sudo snap connect dive:docker-executables docker:docker-executables
+    sudo snap connect dive:docker-daemon docker:docker-daemon
+    ```
+  </Tab>
+
+  <Tab title="macOS">
+    **Homebrew**
+
+    ```bash theme={null}
+    brew install dive
+    ```
+
+    **MacPorts**
+
+    ```bash theme={null}
+    sudo port install dive
+    ```
+
+    You can also download the latest Darwin binary directly from the [releases page](https://github.com/wagoodman/dive/releases/latest).
+  </Tab>
+
+  <Tab title="Windows">
+    **Chocolatey**
+
+    ```powershell theme={null}
+    choco install dive
+    ```
+
+    **Scoop**
+
+    ```powershell theme={null}
+    scoop install main/dive
+    ```
+
+    **Winget**
+
+    ```powershell theme={null}
+    winget install --id wagoodman.dive
+    ```
+
+    You can also download the latest Windows binary from the [releases page](https://github.com/wagoodman/dive/releases/latest).
+  </Tab>
+
+  <Tab title="Docker">
+    Pull the image from Docker Hub or GitHub Container Registry:
+
+    ```bash theme={null}
+    docker pull docker.io/wagoodman/dive
+    # or
+    docker pull ghcr.io/wagoodman/dive
+    ```
+
+    Run dive with the Docker socket mounted so it can access your local images:
+
+    ```bash theme={null}
+    docker run --rm -it \
+        -v /var/run/docker.sock:/var/run/docker.sock \
+        docker.io/wagoodman/dive:latest <image>
+    ```
+
+    On Windows (PowerShell), use backtick line continuations:
+
+    ```powershell theme={null}
+    docker run --rm -it `
+        -v /var/run/docker.sock:/var/run/docker.sock `
+        docker.io/wagoodman/dive:latest <image>
+    ```
+
+    To make this convenient, add an alias to your shell profile:
+
+    ```bash theme={null}
+    alias dive="docker run -ti --rm -v /var/run/docker.sock:/var/run/docker.sock docker.io/wagoodman/dive"
+    ```
+
+    <Note>
+      Depending on your Docker version, you may need to set the `DOCKER_API_VERSION` environment variable explicitly:
+
+      ```bash theme={null}
+      DOCKER_API_VERSION=1.37 dive <image>
+      ```
+
+      When running via `docker run`, pass it as an environment variable:
+
+      ```bash theme={null}
+      docker run --rm -it \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -e DOCKER_API_VERSION=1.37 \
+          docker.io/wagoodman/dive:latest <image>
+      ```
+    </Note>
+  </Tab>
+
+  <Tab title="Go tools">
+    If you have Go 1.10 or later installed, you can install dive directly with `go install`:
+
+    ```bash theme={null}
+    go install github.com/wagoodman/dive@latest
+    ```
+
+    <Note>
+      Installing via `go install` does not embed version information, so `dive -v` will not show a proper version string.
+    </Note>
+  </Tab>
+</Tabs>
+
+<AccordionGroup>
+  <Accordion title="Other package managers">
+    **Nix/NixOS**
+
+    On NixOS:
+
+    ```bash theme={null}
+    nix-env -iA nixos.dive
+    ```
+
+    On non-NixOS (Linux or macOS):
+
+    ```bash theme={null}
+    nix-env -iA nixpkgs.dive
+    ```
+
+    **X-CMD**
+
+    [x-cmd](https://www.x-cmd.com/) is a POSIX shell toolbox with a lightweight package manager:
+
+    ```sh theme={null}
+    x env use dive
+    ```
+  </Accordion>
+</AccordionGroup>
+
+
+# Introduction
+Source: https://wagoodman-dive.atlas.mintlify.me/introduction
+
+Explore Docker image layers, visualize file changes, and find wasted space with dive.
+
+dive is a terminal UI tool for exploring the contents of a Docker image layer by layer. It shows you exactly which files were added, modified, or removed at each build step, and estimates how much space is wasted by duplicated or overwritten files across layers.
+
+If you've ever wondered why your Docker image is larger than expected — or wanted to understand what `RUN apt-get install` actually adds — dive gives you a clear, interactive answer.
+
+## Key features
+
+<CardGroup>
+  <Card title="Interactive layer explorer" icon="layer-group">
+    Select any layer in the left pane to see the combined file tree up to that point. Navigate with arrow keys, collapse directories, and filter files by name.
+  </Card>
+
+  <Card title="File change indicators" icon="file-pen">
+    Every file in the tree is marked as added, modified, removed, or unmodified. Spot exactly what changed — and what didn't — at each layer.
+  </Card>
+
+  <Card title="Efficiency score" icon="gauge-high">
+    The lower pane shows an experimental efficiency metric and the total amount of wasted space — from duplicated files, files moved across layers, or files that were never fully removed.
+  </Card>
+
+  <Card title="Build and analyze in one command" icon="hammer">
+    Replace `docker build` with `dive build` to build your image and immediately open it in the TUI. No extra steps needed.
+  </Card>
+
+  <Card title="CI mode" icon="circle-check">
+    Set `CI=true` to skip the TUI and get a pass/fail result based on configurable thresholds for efficiency and wasted space.
+  </Card>
+
+  <Card title="Multiple image sources" icon="box">
+    Fetch images from the Docker engine, Podman, or load a `.tar` archive directly from disk using the `--source` flag.
+  </Card>
+
+  <Card title="JSON export" icon="file-code">
+    Export the full layer analysis as structured JSON for scripting and automation — no TUI required.
+  </Card>
+
+  <Card title="Flexible installation" icon="download">
+    Available on Linux, macOS, and Windows via package managers, Docker, or `go install`.
+  </Card>
+</CardGroup>
+
+## How it works
+
+When you run `dive <image>`, dive fetches the image from your container engine and analyzes each layer in the image manifest. It builds a merged file tree for each layer, tracks which files changed between layers, and calculates a wasted-space estimate based on files that were overwritten or deleted after being written.
+
+The result is an interactive TUI with three panes:
+
+* **Left pane** — the list of image layers, with size information
+* **Right pane** — the file tree for the selected layer (or all layers combined)
+* **Bottom pane** — image metadata, efficiency score, and wasted space totals
+
+## Get started
+
+<CardGroup>
+  <Card title="Installation" icon="download" href="/installation">
+    Install dive on Linux, macOS, Windows, or run it as a Docker container.
+  </Card>
+
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Analyze your first image and learn the TUI in a few minutes.
+  </Card>
+</CardGroup>
+
+
+# Quick Start
+Source: https://wagoodman-dive.atlas.mintlify.me/quickstart
+
+Analyze your first Docker image with dive in minutes.
+
+This guide walks you through analyzing a Docker image with dive for the first time.
+
+<Steps>
+  <Step title="Install dive">
+    Install dive using your preferred method. See [Installation](/installation) for all options.
+
+    <CodeGroup>
+      ```bash macOS theme={null}
+      brew install dive
+      ```
+
+      ```bash Ubuntu/Debian theme={null}
+      DIVE_VERSION=$(curl -sL "https://api.github.com/repos/wagoodman/dive/releases/latest" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+      curl -fOL "https://github.com/wagoodman/dive/releases/download/v${DIVE_VERSION}/dive_${DIVE_VERSION}_linux_amd64.deb"
+      sudo apt install ./dive_${DIVE_VERSION}_linux_amd64.deb
+      ```
+
+      ```bash Docker theme={null}
+      docker pull docker.io/wagoodman/dive
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Analyze an image">
+    Pass any image tag, ID, or digest to dive:
+
+    ```bash theme={null}
+    dive nginx:latest
+    ```
+
+    dive will fetch the image from your local Docker daemon and open the interactive TUI. If the image isn't pulled yet, Docker will pull it automatically.
+
+    <Tip>
+      If you're running dive via Docker, mount the Docker socket so it can access your images:
+
+      ```bash theme={null}
+      docker run --rm -it \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          docker.io/wagoodman/dive:latest nginx:latest
+      ```
+    </Tip>
+  </Step>
+
+  <Step title="Navigate the TUI">
+    The dive UI has three panes:
+
+    * **Left pane (Layers)**: lists every layer in the image with its size and the command that created it
+    * **Right pane (File tree)**: shows the cumulative filesystem at the selected layer
+    * **Bottom left (Image details)**: shows total size, wasted bytes, and efficiency score
+
+    Use these keys to get started:
+
+    | Key                    | Action                                       |
+    | ---------------------- | -------------------------------------------- |
+    | `Tab`                  | Switch between layer list and file tree      |
+    | `↑` / `↓` or `K` / `J` | Move up/down in the current pane             |
+    | `Space`                | Collapse/expand a directory in the file tree |
+    | `Ctrl+F`               | Filter files by name                         |
+    | `ESC`                  | Close the filter                             |
+    | `Ctrl+C` or `Q`        | Quit                                         |
+  </Step>
+
+  <Step title="Inspect file changes per layer">
+    Select different layers in the left pane to see what changed. Each file in the tree is marked:
+
+    * **A** — Added in this layer
+    * **M** — Modified compared to a previous layer
+    * **R** — Removed (deleted) in this layer
+    * **U** — Unmodified
+
+    Toggle between viewing just the current layer's changes or all accumulated changes:
+
+    | Key      | Action                                      |
+    | -------- | ------------------------------------------- |
+    | `Ctrl+L` | Show only the current layer's modifications |
+    | `Ctrl+A` | Show aggregated changes up to this layer    |
+  </Step>
+
+  <Step title="Review efficiency results">
+    The bottom-left pane shows your image's efficiency score. A score close to 1.0 (100%) means minimal waste. Lower scores indicate files duplicated or overwritten across layers.
+
+    Press `Ctrl+U` in the file tree to hide unmodified files and focus only on what changed.
+  </Step>
+</Steps>
+
+## Build and analyze in one command
+
+Instead of building then separately running dive, replace `docker build` with `dive build`:
+
+```bash theme={null}
+dive build -t my-app:latest .
+```
+
+This builds your image and immediately opens the TUI for analysis. All standard `docker build` flags are passed through.
+
+## Run in CI mode
+
+To skip the interactive UI and get a pass/fail result based on efficiency thresholds:
+
+```bash theme={null}
+CI=true dive nginx:latest
+```
+
+Returns exit code `0` if the image passes your configured rules, non-zero if it fails. See [CI Integration](/configuration/ci-integration) for configuring thresholds.
+
+## Set up a Docker alias
+
+If you regularly run dive via Docker, create an alias:
+
+```bash theme={null}
+alias dive="docker run -ti --rm -v /var/run/docker.sock:/var/run/docker.sock docker.io/wagoodman/dive"
+```
+
+Then use it like a native install:
+
+```bash theme={null}
+dive nginx:latest
+```
+
+## Next steps
+
+<CardGroup>
+  <Card title="Exploring Layers" icon="layer-group" href="/usage/exploring-layers">
+    Learn all the navigation shortcuts and file tree controls.
+  </Card>
+
+  <Card title="Analyzing Efficiency" icon="gauge-high" href="/usage/analyzing-efficiency">
+    Understand the efficiency score and how to improve it.
+  </Card>
+
+  <Card title="Configuration" icon="gear" href="/configuration/config-file">
+    Customize dive's behavior with a config file.
+  </Card>
+
+  <Card title="CI Integration" icon="circle-check" href="/configuration/ci-integration">
+    Add image quality gates to your CI pipeline.
+  </Card>
+</CardGroup>
+
+
+# CI rules reference
+Source: https://wagoodman-dive.atlas.mintlify.me/reference/ci-rules
+
+Complete reference for dive CI rules, configuration, and pass/fail behavior.
+
+## Overview
+
+When you run dive in CI mode (by setting `CI=true` or passing `--ci`), it skips the interactive TUI and evaluates your image against a set of configurable rules. Each rule produces one of four statuses:
+
+| Status         | Meaning                                         |
+| -------------- | ----------------------------------------------- |
+| `RulePassed`   | The image meets the rule's threshold.           |
+| `RuleFailed`   | The image violates the rule's threshold.        |
+| `RuleDisabled` | The rule is explicitly disabled; it is skipped. |
+| `RuleUnknown`  | The rule could not be evaluated.                |
+
+<Warning>
+  If any rule has a `RuleFailed` status, dive exits with a non-zero return code. Make sure your CI pipeline checks the exit code.
+</Warning>
+
+Rules are read from a `.dive-ci` file at the root of your repository, and can be overridden with CLI flags.
+
+***
+
+## Configuration file
+
+Create a `.dive-ci` file in your repository root:
+
+```yaml theme={null}
+rules:
+  # Fail if image efficiency drops below this ratio (0-1).
+  lowestEfficiency: 0.9
+
+  # Fail if wasted bytes exceed this amount.
+  # Accepts: B, KB, MB, GB. Set to "disabled" to skip.
+  highestWastedBytes: disabled
+
+  # Fail if wasted space exceeds this percentage of user-added bytes (0-1).
+  # The base image layer is NOT included in the calculation.
+  highestUserWastedPercent: 0.1
+```
+
+<Note>
+  The `.dive-ci` file uses camelCase keys (`lowestEfficiency`, `highestWastedBytes`, `highestUserWastedPercent`). These keys are different from the snake-case keys used in the main dive application config file.
+</Note>
+
+To use a config file at a different path, pass `--ci-config`:
+
+```bash theme={null}
+CI=true dive my-image:latest --ci-config ./ci/dive-rules.yaml
+```
+
+***
+
+## Rules
+
+### `lowestEfficiency`
+
+<ParamField type="float">
+  The lowest allowable image efficiency ratio. Dive fails the CI check if the measured efficiency is **below** this threshold.
+
+  * Range: `0` to `1` (e.g. `0.9` = 90% efficient)
+  * `.dive-ci` key: `lowestEfficiency`
+  * CLI flag: `--lowestEfficiency`
+  * Disable: set to `"disabled"`, `"off"`, or `"false"`
+
+  **Example**: To require at least 95% image efficiency:
+
+  ```yaml theme={null}
+  rules:
+    lowestEfficiency: 0.95
+  ```
+
+  ```bash theme={null}
+  CI=true dive my-image:latest --lowestEfficiency 0.95
+  ```
+
+  The rule fails with a message similar to:
+
+  ```
+  image efficiency is too low (efficiency=0.88 < threshold=0.95)
+  ```
+</ParamField>
+
+***
+
+### `highestWastedBytes`
+
+<ParamField type="string">
+  The highest allowable number of bytes wasted in the image. Dive fails the CI check if the wasted byte count **exceeds** this threshold.
+
+  * Accepted formats: `B`, `KB`, `MB`, `GB` (e.g. `20MB`, `512KB`)
+  * `.dive-ci` key: `highestWastedBytes`
+  * CLI flag: `--highestWastedBytes`
+  * Disable: set to `"disabled"`, `"off"`, or `"false"` (this is the default)
+
+  **Example**: To fail if more than 20 MB is wasted:
+
+  ```yaml theme={null}
+  rules:
+    highestWastedBytes: 20MB
+  ```
+
+  ```bash theme={null}
+  CI=true dive my-image:latest --highestWastedBytes 20MB
+  ```
+
+  The rule fails with a message similar to:
+
+  ```
+  too many bytes wasted (wasted-bytes=25165824 > threshold=20971520)
+  ```
+</ParamField>
+
+***
+
+### `highestUserWastedPercent`
+
+<ParamField type="float">
+  The highest allowable percentage of user-added bytes that are wasted. Dive fails the CI check if the wasted percentage **exceeds** this threshold.
+
+  * Range: `0` to `1` (e.g. `0.1` = 10%)
+  * The **base image layer is not included** in the user size calculation — only layers you add on top of the base image are counted.
+  * `.dive-ci` key: `highestUserWastedPercent`
+  * CLI flag: `--highestUserWastedPercent`
+  * Disable: set to `"disabled"`, `"off"`, or `"false"`
+
+  **Example**: To fail if more than 20% of user-added bytes are wasted:
+
+  ```yaml theme={null}
+  rules:
+    highestUserWastedPercent: 0.20
+  ```
+
+  ```bash theme={null}
+  CI=true dive my-image:latest --highestUserWastedPercent 0.20
+  ```
+
+  The rule fails with a message similar to:
+
+  ```
+  too many bytes wasted, relative to the user bytes added (%-user-wasted-bytes=0.25 > threshold=0.20)
+  ```
+</ParamField>
+
+***
+
+## Disabling a rule
+
+To disable a rule entirely, set its value to `"disabled"`, `"off"`, or `"false"` in your `.dive-ci` file:
+
+```yaml theme={null}
+rules:
+  lowestEfficiency: 0.9
+  highestWastedBytes: disabled
+  highestUserWastedPercent: disabled
+```
+
+A disabled rule always results in `RuleDisabled` and never causes a CI failure.
+
+***
+
+## Full example
+
+A complete `.dive-ci` file covering all rules:
+
+```yaml theme={null}
+rules:
+  # Fail if efficiency drops below 90%.
+  lowestEfficiency: 0.9
+
+  # Fail if more than 50 MB is wasted.
+  highestWastedBytes: 50MB
+
+  # Fail if more than 20% of user-added bytes are wasted.
+  highestUserWastedPercent: 0.20
+```
+
+Run in CI:
+
+```bash theme={null}
+CI=true dive my-image:latest
+```
+
+Or use a non-default config path:
+
+```bash theme={null}
+CI=true dive my-image:latest --ci-config ./ci/dive-rules.yaml
+```
+
+
+# CLI reference
+Source: https://wagoodman-dive.atlas.mintlify.me/reference/cli
+
+Complete reference for all dive commands and flags.
+
+## `dive [IMAGE]`
+
+Explore the contents of a Docker image layer by layer, and identify sources of wasted space.
+
+```bash theme={null}
+dive <image-tag>
+```
+
+The image argument accepts a tag, ID, digest, or a URL with a source scheme:
+
+```bash theme={null}
+dive nginx:latest
+dive sha256:abc123...
+dive docker://nginx:latest
+dive podman://my-image:v1
+dive docker-archive:///path/to/image.tar
+```
+
+### Global flags
+
+<ParamField type="string">
+  The container engine to fetch the image from. Accepted values: `docker`, `podman`, `docker-archive`.
+
+  You can also specify the source inline using a URL scheme:
+
+  ```bash theme={null}
+  dive docker://nginx:latest
+  dive podman://my-image:v1
+  dive docker-archive:///path/to/image.tar
+  ```
+</ParamField>
+
+<ParamField type="boolean">
+  Ignore image parsing errors and run the analysis anyway. Useful for malformed or non-standard images.
+
+  Short form: `-i`
+
+  ```bash theme={null}
+  dive my-image:latest --ignore-errors
+  ```
+</ParamField>
+
+<ParamField type="string">
+  Skip the interactive TUI and write the layer analysis statistics to the specified file path as JSON.
+
+  Short form: `-j`
+
+  ```bash theme={null}
+  dive my-image:latest --json ./analysis.json
+  ```
+</ParamField>
+
+<ParamField type="string">
+  CI rule: the lowest allowable image efficiency, expressed as a ratio between `0` and `1`. The build fails if the measured efficiency falls below this threshold.
+
+  Only evaluated when CI mode is active.
+
+  ```bash theme={null}
+  dive my-image:latest --ci --lowestEfficiency 0.95
+  ```
+</ParamField>
+
+<ParamField type="string">
+  CI rule: the highest allowable number of wasted bytes. Accepts human-readable sizes: `B`, `KB`, `MB`, `GB`. The build fails if wasted bytes exceed this value.
+
+  Only evaluated when CI mode is active.
+
+  ```bash theme={null}
+  dive my-image:latest --ci --highestWastedBytes 20MB
+  ```
+</ParamField>
+
+<ParamField type="string">
+  CI rule: the highest allowable percentage of user-added bytes that are wasted, expressed as a ratio between `0` and `1`. The base image layer is not included in the calculation.
+
+  Only evaluated when CI mode is active.
+
+  ```bash theme={null}
+  dive my-image:latest --ci --highestUserWastedPercent 0.20
+  ```
+</ParamField>
+
+<ParamField type="boolean">
+  Skip the interactive TUI and validate the image against CI rules. Equivalent to setting `CI=true` in the environment.
+
+  ```bash theme={null}
+  dive my-image:latest --ci
+  ```
+</ParamField>
+
+<ParamField type="string">
+  Path to the YAML CI rules config file. Overrides the default `.dive-ci` location.
+
+  ```bash theme={null}
+  dive my-image:latest --ci --ci-config ./config/dive-ci.yaml
+  ```
+</ParamField>
+
+<ParamField type="string">
+  Path to the dive configuration file. By default, dive searches several standard locations.
+
+  ```bash theme={null}
+  dive my-image:latest -c ~/.config/dive/config.yaml
+  ```
+</ParamField>
+
+<ParamField type="count">
+  Increase log verbosity. Pass multiple times to increase further (e.g. `-vv`).
+
+  ```bash theme={null}
+  dive my-image:latest -v
+  ```
+</ParamField>
+
+<ParamField type="boolean">
+  Quiet mode. Suppress non-essential output.
+
+  ```bash theme={null}
+  dive my-image:latest -q
+  ```
+</ParamField>
+
+### CI mode
+
+Set the `CI=true` environment variable to enable CI mode without using the `--ci` flag. In CI mode, dive skips the interactive TUI, analyzes the image, and exits with a non-zero code if any rule fails.
+
+```bash theme={null}
+CI=true dive my-image:latest
+```
+
+See [CI rules reference](/reference/ci-rules) for details on configuring pass/fail rules.
+
+***
+
+## `dive build`
+
+Build a Docker image from a Dockerfile and immediately analyze it.
+
+```bash theme={null}
+dive build [any valid docker build arguments]
+```
+
+This is a thin wrapper around `docker build`. All flags and arguments are passed through to Docker directly.
+
+```bash theme={null}
+dive build -t my-image:latest .
+dive build -t my-image:latest --build-arg VERSION=1.0 -f Dockerfile.prod .
+```
+
+<Note>
+  Flag parsing is disabled for this subcommand — every argument is forwarded to `docker build` as-is. dive-specific flags (like `--source`) are not available here.
+</Note>
+
+***
+
+## `dive version`
+
+Print version information for the installed dive binary.
+
+```bash theme={null}
+dive version
+```
+
+***
+
+## `dive config`
+
+Print the current resolved configuration, including all defaults and any overrides from config files or environment variables.
+
+```bash theme={null}
+dive config
+```
+
+
+# Troubleshooting
+Source: https://wagoodman-dive.atlas.mintlify.me/reference/troubleshooting
+
+Solutions to common problems when running dive.
+
+<Note>
+  If you run into a problem that isn't covered here, search for existing reports or file a new issue at [github.com/wagoodman/dive/issues](https://github.com/wagoodman/dive/issues).
+</Note>
+
+<AccordionGroup>
+  <Accordion title="Cannot connect to Docker daemon">
+    Dive needs the Docker daemon to be running before it can pull or analyze images.
+
+    **Check that the daemon is running:**
+
+    ```bash theme={null}
+    docker ps
+    ```
+
+    If this fails, start Docker and try again.
+
+    **Check socket permissions:**
+
+    You may need to run dive with `sudo`, or add your user to the `docker` group:
+
+    ```bash theme={null}
+    sudo usermod -aG docker $USER
+    newgrp docker
+    ```
+
+    **Docker Desktop on macOS:**
+
+    Open Docker Desktop and wait until the status shows "Running" before invoking dive.
+
+    **Alternative runtimes (Colima, Rancher Desktop, etc.):**
+
+    Set `DOCKER_HOST` to point at the correct socket:
+
+    ```bash theme={null}
+    export DOCKER_HOST=$(docker context inspect -f '{{ .Endpoints.docker.Host }}')
+    dive my-image:latest
+    ```
+  </Accordion>
+
+  <Accordion title="Image not found / invalid reference format">
+    Dive couldn't locate the image you specified.
+
+    **Verify the image exists locally:**
+
+    ```bash theme={null}
+    docker image ls
+    ```
+
+    **Pull the image first:**
+
+    ```bash theme={null}
+    docker pull nginx:latest
+    dive nginx:latest
+    ```
+
+    **Check the image tag spelling:**
+
+    Image references are case-sensitive. Confirm the tag name matches exactly what is returned by `docker image ls`.
+  </Accordion>
+
+  <Accordion title="Permission denied when using the Docker socket">
+    When you run dive via a Docker container, you must mount the host Docker socket into the container. Without it, the containerized dive process cannot reach the Docker daemon.
+
+    ```bash theme={null}
+    docker run --rm -it \
+        -v /var/run/docker.sock:/var/run/docker.sock \
+        docker.io/wagoodman/dive:latest my-image:latest
+    ```
+
+    The `-v /var/run/docker.sock:/var/run/docker.sock` flag gives the container access to the host Docker daemon. Without it, you will see permission errors.
+  </Accordion>
+
+  <Accordion title="API version mismatch errors">
+    If your local Docker client and daemon have different API versions, you may see errors like `client version X.X is too new`.
+
+    **Set the API version explicitly:**
+
+    ```bash theme={null}
+    DOCKER_API_VERSION=1.37 dive my-image:latest
+    ```
+
+    **When running via Docker image:**
+
+    ```bash theme={null}
+    docker run --rm -it \
+        -v /var/run/docker.sock:/var/run/docker.sock \
+        -e DOCKER_API_VERSION=1.37 \
+        docker.io/wagoodman/dive:latest my-image:latest
+    ```
+
+    Adjust `1.37` to match the API version your daemon supports. You can check this with `docker version`.
+  </Accordion>
+
+  <Accordion title="Snap installation conflicts with Docker">
+    If you installed Docker via `apt-get` and dive via Snap, the Snap-managed Docker may conflict with your existing Docker daemon and break it.
+
+    <Warning>
+      Do not install dive via Snap if you installed Docker using `apt-get`. Use the deb package or Homebrew instead.
+    </Warning>
+
+    **Install via deb package instead:**
+
+    ```bash theme={null}
+    DIVE_VERSION=$(curl -sL "https://api.github.com/repos/wagoodman/dive/releases/latest" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+    curl -fOL "https://github.com/wagoodman/dive/releases/download/v${DIVE_VERSION}/dive_${DIVE_VERSION}_linux_amd64.deb"
+    sudo apt install ./dive_${DIVE_VERSION}_linux_amd64.deb
+    ```
+
+    For more context, see [GitHub issue #546](https://github.com/wagoodman/dive/issues/546).
+  </Accordion>
+
+  <Accordion title="Podman is not working">
+    Podman support in dive is **Linux only**. Podman is not supported on macOS or Windows.
+
+    **Check that the Podman socket is running:**
+
+    ```bash theme={null}
+    systemctl --user start podman.socket
+    ```
+
+    **Tell dive to use Podman:**
+
+    ```bash theme={null}
+    dive my-image:latest --source podman
+    # or using the URL scheme:
+    dive podman://my-image:latest
+    ```
+
+    If dive still cannot connect, verify the socket path and that Podman is installed correctly on your system.
+  </Accordion>
+
+  <Accordion title="&#x22;exactly one argument is required&#x22; error">
+    Dive requires exactly one positional argument: the image reference. If you omit it or pass extra arguments, dive exits with this error.
+
+    **Correct usage:**
+
+    ```bash theme={null}
+    dive my-image:latest
+    ```
+
+    If you are passing flags, make sure they come after the image name or use `--` to separate them:
+
+    ```bash theme={null}
+    dive my-image:latest --source docker
+    ```
+  </Accordion>
+
+  <Accordion title="CI mode always passes / rules are ignored">
+    If dive exits with code `0` in CI even though you expect failures, check the following:
+
+    **Ensure `CI=true` is set:**
+
+    ```bash theme={null}
+    CI=true dive my-image:latest
+    ```
+
+    Or pass the `--ci` flag explicitly:
+
+    ```bash theme={null}
+    dive my-image:latest --ci
+    ```
+
+    **Check your `.dive-ci` file location:**
+
+    By default, dive looks for `.dive-ci` at the current working directory. If your file is elsewhere, specify the path:
+
+    ```bash theme={null}
+    CI=true dive my-image:latest --ci-config ./config/.dive-ci
+    ```
+
+    **Verify your rule values are valid:**
+
+    * Efficiency and percent ratios must be between `0` and `1`.
+    * Byte values must include a unit: `20MB`, `512KB`, `1GB`.
+    * Invalid values may be silently ignored or cause the rule to be disabled.
+
+    See [CI rules reference](/reference/ci-rules) for valid formats.
+  </Accordion>
+
+  <Accordion title="TUI display issues or garbled output">
+    If the interactive TUI looks broken, shows garbled characters, or doesn't render correctly:
+
+    **Try a different terminal emulator.** Some minimal or older terminals do not support the control sequences dive uses.
+
+    **Check your `TERM` variable:**
+
+    ```bash theme={null}
+    echo $TERM
+    ```
+
+    For best results, use a terminal that reports `xterm-256color` or similar.
+
+    **Ensure 256-color support:**
+
+    ```bash theme={null}
+    TERM=xterm-256color dive my-image:latest
+    ```
+
+    If you only need the analysis output without the TUI, use `--json` to export results to a file:
+
+    ```bash theme={null}
+    dive my-image:latest --json ./analysis.json
+    ```
+  </Accordion>
+</AccordionGroup>
+
+
+# Analyzing image efficiency
+Source: https://wagoodman-dive.atlas.mintlify.me/usage/analyzing-efficiency
+
+Understand the efficiency score, wasted bytes metrics, and how to reduce image size.
+
+dive calculates an efficiency score and wasted-space metrics every time you analyze an image. These numbers appear in the bottom-left pane of the TUI and in the JSON export.
+
+## The efficiency score
+
+The efficiency score is a ratio between `0` and `1` that represents how efficiently your image uses the space it occupies. A score of `1.0` means every byte stored in the image is unique across all layers — nothing is duplicated or wasted. A lower score indicates that some bytes are being stored redundantly.
+
+The score is calculated as:
+
+```
+efficiency = minimum_unique_bytes / total_discovered_bytes
+```
+
+For each file path seen across all layers, dive records the smallest version of that file (minimum size) and the total cumulative size across every occurrence. Paths that appear only once do not affect the score. Paths that appear multiple times reduce it, weighted by how large they are.
+
+## Metrics at a glance
+
+| Metric             | Description                                                                            |
+| ------------------ | -------------------------------------------------------------------------------------- |
+| **Efficiency**     | Score from `0` to `1`; higher is better                                                |
+| **Image size**     | Total compressed size of all layers combined                                           |
+| **Wasted bytes**   | Bytes consumed by files that are duplicated or removed across layers                   |
+| **Wasted (user%)** | Wasted bytes as a fraction of the user image size                                      |
+| **Inefficiencies** | Ranked list of file paths that contribute the most wasted space, with cumulative sizes |
+
+<Note>
+  The base image layer (layer index `0`) is excluded from user-size calculations. The `highestUserWastedPercent` CI rule and the wasted-user-percent metric both measure waste relative to everything *above* the base image.
+</Note>
+
+## What causes wasted space
+
+Three patterns inflate your wasted-bytes count:
+
+1. **Files duplicated across layers** — A file written in layer 2 and then written again (with the same or different content) in layer 4 means both copies are stored in the image.
+2. **Files overwritten or moved** — Copying a file to a new path and deleting the original still keeps the original bytes in the earlier layer.
+3. **Files added then deleted later** — Adding a package cache in one `RUN` step and removing it in a later step stores the cache in the earlier layer permanently.
+
+## Interpreting results
+
+| Score range     | Interpretation                                                 |
+| --------------- | -------------------------------------------------------------- |
+| `0.95` – `1.0`  | Efficient — minimal or no wasted space                         |
+| `0.85` – `0.95` | Acceptable — some room for improvement                         |
+| Below `0.85`    | Needs attention — significant wasted space worth investigating |
+
+These thresholds are a guideline. The default CI threshold for `lowestEfficiency` is `0.95`. Review the inefficiencies list to identify which specific files are driving the waste.
+
+## Practical tips for reducing wasted space
+
+**Combine `RUN` commands**
+
+Each `RUN` instruction creates a new layer. Splitting installation and cleanup into separate `RUN` steps means the cleanup layer marks files as deleted, but those files still exist in the installation layer.
+
+```dockerfile theme={null}
+# Inefficient — cache is stored in the first layer
+RUN apt-get update && apt-get install -y curl
+RUN rm -rf /var/lib/apt/lists/*
+
+# Efficient — update, install, and clean up in one layer
+RUN apt-get update && apt-get install -y curl \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+**Clean up in the same `RUN` step**
+
+Package managers leave behind caches, lock files, and temporary downloads. Remove them in the same command that installs packages so they never make it into a layer.
+
+```dockerfile theme={null}
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+**Use multi-stage builds**
+
+Multi-stage builds let you compile or build in one stage and copy only the final artifact into the production image. Build tools, source code, and intermediate files stay out of the final image entirely.
+
+```dockerfile theme={null}
+FROM golang:1.22 AS builder
+WORKDIR /app
+COPY . .
+RUN go build -o myapp .
+
+FROM debian:bookworm-slim
+COPY --from=builder /app/myapp /usr/local/bin/myapp
+ENTRYPOINT ["myapp"]
+```
+
+**Be careful with `COPY` commands**
+
+`COPY`ing a directory that already exists in the image overwrites individual files but leaves the previous versions of those files in the earlier layer. Use `.dockerignore` to exclude unnecessary files before they ever enter the build context.
+
+
+# Exploring layers
+Source: https://wagoodman-dive.atlas.mintlify.me/usage/exploring-layers
+
+Navigate the dive TUI to inspect image layers and file tree changes.
+
+When you run `dive <image>`, the terminal UI opens with three panes that give you a complete picture of your image's layer structure and file contents.
+
+## TUI layout
+
+The interface is divided into three areas:
+
+* **Left pane (layers)** — lists every layer in the image, showing the Dockerfile command that produced it and its size.
+* **Right pane (file tree)** — shows the cumulative file system at the selected layer, including all files from previous layers.
+* **Bottom-left pane (image stats)** — displays total image size, wasted bytes, and the efficiency score.
+
+Use <kbd>Tab</kbd> to move focus between the layer pane and the file tree pane.
+
+## Selecting a layer
+
+When you select a layer in the left pane, the file tree on the right updates to reflect the cumulative state of the file system up to and including that layer. You are always looking at a snapshot of the full file system at that point in the image build, not just the files changed in that single layer.
+
+Switch between two comparison modes with these bindings while the layer pane is focused:
+
+| Key               | Action                                                                              |
+| ----------------- | ----------------------------------------------------------------------------------- |
+| <kbd>Ctrl+A</kbd> | Show aggregated modifications (all changes from every layer up to the selected one) |
+| <kbd>Ctrl+L</kbd> | Show only the modifications introduced by the currently selected layer              |
+
+<Tip>
+  Start with <kbd>Ctrl+A</kbd> (aggregate view) to see everything that has changed across all layers at once. Switch to <kbd>Ctrl+L</kbd> when you want to isolate exactly what a single layer contributed.
+</Tip>
+
+## File change indicators
+
+Each entry in the file tree is prefixed with a single character that indicates what happened to that file in the current view:
+
+| Indicator | Meaning                                                        |
+| --------- | -------------------------------------------------------------- |
+| `A`       | Added — the file was created in this layer                     |
+| `M`       | Modified — the file existed before and was changed             |
+| `R`       | Removed — the file was deleted (whiteout)                      |
+| `U`       | Unmodified — the file exists but was not touched by this layer |
+
+## Navigating the file tree
+
+Use these bindings while the file tree pane is focused:
+
+| Key                                | Action                                 |
+| ---------------------------------- | -------------------------------------- |
+| <kbd>Up</kbd> / <kbd>K</kbd>       | Move up one line                       |
+| <kbd>Down</kbd> / <kbd>J</kbd>     | Move down one line                     |
+| <kbd>PageUp</kbd> / <kbd>U</kbd>   | Scroll up a page                       |
+| <kbd>PageDown</kbd> / <kbd>D</kbd> | Scroll down a page                     |
+| <kbd>Space</kbd>                   | Collapse or uncollapse a directory     |
+| <kbd>Ctrl+Space</kbd>              | Collapse or uncollapse all directories |
+| <kbd>Ctrl+F</kbd>                  | Open the file filter                   |
+| <kbd>Esc</kbd>                     | Close the file filter                  |
+
+## Filtering what you see
+
+You can show or hide specific change types to focus on what matters:
+
+| Key               | Action                                               |
+| ----------------- | ---------------------------------------------------- |
+| <kbd>Ctrl+A</kbd> | Show/hide added files                                |
+| <kbd>Ctrl+R</kbd> | Show/hide removed files                              |
+| <kbd>Ctrl+M</kbd> | Show/hide modified files                             |
+| <kbd>Ctrl+U</kbd> | Show/hide unmodified files                           |
+| <kbd>Ctrl+B</kbd> | Show/hide file attributes (permissions, owner, size) |
+
+Use <kbd>Ctrl+F</kbd> to filter files by name. Type part of a path and the tree narrows to matching entries. Press <kbd>Esc</kbd> to clear the filter.
+
+## Additional file tree actions
+
+| Key               | Action                                 |
+| ----------------- | -------------------------------------- |
+| <kbd>Ctrl+O</kbd> | Toggle sort order of files in the tree |
+| <kbd>Ctrl+P</kbd> | Toggle word wrap on long file paths    |
+| <kbd>Ctrl+E</kbd> | Extract the selected file's contents   |
+
+
+# Image sources
+Source: https://wagoodman-dive.atlas.mintlify.me/usage/image-sources
+
+Pull images from Docker, Podman, or a local tar archive.
+
+dive supports three image sources. You can point it at a running container engine or load an image directly from a tar file on disk.
+
+## Available sources
+
+| Source         | Value            | Description                                                  |
+| -------------- | ---------------- | ------------------------------------------------------------ |
+| Docker engine  | `docker`         | Fetches the image from your local Docker daemon (default)    |
+| Podman engine  | `podman`         | Fetches the image from your local Podman daemon (Linux only) |
+| Docker archive | `docker-archive` | Loads the image from a `.tar` file on disk                   |
+
+<Note>
+  Podman support is Linux only. The `podman` source is not available on macOS or Windows.
+</Note>
+
+## Specifying the source
+
+You can specify the image source in two ways.
+
+### Using the `--source` flag
+
+Pass `--source` followed by the source name and the image reference as a separate argument:
+
+```bash theme={null}
+dive --source docker nginx:latest
+dive --source podman my-image:tag
+dive --source docker-archive /path/to/image.tar
+```
+
+### Using a URL scheme prefix
+
+Prefix the image argument with `<source>://` to encode the source directly in the image reference:
+
+```bash theme={null}
+dive docker://nginx:latest
+dive podman://my-image:tag
+dive docker-archive:///path/to/image.tar
+```
+
+## Examples by source
+
+<Tabs>
+  <Tab title="Docker">
+    Analyze an image from your local Docker daemon (this is the default — no `--source` flag is needed):
+
+    ```bash theme={null}
+    dive nginx:latest
+    ```
+
+    Equivalent explicit form:
+
+    ```bash theme={null}
+    dive --source docker nginx:latest
+    # or
+    dive docker://nginx:latest
+    ```
+
+    If you run dive as a Docker container itself, you must mount the Docker socket so it can reach the daemon:
+
+    ```bash theme={null}
+    docker run --rm -it \
+        -v /var/run/docker.sock:/var/run/docker.sock \
+        docker.io/wagoodman/dive:latest nginx:latest
+    ```
+  </Tab>
+
+  <Tab title="Podman">
+    Analyze an image from your local Podman daemon on Linux:
+
+    ```bash theme={null}
+    dive --source podman my-image:tag
+    # or
+    dive podman://my-image:tag
+    ```
+
+    <Warning>
+      Podman is only supported on Linux. Running with `--source podman` on macOS or Windows will fail.
+    </Warning>
+  </Tab>
+
+  <Tab title="Docker archive">
+    Analyze an image saved as a tar file on disk:
+
+    ```bash theme={null}
+    dive --source docker-archive /path/to/image.tar
+    # or
+    dive docker-archive:///path/to/image.tar
+    ```
+
+    To export an image from Docker and then analyze it:
+
+    ```bash theme={null}
+    docker save nginx > nginx.tar
+    dive docker-archive://nginx.tar
+    ```
+
+    This is useful when the image was built on another machine, pulled from a registry offline, or produced by a build system that outputs OCI archives.
+  </Tab>
+</Tabs>
+
+
+# JSON export
+Source: https://wagoodman-dive.atlas.mintlify.me/usage/json-export
+
+Write layer analysis results to a JSON file for CI scripting and custom tooling.
+
+The `--json` flag (short: `-j`) skips the interactive TUI and writes the full analysis to a JSON file. This is useful for CI pipelines, custom reporting tools, or any workflow where you want to process dive's output programmatically.
+
+## Basic usage
+
+```bash theme={null}
+dive --json output.json nginx:latest
+```
+
+dive analyzes the image, writes the results to `output.json`, and exits. No TUI is opened.
+
+<Note>
+  The directory containing the output file must already exist. dive will return an error if the parent directory does not exist.
+</Note>
+
+## Use in CI
+
+Combine `--json` with `CI=true` to get both a machine-readable file and a pass/fail exit code in one run:
+
+```bash theme={null}
+CI=true dive --json analysis.json nginx:latest
+```
+
+You can then parse `analysis.json` in subsequent steps — for example, to post the efficiency score to a dashboard or fail the build based on custom thresholds beyond what the built-in CI rules support.
+
+## JSON structure
+
+The output file contains a single JSON object with two top-level keys: `layer` and `image`.
+
+### Top-level object
+
+<ResponseField name="layer" type="array">
+  An ordered array of layer objects, one per image layer.
+</ResponseField>
+
+<ResponseField name="image" type="object">
+  Aggregate efficiency and size metrics for the full image.
+</ResponseField>
+
+### Layer object
+
+Each element in the `layer` array describes one image layer.
+
+<ResponseField name="index" type="integer">
+  Zero-based position of the layer in the image stack. Layer `0` is the base layer.
+</ResponseField>
+
+<ResponseField name="id" type="string">
+  Short layer ID.
+</ResponseField>
+
+<ResponseField name="digestId" type="string">
+  Full digest identifier for the layer.
+</ResponseField>
+
+<ResponseField name="sizeBytes" type="integer">
+  Uncompressed size of this layer in bytes.
+</ResponseField>
+
+<ResponseField name="command" type="string">
+  The Dockerfile instruction that produced this layer (e.g., `RUN apt-get install -y curl`).
+</ResponseField>
+
+<ResponseField name="fileList" type="array">
+  Array of file info objects listing every file touched by this layer.
+</ResponseField>
+
+### Image object
+
+<ResponseField name="sizeBytes" type="integer">
+  Total uncompressed size of the image across all layers, in bytes.
+</ResponseField>
+
+<ResponseField name="inefficientBytes" type="integer">
+  Total bytes wasted by files that are duplicated, overwritten, or deleted across layers.
+</ResponseField>
+
+<ResponseField name="efficiencyScore" type="float">
+  Efficiency ratio between `0` and `1`. A score of `1.0` means no wasted space. See [Analyzing image efficiency](/usage/analyzing-efficiency) for details.
+</ResponseField>
+
+<ResponseField name="fileReference" type="array">
+  List of inefficient files sorted by wasted bytes (descending). Each entry has:
+
+  <Expandable title="fileReference fields">
+    <ResponseField name="count" type="integer">
+      Number of times this file path appears across all layers.
+    </ResponseField>
+
+    <ResponseField name="sizeBytes" type="integer">
+      Cumulative bytes consumed by all occurrences of this file path.
+    </ResponseField>
+
+    <ResponseField name="file" type="string">
+      Absolute path of the file inside the image.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example output
+
+```json theme={null}
+{
+  "layer": [
+    {
+      "index": 0,
+      "id": "a3ed95caeb02",
+      "digestId": "sha256:a3ed95caeb02ffe68cdd9fd84406680ae93d633cb16422d00e8a7c22955b46d4",
+      "sizeBytes": 0,
+      "command": "#(nop) ADD file:... in /",
+      "fileList": []
+    },
+    {
+      "index": 1,
+      "id": "b4d181a07f80",
+      "digestId": "sha256:b4d181a07f800bab09a8b95ad1aea5b5e8a82cb47e7524af18d58fe6b9c1c9ce",
+      "sizeBytes": 27145728,
+      "command": "RUN apt-get update && apt-get install -y curl",
+      "fileList": [
+        {
+          "path": "/usr/bin/curl",
+          "size": 194560,
+          "uid": 0,
+          "gid": 0,
+          "isDir": false,
+          "linkName": ""
+        }
+      ]
+    }
+  ],
+  "image": {
+    "sizeBytes": 109051904,
+    "inefficientBytes": 8388608,
+    "efficiencyScore": 0.9231,
+    "fileReference": [
+      {
+        "count": 2,
+        "sizeBytes": 8388608,
+        "file": "/var/cache/apt/pkgcache.bin"
+      }
+    ]
+  }
+}
+```
+
+

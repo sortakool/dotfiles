@@ -1,0 +1,3975 @@
+# Benchmarks
+Source: https://www.mintlify.com/jdx/hk/benchmarks
+
+Performance comparison of hk, lefthook, pre-commit, and prek running 10 linters on a synthetic project.
+
+These benchmarks compare hk, lefthook, pre-commit, and prek running 10 linters on a synthetic project.
+
+hk is the only tool that runs linters in parallel **and** safely. See [Why hk?](/why-hk) for background on how hk achieves this with file-level read/write locks.
+
+## Setup
+
+The benchmark uses a synthetic project with **\~6,000 files** across multiple languages:
+
+* 4,000 Python, 500 JavaScript/TypeScript, 500 JSON, 500 Shell, 250 YAML, 200 CSS, 200 Markdown
+
+### Linters
+
+Ten linters with overlapping file coverage are configured:
+
+| Linter              | Files              | How hk avoids write locks                              |
+| ------------------- | ------------------ | ------------------------------------------------------ |
+| prettier            | `*.{js,ts,css,md}` | `check_list_files` — only locks files that need fixing |
+| eslint              | `*.{js,ts}`        | Falls back to write lock (no diff or list mode)        |
+| black               | `*.py`             | `check_diff` — hk applies the diff itself              |
+| ruff check          | `*.py`             | Check only — read lock                                 |
+| ruff format         | `*.py`             | `check_diff` — hk applies the diff itself              |
+| jq                  | `*.json`           | `check_diff`                                           |
+| yq                  | `*.{yml,yaml}`     | `check_diff`                                           |
+| shfmt               | `*.{sh,bash}`      | `check_diff`                                           |
+| trailing-whitespace | `**/*` (all files) | `check_diff` via `hk util` (built-in Rust)             |
+| newlines            | `**/*` (all files) | `check_diff` via `hk util` (built-in Rust)             |
+
+`trailing-whitespace` and `newlines` use `**/*` globs — they overlap with every other linter. This is the most adversarial case for parallel execution.
+
+### Why other tools run sequentially
+
+<Note>
+  lefthook supports `parallel: true`, but it has no file-level coordination. If two parallel jobs modify the same file, the last writer wins and the other's changes are silently lost. For a fair and **correct** comparison, lefthook is run in its safe sequential mode — the only mode that avoids race conditions. pre-commit and prek always run hooks sequentially.
+</Note>
+
+## Results
+
+hk's parallel execution produces a significant speedup over sequential tools. The exact numbers depend on hardware (number of cores, I/O speed) and the mix of linters, but you can expect hk to be several times faster on a multi-core machine when linters are I/O or CPU bound.
+
+Key points from the benchmark:
+
+* **All files (\~1,750 matched files, 10 linters)** — hk's parallelism provides the largest advantage because the total work is spread across cores simultaneously.
+* **Staged changes (\~50 files)** — speedup is smaller but still meaningful; hk avoids unnecessary work through smart file filtering.
+
+To see live benchmark numbers, run the benchmarks locally using the steps below.
+
+## Reproducing the benchmarks
+
+Everything is in the `benchmark/` directory of the hk repository.
+
+### Prerequisites
+
+```bash theme={null}
+mise use hyperfine lefthook prettier eslint shfmt jq yq
+uv tool install pre-commit prek black ruff
+```
+
+### Generate and run
+
+<Steps>
+  <Step title="Generate a synthetic project">
+    ```bash theme={null}
+    benchmark/generate-project.sh /tmp/hk-bench
+    ```
+
+    You can customize the file counts with environment variables:
+
+    ```bash theme={null}
+    NUM_JS=500 NUM_PY=500 benchmark/generate-project.sh /tmp/hk-bench
+    ```
+  </Step>
+
+  <Step title="Run the benchmarks">
+    ```bash theme={null}
+    benchmark/run.sh /tmp/hk-bench
+    ```
+
+    Customize the number of runs and warmup iterations:
+
+    ```bash theme={null}
+    RUNS=20 WARMUP=3 benchmark/run.sh /tmp/hk-bench
+    ```
+  </Step>
+
+  <Step title="Review the results">
+    Results are saved as JSON in `benchmark/results/`. A chart image and data file are also generated in `docs/public/` for the documentation site.
+  </Step>
+</Steps>
+
+
+# Built-in linters
+Source: https://www.mintlify.com/jdx/hk/builtins
+
+120+ pre-configured linters and formatters available through the Builtins module — ready to use with a single import.
+
+hk ships with over 120 pre-configured linters and formatters through the `Builtins` module. Each builtin is a production-ready `Step` definition you can use as-is or customize with Pkl's amend syntax.
+
+## Importing and using builtins
+
+Add the `Builtins` import to your `hk.pkl`, then reference builtins by name:
+
+```pkl hk.pkl theme={null}
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Builtins.pkl"
+
+hooks {
+    ["pre-commit"] {
+        fix = true
+        stash = "git"
+        steps {
+            ["prettier"] = Builtins.prettier
+            ["eslint"] = Builtins.eslint
+            ["cargo-fmt"] = Builtins.cargo_fmt
+            ["gitleaks"] = Builtins.gitleaks
+        }
+    }
+}
+```
+
+## Customizing builtins
+
+Use Pkl's amend syntax — `(Builtins.name) { ... }` — to override any property while keeping the rest of the builtin's defaults.
+
+<AccordionGroup>
+  <Accordion title="Override glob patterns">
+    ```pkl theme={null}
+    ["prettier"] = (Builtins.prettier) {
+        // restrict to only JS/TS files in src/
+        glob = List("src/**/*.js", "src/**/*.ts")
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Toggle batch processing">
+    ```pkl theme={null}
+    ["eslint"] = (Builtins.eslint) {
+        batch = false  // disable parallel batching
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Add environment variables">
+    ```pkl theme={null}
+    ["prettier"] = (Builtins.prettier) {
+        env {
+            ["PRETTIER_CONFIG"] = ".prettierrc.json"
+        }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Add dependencies">
+    ```pkl theme={null}
+    ["eslint"] = (Builtins.eslint) {
+        // run after prettier completes
+        depends = "prettier"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Workspace-specific configuration">
+    ```pkl theme={null}
+    ["cargo_clippy"] = (Builtins.cargo_clippy) {
+        // only run in directories with Cargo.toml
+        workspace_indicator = "Cargo.toml"
+        check = "cargo clippy --manifest-path {{workspace}}/Cargo.toml"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Profile-based configuration">
+    ```pkl theme={null}
+    ["mypy"] = (Builtins.mypy) {
+        // only run when the "python" profile is active
+        profiles = List("python")
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Available builtins
+
+### JavaScript / TypeScript
+
+| Builtin                      | Description                                                                    |
+| ---------------------------- | ------------------------------------------------------------------------------ |
+| `Builtins.prettier`          | Opinionated code formatter (JS, TS, CSS, HTML, JSON, YAML, Markdown, and more) |
+| `Builtins.eslint`            | Pluggable JavaScript linter                                                    |
+| `Builtins.biome`             | Fast formatter and linter (JS, TS, JSON)                                       |
+| `Builtins.tsc`               | TypeScript type checker                                                        |
+| `Builtins.deno`              | Deno formatter and linter                                                      |
+| `Builtins.deno_check`        | Deno type checker                                                              |
+| `Builtins.standard_js`       | JavaScript Standard Style linter                                               |
+| `Builtins.xo`                | Opinionated ESLint wrapper                                                     |
+| `Builtins.knip`              | Find unused exports, files, and dependencies                                   |
+| `Builtins.knip_strict`       | Knip with stricter settings                                                    |
+| `Builtins.ox_lint`           | Fast JavaScript linter written in Rust                                         |
+| `Builtins.sort_package_json` | Keep `package.json` keys sorted                                                |
+| `Builtins.stylelint`         | CSS/SCSS/Less linter                                                           |
+| `Builtins.astro`             | Astro formatter                                                                |
+
+### Python
+
+| Builtin                            | Description                              |
+| ---------------------------------- | ---------------------------------------- |
+| `Builtins.black`                   | Opinionated Python formatter             |
+| `Builtins.ruff`                    | Fast Python linter                       |
+| `Builtins.ruff_format`             | Fast Python formatter (ruff's formatter) |
+| `Builtins.mypy`                    | Static type checker for Python           |
+| `Builtins.pylint`                  | Python linter                            |
+| `Builtins.flake8`                  | Python style guide enforcer              |
+| `Builtins.isort`                   | Python import sorter                     |
+| `Builtins.python_check_ast`        | Check Python files for valid AST         |
+| `Builtins.python_debug_statements` | Detect leftover debug statements         |
+| `Builtins.ty`                      | Extremely fast Python type checker       |
+
+### Rust
+
+| Builtin                 | Description                                |
+| ----------------------- | ------------------------------------------ |
+| `Builtins.cargo_fmt`    | Rust code formatter                        |
+| `Builtins.cargo_clippy` | Rust linter                                |
+| `Builtins.cargo_check`  | Rust compiler check (without clippy)       |
+| `Builtins.rustfmt`      | Rust formatter (direct rustfmt invocation) |
+
+### Go
+
+| Builtin                  | Description              |
+| ------------------------ | ------------------------ |
+| `Builtins.go_fmt`        | Go formatter             |
+| `Builtins.go_fumpt`      | Stricter Go formatter    |
+| `Builtins.go_imports`    | Go import organizer      |
+| `Builtins.go_vet`        | Go static analysis       |
+| `Builtins.golangci_lint` | Go meta-linter           |
+| `Builtins.go_sec`        | Go security checker      |
+| `Builtins.staticcheck`   | Go static analysis tool  |
+| `Builtins.revive`        | Go linter                |
+| `Builtins.go_lines`      | Go line length checker   |
+| `Builtins.gomod_tidy`    | Keep `go.mod` tidy       |
+| `Builtins.go_vuln_check` | Go vulnerability checker |
+
+### Ruby
+
+| Builtin                 | Description                       |
+| ----------------------- | --------------------------------- |
+| `Builtins.rubocop`      | Ruby linter and formatter         |
+| `Builtins.standard_rb`  | Ruby Standard Style linter        |
+| `Builtins.reek`         | Ruby code smell detector          |
+| `Builtins.fasterer`     | Ruby performance suggestions      |
+| `Builtins.brakeman`     | Ruby on Rails security scanner    |
+| `Builtins.sorbet`       | Ruby type checker                 |
+| `Builtins.bundle_audit` | Bundler dependency security audit |
+| `Builtins.erb`          | ERB template linter               |
+
+### Shell
+
+| Builtin               | Description            |
+| --------------------- | ---------------------- |
+| `Builtins.shellcheck` | Shell script analyzer  |
+| `Builtins.shfmt`      | Shell script formatter |
+
+### Lua
+
+| Builtin             | Description         |
+| ------------------- | ------------------- |
+| `Builtins.selene`   | Lua linter          |
+| `Builtins.luacheck` | Lua static analysis |
+| `Builtins.stylua`   | Lua formatter       |
+
+### Nix
+
+| Builtin                   | Description                   |
+| ------------------------- | ----------------------------- |
+| `Builtins.nix_fmt`        | Nix formatter                 |
+| `Builtins.alejandra`      | Opinionated Nix formatter     |
+| `Builtins.nixpkgs_format` | nixpkgs code formatter        |
+| `Builtins.deadnix`        | Find and remove dead Nix code |
+| `Builtins.nixf_diagnose`  | Nix language diagnostics      |
+| `Builtins.nil`            | Nix language server linting   |
+
+### Elixir
+
+| Builtin                | Description              |
+| ---------------------- | ------------------------ |
+| `Builtins.mix_fmt`     | Elixir code formatter    |
+| `Builtins.mix_compile` | Elixir compilation check |
+| `Builtins.mix_test`    | Run Elixir tests         |
+
+### Kotlin / Java / Swift
+
+| Builtin                       | Description                 |
+| ----------------------------- | --------------------------- |
+| `Builtins.ktlint`             | Kotlin linter and formatter |
+| `Builtins.google_java_format` | Java formatter              |
+| `Builtins.swiftlint`          | Swift linter                |
+
+### Terraform / Infrastructure
+
+| Builtin              | Description         |
+| -------------------- | ------------------- |
+| `Builtins.terraform` | Terraform formatter |
+| `Builtins.tf_lint`   | Terraform linter    |
+| `Builtins.tofu`      | OpenTofu formatter  |
+| `Builtins.hclfmt`    | HCL formatter       |
+
+### Data formats
+
+| Builtin                 | Description              |
+| ----------------------- | ------------------------ |
+| `Builtins.taplo`        | TOML linter              |
+| `Builtins.taplo_format` | TOML formatter           |
+| `Builtins.tombi`        | TOML linter              |
+| `Builtins.tombi_format` | TOML formatter           |
+| `Builtins.yamllint`     | YAML linter              |
+| `Builtins.yamlfmt`      | YAML formatter           |
+| `Builtins.jq`           | JSON formatter via jq    |
+| `Builtins.yq`           | YAML/JSON processor      |
+| `Builtins.xmllint`      | XML linter               |
+| `Builtins.sql_fluff`    | SQL linter and formatter |
+| `Builtins.pkl`          | Pkl linter               |
+| `Builtins.pkl_format`   | Pkl formatter            |
+
+### Documentation
+
+| Builtin                  | Description                                     |
+| ------------------------ | ----------------------------------------------- |
+| `Builtins.markdown_lint` | Markdown linter                                 |
+| `Builtins.rumdl`         | Fast Markdown linter (Rust)                     |
+| `Builtins.vale`          | Prose style checker                             |
+| `Builtins.lychee`        | Link checker                                    |
+| `Builtins.asciidoctor`   | AsciiDoc processor check                        |
+| `Builtins.mdschema`      | JSON Schema validation for Markdown frontmatter |
+
+### GitHub Actions / CI
+
+| Builtin                     | Description                                |
+| --------------------------- | ------------------------------------------ |
+| `Builtins.actionlint`       | GitHub Actions workflow linter             |
+| `Builtins.ghalint_action`   | GitHub Actions linter (action files)       |
+| `Builtins.ghalint_workflow` | GitHub Actions linter (workflow files)     |
+| `Builtins.zizmor`           | GitHub Actions security analyzer           |
+| `Builtins.pinact`           | Pin GitHub Actions to specific commit SHAs |
+| `Builtins.pinact_update`    | Update pinned GitHub Actions               |
+
+### Docker / Containers
+
+| Builtin             | Description           |
+| ------------------- | --------------------- |
+| `Builtins.hadolint` | Dockerfile linter     |
+| `Builtins.dclint`   | Docker Compose linter |
+
+### C / C++
+
+| Builtin                 | Description       |
+| ----------------------- | ----------------- |
+| `Builtins.clang_format` | C/C++ formatter   |
+| `Builtins.cpp_lint`     | C++ style checker |
+| `Builtins.cmake_format` | CMake formatter   |
+
+### Secrets and security
+
+| Builtin                       | Description                         |
+| ----------------------------- | ----------------------------------- |
+| `Builtins.gitleaks`           | Secret scanner for Git repositories |
+| `Builtins.betterleaks`        | Enhanced secret scanner             |
+| `Builtins.detect_private_key` | Detect committed private keys       |
+
+### General / special purpose
+
+| Builtin                                    | Description                                                      |
+| ------------------------------------------ | ---------------------------------------------------------------- |
+| `Builtins.trailing_whitespace`             | Detect and remove trailing whitespace                            |
+| `Builtins.newlines`                        | Ensure files end with a newline                                  |
+| `Builtins.check_merge_conflict`            | Detect merge conflict markers                                    |
+| `Builtins.check_conventional_commit`       | Validate conventional commit messages                            |
+| `Builtins.check_added_large_files`         | Prevent large files from being committed                         |
+| `Builtins.check_case_conflict`             | Detect files that would conflict on case-insensitive filesystems |
+| `Builtins.check_symlinks`                  | Check for broken symlinks                                        |
+| `Builtins.check_executables_have_shebangs` | Ensure executable scripts have shebangs                          |
+| `Builtins.no_commit_to_branch`             | Prevent direct commits to protected branches                     |
+| `Builtins.mixed_line_ending`               | Detect mixed line endings                                        |
+| `Builtins.byte_order_marker`               | Detect byte order markers                                        |
+| `Builtins.fix_byte_order_marker`           | Remove byte order markers                                        |
+| `Builtins.check_byte_order_marker`         | Check for byte order markers                                     |
+| `Builtins.fix_smart_quotes`                | Replace smart quotes with straight quotes                        |
+| `Builtins.editorconfig-checker`            | Validate files against `.editorconfig`                           |
+| `Builtins.typos`                           | Fast spell checker for source code                               |
+| `Builtins.dprint`                          | Pluggable code formatter                                         |
+| `Builtins.contextlint`                     | Context-aware linter                                             |
+| `Builtins.err_check`                       | Error handling checker                                           |
+| `Builtins.ryl`                             | General-purpose linter                                           |
+| `Builtins.mise`                            | Validate `mise.toml` configuration                               |
+| `Builtins.buf_lint`                        | Protobuf linter                                                  |
+| `Builtins.buf_format`                      | Protobuf formatter                                               |
+| `Builtins.vacuum`                          | OpenAPI linter                                                   |
+| `Builtins.just_format`                     | Justfile formatter                                               |
+| `Builtins.php_cs`                          | PHP coding standards fixer                                       |
+
+## Creating custom steps
+
+When no builtin exists for your tool, define a step directly:
+
+```pkl hk.pkl theme={null}
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+
+hooks {
+    ["pre-commit"] {
+        steps {
+            ["custom-tool"] {
+                glob = List("**/*.custom")
+                check = "custom-tool --check {{files}}"
+                fix = "custom-tool --fix {{files}}"
+                batch = true
+            }
+        }
+    }
+}
+```
+
+You can also extract shared steps as local variables to reuse across hooks:
+
+```pkl hk.pkl theme={null}
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+
+local linters = new Mapping<String, Step> {
+    ["my-linter"] {
+        glob = List("**/*.go")
+        check = "my-linter {{files}}"
+        fix = "my-linter --fix {{files}}"
+    }
+}
+
+hooks {
+    ["pre-commit"] {
+        fix = true
+        steps = linters
+    }
+    ["check"] {
+        steps = linters
+    }
+}
+```
+
+
+# hk check
+Source: https://www.mintlify.com/jdx/hk/cli/check
+
+Run linters in read-only check mode against staged or specified files.
+
+**Usage**: `hk check [FLAGS] [FILES]…`
+
+**Alias**: `c`
+
+`hk check` runs all configured linter steps in check mode — no files are modified. It is equivalent to running the `check` hook defined in your `hk.pkl`. By default it operates on staged files only; use `--all` to check every file in the repository.
+
+<Tip>
+  Use `hk check --all` in CI pipelines to validate the entire codebase. Use `hk check --pr` to check only the files changed in the current pull request branch.
+</Tip>
+
+## Arguments
+
+<ParamField type="string[]">
+  One or more specific files to check. Conflicts with `--all`, `--fix`, and `--check`.
+</ParamField>
+
+## Flags
+
+<ParamField type="boolean">
+  Run on all files in the repository instead of just staged files.
+</ParamField>
+
+<ParamField type="boolean">
+  Force check mode — run the check command even if fix mode is the default. Overrides `--fix`.
+</ParamField>
+
+<ParamField type="string[]">
+  Exclude files that would otherwise have been selected. Can be specified multiple times.
+
+  ```bash theme={null}
+  hk check --exclude "vendor/**" --exclude "*.generated.go"
+  ```
+</ParamField>
+
+<ParamField type="boolean">
+  Force fix mode — run the fix command instead of the check command. This is the default behavior unless `HK_FIX=0`. Overrides `--check`.
+</ParamField>
+
+<ParamField type="string[]">
+  Run on files matching these glob patterns. Can be specified multiple times.
+
+  ```bash theme={null}
+  hk check --glob "src/**/*.ts" --glob "tests/**/*.ts"
+  ```
+</ParamField>
+
+<ParamField type="boolean">
+  Print the execution plan instead of running steps. Shows which steps will run and on which files.
+</ParamField>
+
+<ParamField type="string[]">
+  Run only specific named steps. Can be specified multiple times.
+
+  ```bash theme={null}
+  hk check --step eslint --step prettier
+  ```
+</ParamField>
+
+<ParamField type="boolean">
+  Abort on the first step failure. Opposite of `--no-fail-fast`.
+</ParamField>
+
+<ParamField type="boolean">
+  Continue running remaining steps even after a failure. Opposite of `--fail-fast`.
+</ParamField>
+
+<ParamField type="string">
+  Start git reference for determining which files to check. Requires `--to-ref`.
+
+  ```bash theme={null}
+  hk check --from-ref main --to-ref HEAD
+  ```
+</ParamField>
+
+<ParamField type="string">
+  End git reference for determining which files to check. Requires `--from-ref`.
+</ParamField>
+
+<ParamField type="boolean">
+  Check only files changed in the current PR or branch. This is a shortcut for `--from-ref DEFAULT_BRANCH --to-ref HEAD`. Conflicts with `--all`, `--files`, `--from-ref`, `--glob`, and `--to-ref`.
+</ParamField>
+
+<ParamField type="string[]">
+  Skip specific named steps. Can be specified multiple times.
+
+  ```bash theme={null}
+  hk check --skip-step slow-linter
+  ```
+</ParamField>
+
+<ParamField type="boolean">
+  Enable auto-staging of files that were modified by fix steps. Overrides `--no-stage`.
+</ParamField>
+
+<ParamField type="boolean">
+  Disable auto-staging of files modified by fix steps. Overrides `--stage`.
+</ParamField>
+
+<ParamField type="string">
+  Stash method to use when running as a git hook. Controls how unstaged changes are preserved during the run.
+
+  | Value        | Description                                              |
+  | ------------ | -------------------------------------------------------- |
+  | `git`        | Use `git stash` to save and restore unstaged changes.    |
+  | `patch-file` | Save unstaged changes to a patch file and reapply after. |
+  | `none`       | Do not stash — run against the working tree as-is.       |
+</ParamField>
+
+<ParamField type="boolean">
+  Display statistics about which files match each configured step.
+</ParamField>
+
+## Examples
+
+<CodeGroup>
+  ```bash Check staged files theme={null}
+  hk check
+  ```
+
+  ```bash Check all files theme={null}
+  hk check --all
+  ```
+
+  ```bash Check PR diff theme={null}
+  hk check --pr
+  ```
+
+  ```bash Check specific files theme={null}
+  hk check src/main.rs src/lib.rs
+  ```
+
+  ```bash Check with a ref range theme={null}
+  hk check --from-ref v1.0.0 --to-ref HEAD
+  ```
+
+  ```bash Run only specific steps theme={null}
+  hk check --step rustfmt --step clippy
+  ```
+
+  ```bash Preview the plan without running theme={null}
+  hk check --all --plan
+  ```
+
+  ```bash Check only TypeScript files theme={null}
+  hk check --glob "**/*.ts"
+  ```
+</CodeGroup>
+
+
+# hk config
+Source: https://www.mintlify.com/jdx/hk/cli/config
+
+Inspect and introspect the effective merged hk configuration.
+
+**Usage**: `hk config <SUBCOMMAND>`
+
+**Alias**: `cfg`
+
+`hk config` provides subcommands for inspecting hk's effective configuration. Configuration is merged from multiple sources in the following precedence order (highest to lowest):
+
+1. CLI flags
+2. Environment variables
+3. Git config (repository-local)
+4. User config (`~/.config/hk/config.pkl`)
+5. Git config (global)
+6. Project config (`hk.pkl`)
+7. Built-in defaults
+
+## Subcommands
+
+### hk config dump
+
+**Usage**: `hk config dump [--format <FORMAT>]`
+
+Prints the effective merged configuration from all sources. Useful for debugging which values are active at runtime.
+
+<ParamField type="string">
+  Output format. Accepted values: `json`, `toml`.
+</ParamField>
+
+```bash theme={null}
+# Dump as JSON (default)
+hk config dump
+
+# Dump as TOML
+hk config dump --format toml
+```
+
+Example output:
+
+```json theme={null}
+{
+  "jobs": 8,
+  "fail_fast": false,
+  "stage": true,
+  "warnings": [],
+  "exclude": [],
+  "skip_steps": [],
+  "skip_hooks": [],
+  "enabled_profiles": [],
+  "disabled_profiles": []
+}
+```
+
+***
+
+### hk config get
+
+**Usage**: `hk config get <KEY>`
+
+Returns the current value of a single configuration key.
+
+<ParamField type="string">
+  The configuration key to retrieve. Available keys:
+
+  `jobs`, `enabled_profiles`, `disabled_profiles`, `fail_fast`, `display_skip_reasons`, `warnings`, `exclude`, `skip_steps`, `skip_hooks`, `stage`
+</ParamField>
+
+```bash theme={null}
+hk config get jobs
+# 8
+
+hk config get fail_fast
+# false
+
+hk config get skip_steps
+# []
+```
+
+***
+
+### hk config sources
+
+**Usage**: `hk config sources`
+
+Lists all configuration sources in order of precedence, showing which sources are active and where each one is located on disk.
+
+```bash theme={null}
+hk config sources
+```
+
+Example output:
+
+```
+Configuration sources (highest to lowest precedence):
+  1. CLI flags
+  2. Environment variables
+  3. Git config (local): /home/user/project/.git/config
+  4. User config: /home/user/.hkrc.pkl
+  5. Git config (global): /home/user/.gitconfig
+  6. Project config: /home/user/project/hk.pkl
+  7. Built-in defaults
+```
+
+***
+
+### hk config explain
+
+**Usage**: `hk config explain <KEY>`
+
+Shows the resolved value for a configuration key, its source, and the full precedence chain showing every layer that could affect it.
+
+<ParamField type="string">
+  The configuration key to explain.
+</ParamField>
+
+```bash theme={null}
+hk config explain jobs
+```
+
+Example output:
+
+```
+Key: jobs
+Value: 4
+Source: environment variable (HK_JOBS=4)
+
+Precedence chain:
+  CLI flag:            (not set)
+  HK_JOBS env var:     4  ← active
+  Git config (local):  (not set)
+  User config:         (not set)
+  Git config (global): (not set)
+  Project config:      (not set)
+  Built-in default:    8
+```
+
+## Examples
+
+<CodeGroup>
+  ```bash Dump full config as JSON theme={null}
+  hk config dump
+  ```
+
+  ```bash Dump full config as TOML theme={null}
+  hk config dump --format toml
+  ```
+
+  ```bash Get a specific key theme={null}
+  hk config get jobs
+  ```
+
+  ```bash List all config sources theme={null}
+  hk config sources
+  ```
+
+  ```bash Explain where a value comes from theme={null}
+  hk config explain fail_fast
+  ```
+</CodeGroup>
+
+
+# hk fix
+Source: https://www.mintlify.com/jdx/hk/cli/fix
+
+Run linters and auto-fix issues in staged or specified files.
+
+**Usage**: `hk fix [FLAGS] [FILES]…`
+
+**Alias**: `f`
+
+`hk fix` runs all configured linter steps in fix mode — tools that support auto-fixing will modify files in place. It is equivalent to running the `fix` hook defined in your `hk.pkl`. By default it operates on staged files only; use `--all` to fix every file in the repository.
+
+<Note>
+  When `hk fix` is invoked as a git hook (e.g. during `git commit`), hk automatically stashes unstaged changes before running, then restores them afterward. This ensures linters only see staged content. The stash method can be controlled with `--stash`.
+</Note>
+
+## Arguments
+
+<ParamField type="string[]">
+  One or more specific files to fix. Conflicts with `--all`, `--fix`, and `--check`.
+</ParamField>
+
+## Flags
+
+<ParamField type="boolean">
+  Run on all files in the repository instead of just staged files.
+</ParamField>
+
+<ParamField type="boolean">
+  Force check mode — run the check command instead of the fix command. Overrides `--fix`.
+</ParamField>
+
+<ParamField type="string[]">
+  Exclude files that would otherwise have been selected. Can be specified multiple times.
+
+  ```bash theme={null}
+  hk fix --exclude "vendor/**" --exclude "*.generated.go"
+  ```
+</ParamField>
+
+<ParamField type="boolean">
+  Force fix mode — run the fix command instead of the check command. This is the default behavior unless `HK_FIX=0`. Overrides `--check`.
+</ParamField>
+
+<ParamField type="string[]">
+  Run on files matching these glob patterns. Can be specified multiple times.
+
+  ```bash theme={null}
+  hk fix --glob "src/**/*.ts" --glob "tests/**/*.ts"
+  ```
+</ParamField>
+
+<ParamField type="boolean">
+  Print the execution plan instead of running steps. Shows which steps will run and on which files.
+</ParamField>
+
+<ParamField type="string[]">
+  Run only specific named steps. Can be specified multiple times.
+
+  ```bash theme={null}
+  hk fix --step prettier --step eslint
+  ```
+</ParamField>
+
+<ParamField type="boolean">
+  Abort on the first step failure. Opposite of `--no-fail-fast`.
+</ParamField>
+
+<ParamField type="boolean">
+  Continue running remaining steps even after a failure. Opposite of `--fail-fast`.
+</ParamField>
+
+<ParamField type="string">
+  Start git reference for determining which files to fix. Requires `--to-ref`.
+
+  ```bash theme={null}
+  hk fix --from-ref main --to-ref HEAD
+  ```
+</ParamField>
+
+<ParamField type="string">
+  End git reference for determining which files to fix. Requires `--from-ref`.
+</ParamField>
+
+<ParamField type="boolean">
+  Fix only files changed in the current PR or branch. Shortcut for `--from-ref DEFAULT_BRANCH --to-ref HEAD`. Conflicts with `--all`, `--files`, `--from-ref`, `--glob`, and `--to-ref`.
+</ParamField>
+
+<ParamField type="string[]">
+  Skip specific named steps. Can be specified multiple times.
+
+  ```bash theme={null}
+  hk fix --skip-step slow-formatter
+  ```
+</ParamField>
+
+<ParamField type="boolean">
+  Enable auto-staging of files that were modified by fix steps. Overrides `--no-stage`.
+</ParamField>
+
+<ParamField type="boolean">
+  Disable auto-staging of files modified by fix steps. Overrides `--stage`.
+</ParamField>
+
+<ParamField type="string">
+  Stash method to use when running as a git hook. Controls how unstaged changes are preserved during the run.
+
+  | Value        | Description                                              |
+  | ------------ | -------------------------------------------------------- |
+  | `git`        | Use `git stash` to save and restore unstaged changes.    |
+  | `patch-file` | Save unstaged changes to a patch file and reapply after. |
+  | `none`       | Do not stash — run against the working tree as-is.       |
+</ParamField>
+
+<ParamField type="boolean">
+  Display statistics about which files match each configured step.
+</ParamField>
+
+## Examples
+
+<CodeGroup>
+  ```bash Fix staged files theme={null}
+  hk fix
+  ```
+
+  ```bash Fix all files theme={null}
+  hk fix --all
+  ```
+
+  ```bash Fix PR diff theme={null}
+  hk fix --pr
+  ```
+
+  ```bash Fix specific files theme={null}
+  hk fix src/main.rs src/lib.rs
+  ```
+
+  ```bash Fix with a ref range theme={null}
+  hk fix --from-ref v1.0.0 --to-ref HEAD
+  ```
+
+  ```bash Run only specific steps theme={null}
+  hk fix --step prettier --step rustfmt
+  ```
+
+  ```bash Skip a slow step theme={null}
+  hk fix --all --skip-step heavy-formatter
+  ```
+
+  ```bash Fix only Go files theme={null}
+  hk fix --glob "**/*.go"
+  ```
+</CodeGroup>
+
+
+# hk init
+Source: https://www.mintlify.com/jdx/hk/cli/init
+
+Generate an hk.pkl configuration file in the project root.
+
+**Usage**: `hk init [FLAGS]`
+
+`hk init` generates a new `hk.pkl` configuration file in the current directory. It scans your project for recognizable files (e.g. `Cargo.toml`, `package.json`, `go.mod`, `.python-version`) and automatically selects appropriate built-in linter definitions. If no project files are detected it generates a minimal template you can customize.
+
+By default, `hk init` configures three hooks: `pre-commit`, `check`, and `fix`.
+
+## Flags
+
+<ParamField type="boolean">
+  Overwrite an existing `hk.pkl` file. Without this flag, `hk init` warns and exits if `hk.pkl` already exists.
+</ParamField>
+
+<ParamField type="boolean">
+  Interactive mode. Displays detected project files, then lets you manually select which built-in linters and which hooks to include.
+</ParamField>
+
+<ParamField type="boolean">
+  Also generate a `mise.toml` file that configures hk and pkl as project tools.
+
+  Set `HK_MISE=1` to make this the default behavior for all `hk init` invocations.
+</ParamField>
+
+## What gets generated
+
+### hk.pkl (auto-detected example)
+
+When hk detects a Rust project, the generated file might look like:
+
+```pkl hk.pkl theme={null}
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Builtins.pkl"
+
+hooks {
+  ["pre-commit"] {
+    steps {
+      ["cargo-fmt"] = Builtins.cargo_fmt
+      ["cargo-clippy"] = Builtins.cargo_clippy
+    }
+  }
+  ["check"] {
+    steps {
+      ["cargo-fmt"] = Builtins.cargo_fmt
+      ["cargo-clippy"] = Builtins.cargo_clippy
+    }
+  }
+  ["fix"] {
+    fix = true
+    steps {
+      ["cargo-fmt"] = Builtins.cargo_fmt
+    }
+  }
+}
+```
+
+### hk.pkl (default template)
+
+When no project files are detected:
+
+```pkl hk.pkl theme={null}
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+
+hooks {
+  ["pre-commit"] {
+    steps {
+      // Add your steps here
+    }
+  }
+  ["check"] {
+    steps {
+      // Add your steps here
+    }
+  }
+  ["fix"] {
+    fix = true
+    steps {
+      // Add your steps here
+    }
+  }
+}
+```
+
+### mise.toml (with --mise)
+
+```toml mise.toml theme={null}
+[tools]
+hk = "latest"
+pkl = "latest"
+
+[tasks.pre-commit]
+run = "hk run pre-commit"
+```
+
+## Examples
+
+<CodeGroup>
+  ```bash Auto-detect and generate theme={null}
+  hk init
+  ```
+
+  ```bash Overwrite an existing config theme={null}
+  hk init --force
+  ```
+
+  ```bash Interactive mode theme={null}
+  hk init --interactive
+  ```
+
+  ```bash Generate hk.pkl and mise.toml theme={null}
+  hk init --mise
+  ```
+
+  ```bash Force regenerate with mise theme={null}
+  hk init --force --mise
+  ```
+</CodeGroup>
+
+## Typical setup workflow
+
+<Steps>
+  <Step title="Generate the config">
+    ```bash theme={null}
+    hk init
+    ```
+
+    hk scans the project and writes `hk.pkl`.
+  </Step>
+
+  <Step title="Review hk.pkl">
+    Open `hk.pkl` and confirm the detected linters are correct. Add or remove steps as needed.
+  </Step>
+
+  <Step title="Install the git hooks">
+    ```bash theme={null}
+    hk install
+    ```
+
+    This writes hook scripts into `.git/hooks/` so hk runs automatically on commit.
+  </Step>
+</Steps>
+
+
+# hk install
+Source: https://www.mintlify.com/jdx/hk/cli/install
+
+Install git hooks from hk.pkl into .git/hooks/.
+
+**Usage**: `hk install [--mise]`
+
+**Alias**: `i`
+
+`hk install` writes hook scripts into your repository's `.git/hooks/` directory so that hk runs automatically when git triggers a hook event. It reads `hk.pkl` to determine which hooks to install (e.g. `pre-commit`, `pre-push`, `commit-msg`).
+
+In a git worktree that has a per-worktree `core.hooksPath` configured, hooks are installed to that worktree-local directory. Otherwise they go to the shared hooks directory.
+
+## Flags
+
+<ParamField type="boolean">
+  Generate hook scripts that invoke hk via `mise x` instead of calling `hk` directly. This ensures tools managed by mise are available when hooks run, even if mise is not activated in the current shell session.
+
+  Set `HK_MISE=1` to make this the default for all `hk install` invocations.
+</ParamField>
+
+## What gets installed
+
+For each hook name defined in `hk.pkl`, hk writes a shell script at `.git/hooks/<hook-name>`. For example, if your `hk.pkl` defines a `pre-commit` hook, hk writes `.git/hooks/pre-commit`:
+
+```bash .git/hooks/pre-commit theme={null}
+#!/bin/sh
+hk run pre-commit "$@"
+```
+
+With `--mise`, the script uses `mise x` to ensure tools are resolved:
+
+```bash .git/hooks/pre-commit (with --mise) theme={null}
+#!/bin/sh
+mise x -- hk run pre-commit "$@"
+```
+
+## Uninstalling hooks
+
+To remove hk's hooks from `.git/hooks/`, run:
+
+```bash theme={null}
+hk uninstall
+```
+
+This deletes the hook scripts that hk previously installed. It does not remove `hk.pkl`.
+
+## Examples
+
+<CodeGroup>
+  ```bash Standard install theme={null}
+  hk install
+  ```
+
+  ```bash Install with mise support theme={null}
+  hk install --mise
+  ```
+
+  ```bash Remove installed hooks theme={null}
+  hk uninstall
+  ```
+</CodeGroup>
+
+## Typical setup workflow
+
+<Steps>
+  <Step title="Create hk.pkl">
+    ```bash theme={null}
+    hk init
+    ```
+  </Step>
+
+  <Step title="Install hooks">
+    ```bash theme={null}
+    hk install
+    ```
+
+    Hook scripts are written to `.git/hooks/`.
+  </Step>
+
+  <Step title="Verify">
+    ```bash theme={null}
+    ls -la .git/hooks/
+    ```
+
+    You should see executable scripts for each hook defined in `hk.pkl`.
+  </Step>
+</Steps>
+
+<Note>
+  Commit `hk.pkl` to your repository so your team can run `hk install` after cloning to get the same hooks.
+</Note>
+
+
+# CLI overview
+Source: https://www.mintlify.com/jdx/hk/cli/overview
+
+Reference for the hk command-line interface and its global flags.
+
+`hk` is a high-performance git hook manager written in Rust. It runs linters, formatters, and other checks concurrently against your staged or changed files, and installs those checks as git hooks so they run automatically on commit and push.
+
+**Usage**: `hk [FLAGS] <SUBCOMMAND>`
+
+**Version**: 1.41.0
+
+## Global flags
+
+These flags are available on every `hk` subcommand.
+
+<ParamField type="number">
+  Number of jobs to run in parallel. Defaults to the number of logical CPU cores.
+</ParamField>
+
+<ParamField type="string[]">
+  Profiles to enable or disable. Prefix a profile name with `!` to disable it.
+
+  ```bash theme={null}
+  hk check --profile slow --profile !fast
+  ```
+</ParamField>
+
+<ParamField type="boolean">
+  Shorthand for `--profile=slow`. Enables steps tagged with the `slow` profile.
+</ParamField>
+
+<ParamField type="boolean">
+  Enables verbose output. Can be repeated for more verbosity (e.g. `-vv`).
+</ParamField>
+
+<ParamField type="boolean">
+  Disables the live progress display.
+</ParamField>
+
+<ParamField type="boolean">
+  Suppresses informational output. Errors are still shown.
+</ParamField>
+
+<ParamField type="boolean">
+  Suppresses all output, including errors.
+</ParamField>
+
+<ParamField type="boolean">
+  Enables tracing spans and performance diagnostics.
+</ParamField>
+
+<ParamField type="boolean">
+  Output in JSON format where supported.
+</ParamField>
+
+## Subcommands
+
+<CardGroup>
+  <Card title="hk check" icon="circle-check" href="/cli/check">
+    Run linters in read-only check mode against staged or specified files.
+  </Card>
+
+  <Card title="hk fix" icon="wrench" href="/cli/fix">
+    Run linters and auto-fix issues in staged or specified files.
+  </Card>
+
+  <Card title="hk run" icon="play" href="/cli/run">
+    Explicitly run a named git hook (pre-commit, pre-push, commit-msg, prepare-commit-msg).
+  </Card>
+
+  <Card title="hk init" icon="file-plus" href="/cli/init">
+    Generate an `hk.pkl` configuration file in the project root.
+  </Card>
+
+  <Card title="hk install" icon="download" href="/cli/install">
+    Install git hooks from `hk.pkl` into `.git/hooks/`.
+  </Card>
+
+  <Card title="hk validate" icon="shield-check" href="/cli/validate">
+    Validate the `hk.pkl` configuration file for errors.
+  </Card>
+
+  <Card title="hk config" icon="sliders" href="/cli/config">
+    Inspect and introspect the effective merged configuration.
+  </Card>
+
+  <Card title="hk util" icon="toolbox" href="/cli/util">
+    Built-in Rust-native utility commands for common file checks and fixes.
+  </Card>
+</CardGroup>
+
+### Additional subcommands
+
+| Command                 | Description                                                |
+| ----------------------- | ---------------------------------------------------------- |
+| `hk builtins`           | List all available built-in linter definitions.            |
+| `hk cache clear`        | Clear the hk cache.                                        |
+| `hk completion <SHELL>` | Generate shell completion scripts.                         |
+| `hk migrate pre-commit` | Migrate an existing `.pre-commit-config.yaml` to `hk.pkl`. |
+| `hk test`               | Run built-in step tests defined in `hk.pkl`.               |
+| `hk uninstall`          | Remove hk git hooks from `.git/hooks/`.                    |
+| `hk version`            | Print the hk version.                                      |
+
+
+# hk run
+Source: https://www.mintlify.com/jdx/hk/cli/run
+
+Explicitly run a named git hook without committing.
+
+**Usage**: `hk run [FLAGS] [FILES]… <SUBCOMMAND>`
+
+**Alias**: `r`
+
+`hk run` lets you manually trigger a specific git hook by name. This is useful for testing hook behavior, running hooks in CI, or invoking hooks outside of a git operation. hk itself calls these subcommands when it is invoked by git.
+
+## Subcommands
+
+### hk run pre-commit
+
+**Usage**: `hk run pre-commit [FLAGS] [FILES]…`
+
+**Alias**: `pc`
+
+Runs the `pre-commit` hook. This is the hook git triggers before creating a commit. It operates on staged files by default.
+
+```bash theme={null}
+# Run pre-commit hook against staged files
+hk run pre-commit
+
+# Run pre-commit hook against all files
+hk run pre-commit --all
+
+# Run pre-commit hook against specific files
+hk run pre-commit src/main.rs
+```
+
+### hk run pre-push
+
+**Usage**: `hk run pre-push [FLAGS] [ARGS]…`
+
+**Alias**: `pp`
+
+Runs the `pre-push` hook. This is the hook git triggers before pushing to a remote. Accepts optional `REMOTE` and `URL` arguments to simulate git's invocation.
+
+```bash theme={null}
+# Run pre-push hook
+hk run pre-push
+
+# Simulate a push to a specific remote
+hk run pre-push origin https://github.com/example/repo.git
+```
+
+### hk run commit-msg
+
+**Usage**: `hk run commit-msg [FLAGS] <COMMIT_MSG_FILE> [FILES]…`
+
+**Alias**: `cm`
+
+Runs the `commit-msg` hook. This is the hook git triggers to validate the commit message. Requires the path to the commit message file as an argument.
+
+```bash theme={null}
+# Run commit-msg hook (git passes .git/COMMIT_EDITMSG)
+hk run commit-msg .git/COMMIT_EDITMSG
+
+# Test with a custom message file
+hk run commit-msg /tmp/my-commit-message.txt
+```
+
+### hk run prepare-commit-msg
+
+**Usage**: `hk run prepare-commit-msg [FLAGS] <ARGS>…`
+
+**Alias**: `pcm`
+
+Runs the `prepare-commit-msg` hook. This hook fires before the commit message editor opens. Accepts the commit message file, an optional source (`message`, `template`, `merge`), and an optional SHA for amendments.
+
+```bash theme={null}
+# Run prepare-commit-msg hook
+hk run prepare-commit-msg .git/COMMIT_EDITMSG
+
+# Specify source type
+hk run prepare-commit-msg .git/COMMIT_EDITMSG merge
+
+# Specify source and SHA (for --amend)
+hk run prepare-commit-msg .git/COMMIT_EDITMSG commit abc1234
+```
+
+## Flags
+
+All `hk run` subcommands accept the same flags as [`hk check`](/cli/check) and [`hk fix`](/cli/fix).
+
+<ParamField type="boolean">
+  Run on all files instead of just staged files.
+</ParamField>
+
+<ParamField type="boolean">
+  Force check mode. Overrides `--fix`.
+</ParamField>
+
+<ParamField type="string[]">
+  Exclude files that would otherwise have been selected. Can be specified multiple times.
+</ParamField>
+
+<ParamField type="boolean">
+  Force fix mode. This is the default unless `HK_FIX=0`. Overrides `--check`.
+</ParamField>
+
+<ParamField type="string[]">
+  Run on files matching these glob patterns. Can be specified multiple times.
+</ParamField>
+
+<ParamField type="boolean">
+  Print the execution plan instead of running steps.
+</ParamField>
+
+<ParamField type="string[]">
+  Run only specific named steps. Can be specified multiple times.
+</ParamField>
+
+<ParamField type="boolean">
+  Abort on the first step failure.
+</ParamField>
+
+<ParamField type="boolean">
+  Continue after failures.
+</ParamField>
+
+<ParamField type="string">
+  Start git reference for file selection. Requires `--to-ref`.
+</ParamField>
+
+<ParamField type="string">
+  End git reference for file selection. Requires `--from-ref`.
+</ParamField>
+
+<ParamField type="boolean">
+  Run against files changed in the current PR branch.
+</ParamField>
+
+<ParamField type="string[]">
+  Skip specific named steps. Can be specified multiple times.
+</ParamField>
+
+<ParamField type="boolean">
+  Enable auto-staging of files modified by fix steps.
+</ParamField>
+
+<ParamField type="boolean">
+  Disable auto-staging of files modified by fix steps.
+</ParamField>
+
+<ParamField type="string">
+  Stash method (`git`, `patch-file`, or `none`) for preserving unstaged changes.
+</ParamField>
+
+<ParamField type="boolean">
+  Display statistics about files matching each step.
+</ParamField>
+
+## Examples
+
+<CodeGroup>
+  ```bash Run pre-commit on staged files theme={null}
+  hk run pre-commit
+  ```
+
+  ```bash Run pre-commit on all files in CI theme={null}
+  hk run pre-commit --all
+  ```
+
+  ```bash Validate a commit message theme={null}
+  hk run commit-msg .git/COMMIT_EDITMSG
+  ```
+
+  ```bash Run pre-push against PR diff theme={null}
+  hk run pre-push --pr
+  ```
+
+  ```bash Dry-run: see the plan without executing theme={null}
+  hk run pre-commit --all --plan
+  ```
+</CodeGroup>
+
+
+# hk util
+Source: https://www.mintlify.com/jdx/hk/cli/util
+
+Built-in Rust-native utility commands for common file checks and fixes.
+
+**Usage**: `hk util <SUBCOMMAND>`
+
+`hk util` provides a collection of built-in, dependency-free utility commands implemented directly in Rust. These commands are suitable for use as step commands in `hk.pkl` without requiring any external tools to be installed.
+
+They are designed to be drop-in replacements for the most common [pre-commit](https://pre-commit.com/) hooks.
+
+## Using util commands in hk.pkl
+
+Reference `hk util` commands directly in your step definitions:
+
+```pkl hk.pkl theme={null}
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+
+hooks {
+  ["pre-commit"] {
+    steps {
+      ["no-commit-to-main"] {
+        check = "hk util no-commit-to-branch --branch main --branch master"
+      }
+      ["eof-fixer"] {
+        glob = List("**/*")
+        fix = "hk util end-of-file-fixer --fix {{files}}"
+        check = "hk util end-of-file-fixer {{files}}"
+      }
+      ["large-files"] {
+        glob = List("**/*")
+        check = "hk util check-added-large-files --maxkb 1000 {{files}}"
+      }
+    }
+  }
+}
+```
+
+## Subcommands
+
+<AccordionGroup>
+  <Accordion title="check-added-large-files">
+    **Usage**: `hk util check-added-large-files [--maxkb <MAXKB>] <FILES>…`
+
+    Check that no files exceed a maximum size. Fails if any file is larger than the threshold.
+
+    <ParamField type="number">
+      Maximum allowed file size in kilobytes.
+    </ParamField>
+
+    <ParamField type="string[]">
+      Files to check.
+    </ParamField>
+
+    ```bash theme={null}
+    # Check with default 500 KB limit
+    hk util check-added-large-files src/assets/logo.png
+
+    # Check with a custom limit
+    hk util check-added-large-files --maxkb 1000 dist/bundle.js
+    ```
+  </Accordion>
+
+  <Accordion title="check-byte-order-marker">
+    **Usage**: `hk util check-byte-order-marker [-d --diff] <FILES>…`
+
+    Check for UTF-8 byte order markers (BOM). BOMs are unnecessary in UTF-8 and can cause issues in some tools.
+
+    <ParamField type="boolean">
+      Output a diff showing where BOMs were found.
+    </ParamField>
+
+    <ParamField type="string[]">
+      Files to check.
+    </ParamField>
+
+    ```bash theme={null}
+    hk util check-byte-order-marker src/main.py
+    hk util check-byte-order-marker --diff src/**/*.py
+    ```
+  </Accordion>
+
+  <Accordion title="check-case-conflict">
+    **Usage**: `hk util check-case-conflict <FILES>…`
+
+    Check for files whose names conflict on case-insensitive filesystems (e.g. macOS, Windows). Detects pairs like `Readme.md` and `README.md`.
+
+    <ParamField type="string[]">
+      Files to check.
+    </ParamField>
+
+    ```bash theme={null}
+    hk util check-case-conflict src/**/*
+    ```
+  </Accordion>
+
+  <Accordion title="check-conventional-commit">
+    **Usage**: `hk util check-conventional-commit [--allowed-types… <ALLOWED_TYPES>] <COMMIT_MSG_FILE>`
+
+    Validate that a commit message follows the [Conventional Commits](https://www.conventionalcommits.org/) specification.
+
+    <ParamField type="string[]">
+      Comma-separated list of allowed commit types. Can be specified multiple times.
+    </ParamField>
+
+    <ParamField type="string">
+      Path to the file containing the commit message to validate.
+    </ParamField>
+
+    ```bash theme={null}
+    # Validate with default allowed types
+    hk util check-conventional-commit .git/COMMIT_EDITMSG
+
+    # Validate with custom allowed types
+    hk util check-conventional-commit \
+      --allowed-types feat \
+      --allowed-types fix \
+      --allowed-types chore \
+      .git/COMMIT_EDITMSG
+    ```
+  </Accordion>
+
+  <Accordion title="check-executables-have-shebangs">
+    **Usage**: `hk util check-executables-have-shebangs <FILES>…`
+
+    Check that all executable files have a shebang line (`#!`) as their first line.
+
+    <ParamField type="string[]">
+      Files to check.
+    </ParamField>
+
+    ```bash theme={null}
+    hk util check-executables-have-shebangs bin/* scripts/*
+    ```
+  </Accordion>
+
+  <Accordion title="check-merge-conflict">
+    **Usage**: `hk util check-merge-conflict [--assume-in-merge] <FILES>…`
+
+    Check for unresolved merge conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`).
+
+    <ParamField type="boolean">
+      Run the check even when not currently in a merge state.
+    </ParamField>
+
+    <ParamField type="string[]">
+      Files to check.
+    </ParamField>
+
+    ```bash theme={null}
+    hk util check-merge-conflict src/**/*.rs
+    hk util check-merge-conflict --assume-in-merge src/conflicted.rs
+    ```
+  </Accordion>
+
+  <Accordion title="check-symlinks">
+    **Usage**: `hk util check-symlinks <FILES>…`
+
+    Check for broken symbolic links — symlinks that point to a path that does not exist.
+
+    <ParamField type="string[]">
+      Files to check.
+    </ParamField>
+
+    ```bash theme={null}
+    hk util check-symlinks **/*
+    ```
+  </Accordion>
+
+  <Accordion title="detect-private-key">
+    **Usage**: `hk util detect-private-key <FILES>…`
+
+    Scan files for private key material (PEM blocks, SSH keys, etc.) and fail if any is found.
+
+    <ParamField type="string[]">
+      Files to scan.
+    </ParamField>
+
+    ```bash theme={null}
+    hk util detect-private-key **/*
+    ```
+  </Accordion>
+
+  <Accordion title="end-of-file-fixer">
+    **Usage**: `hk util end-of-file-fixer [-d --diff] [-f --fix] <FILES>…`
+
+    Check that files end with exactly one newline, and optionally fix them.
+
+    <ParamField type="boolean">
+      Output a diff of the change. Cannot be used with `--fix`.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Fix files to end with exactly one newline.
+    </ParamField>
+
+    <ParamField type="string[]">
+      Files to check or fix.
+    </ParamField>
+
+    ```bash theme={null}
+    # Check only
+    hk util end-of-file-fixer src/**/*.rs
+
+    # Show diff
+    hk util end-of-file-fixer --diff src/**/*.rs
+
+    # Fix in place
+    hk util end-of-file-fixer --fix src/**/*.rs
+    ```
+  </Accordion>
+
+  <Accordion title="fix-byte-order-marker">
+    **Usage**: `hk util fix-byte-order-marker <FILES>…`
+
+    Remove UTF-8 byte order markers from files.
+
+    <ParamField type="string[]">
+      Files to fix.
+    </ParamField>
+
+    ```bash theme={null}
+    hk util fix-byte-order-marker src/**/*.py
+    ```
+  </Accordion>
+
+  <Accordion title="fix-smart-quotes">
+    **Usage**: `hk util fix-smart-quotes [--check] [-d --diff] <FILES>…`
+
+    Replace UTF-8 smart (curly) quotes with their ASCII equivalents.
+
+    <ParamField type="boolean">
+      Check for smart quotes without modifying files.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Output a diff of the change. Implies `--check`.
+    </ParamField>
+
+    <ParamField type="string[]">
+      Files to check or fix.
+    </ParamField>
+
+    ```bash theme={null}
+    # Fix in place (default behavior)
+    hk util fix-smart-quotes docs/**/*.md
+
+    # Check without fixing
+    hk util fix-smart-quotes --check docs/**/*.md
+
+    # Show diff
+    hk util fix-smart-quotes --diff docs/**/*.md
+    ```
+  </Accordion>
+
+  <Accordion title="mixed-line-ending">
+    **Usage**: `hk util mixed-line-ending [-d --diff] [-f --fix] <FILES>…`
+
+    Detect files that contain mixed line endings (both CRLF and LF), and optionally normalize them to LF.
+
+    <ParamField type="boolean">
+      Output a diff of the change. Cannot be used with `--fix`.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Normalize line endings to LF.
+    </ParamField>
+
+    <ParamField type="string[]">
+      Files to check or fix.
+    </ParamField>
+
+    ```bash theme={null}
+    # Check for mixed line endings
+    hk util mixed-line-ending src/**/*.ts
+
+    # Fix mixed line endings
+    hk util mixed-line-ending --fix src/**/*.ts
+    ```
+  </Accordion>
+
+  <Accordion title="no-commit-to-branch">
+    **Usage**: `hk util no-commit-to-branch [--branch… <BRANCH>]`
+
+    Prevent commits directly to protected branches. Exits with an error if the current branch matches any of the specified names.
+
+    <ParamField type="string[]">
+      Branch names to protect. Defaults to `main` and `master`. Can be specified multiple times.
+    </ParamField>
+
+    ```bash theme={null}
+    # Protect main and master (default)
+    hk util no-commit-to-branch
+
+    # Protect a custom set of branches
+    hk util no-commit-to-branch --branch main --branch develop --branch production
+    ```
+  </Accordion>
+
+  <Accordion title="python-check-ast">
+    **Usage**: `hk util python-check-ast <FILES>…`
+
+    Parse Python files and check for syntax errors by validating their abstract syntax tree (AST). Does not require Python to be installed — parsing is done in Rust.
+
+    <ParamField type="string[]">
+      Python files to check.
+    </ParamField>
+
+    ```bash theme={null}
+    hk util python-check-ast src/**/*.py
+    ```
+  </Accordion>
+
+  <Accordion title="python-debug-statements">
+    **Usage**: `hk util python-debug-statements <FILES>…`
+
+    Check Python files for debug statements (`import pdb`, `breakpoint()`, `import ipdb`, etc.) that should not be committed.
+
+    <ParamField type="string[]">
+      Python files to check.
+    </ParamField>
+
+    ```bash theme={null}
+    hk util python-debug-statements src/**/*.py
+    ```
+  </Accordion>
+
+  <Accordion title="trailing-whitespace">
+    **Usage**: `hk util trailing-whitespace [-d --diff] [-f --fix] <FILES>…`
+
+    Check for trailing whitespace on lines, and optionally remove it.
+
+    <ParamField type="boolean">
+      Output a diff of the change. Cannot be used with `--fix`.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Remove trailing whitespace from lines.
+    </ParamField>
+
+    <ParamField type="string[]">
+      Files to check or fix.
+    </ParamField>
+
+    ```bash theme={null}
+    # Check only
+    hk util trailing-whitespace src/**/*.rs
+
+    # Show diff
+    hk util trailing-whitespace --diff src/**/*.rs
+
+    # Fix in place
+    hk util trailing-whitespace --fix src/**/*.rs
+    ```
+  </Accordion>
+</AccordionGroup>
+
+
+# hk validate
+Source: https://www.mintlify.com/jdx/hk/cli/validate
+
+Validate the hk.pkl configuration file for errors.
+
+**Usage**: `hk validate`
+
+`hk validate` parses and validates your `hk.pkl` configuration file, reporting any errors or misconfigurations. It exits with a non-zero status if the configuration is invalid, making it safe to use in CI.
+
+## What it checks
+
+* The `hk.pkl` file exists and is valid Pkl syntax.
+* The file correctly amends the hk `Config.pkl` schema.
+* All referenced built-in names exist in `Builtins.pkl`.
+* Step fields (`check`, `fix`, `glob`, `batch`, etc.) have the correct types.
+* Hook names are valid git hook names or recognized custom hooks (`check`, `fix`).
+
+## Example output
+
+When the configuration is valid:
+
+```bash theme={null}
+$ hk validate
+✓ hk.pkl is valid
+```
+
+When the configuration has errors:
+
+```bash theme={null}
+$ hk validate
+error: unknown builtin 'esint' in step 'eslint'
+  --> hk.pkl:8:22
+  |
+8 |       ["eslint"] = Builtins.esint
+  |                             ^^^^^ did you mean 'eslint'?
+```
+
+## When to use
+
+<Tip>
+  Run `hk validate` in CI before any hook steps to catch configuration regressions early — for example, after a developer edits `hk.pkl` and opens a pull request.
+</Tip>
+
+```yaml .github/workflows/ci.yml (example) theme={null}
+- name: Validate hk config
+  run: hk validate
+```
+
+You can also run it locally after editing `hk.pkl` to confirm the changes are correct before committing:
+
+```bash theme={null}
+hk validate && git add hk.pkl && git commit -m "chore: update hk.pkl"
+```
+
+
+# Configuration
+Source: https://www.mintlify.com/jdx/hk/configuration
+
+How hk layers configuration from built-in defaults up through CLI flags, and a full reference for every setting.
+
+hk builds its effective configuration by layering sources from lowest to highest precedence:
+
+| Precedence  | Source                                                | Scope                     |
+| ----------- | ----------------------------------------------------- | ------------------------- |
+| 1 (lowest)  | Built-in defaults                                     | All projects              |
+| 2           | [hkrc](#hkrc) (`~/.config/hk/config.pkl`)             | All projects (user-level) |
+| 3           | [Project config](#hkpkl) (`hk.pkl` or `hk.local.pkl`) | Single project            |
+| 4           | [Git config](#git-configuration) (global, then local) | Per-repo                  |
+| 5           | [Environment variables](#settings-reference) (`HK_*`) | Per-invocation            |
+| 6 (highest) | [CLI flags](#settings-reference)                      | Per-invocation            |
+
+Higher layers override lower. For hooks and steps, layers are **additive** — hkrc can define hooks the project doesn't have, but the project's definition wins on collision.
+
+## `hk.pkl`
+
+hk is configured via `hk.pkl`, written in [Pkl](https://pkl-lang.org/) from Apple. By default, hk uses the pkl CLI to evaluate configuration. Set `HK_PKL_BACKEND=pklr` to use the built-in evaluator instead — no pkl CLI required.
+
+### Config file paths
+
+hk searches for config files in the following order (first match wins):
+
+| Precedence | Path                   | Purpose                                           |
+| ---------- | ---------------------- | ------------------------------------------------- |
+| 1          | `hk.local.pkl`         | Local overrides — do not commit to source control |
+| 2          | `.config/hk.local.pkl` | Local overrides nested under `.config/`           |
+| 3          | `hk.pkl`               | Standard project config                           |
+| 4          | `.config/hk.pkl`       | Standard project config nested under `.config/`   |
+
+hk walks up from the current directory to `/`, checking each directory for these files. The first file found is used.
+
+<Note>
+  Set `HK_FILE` to override the search and point hk at a specific path.
+</Note>
+
+Unlike mise, hk does not merge multiple config files or support `conf.d/` directories. Local overrides use Pkl's `amends` mechanism instead (see [`hk.local.pkl`](#hklocalpkl)).
+
+### Example
+
+Here is a complete `hk.pkl` showing hooks, steps, and builtins:
+
+```pkl hk.pkl theme={null}
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Builtins.pkl"
+
+local linters = new Mapping<String, Step> {
+    // linters can be manually defined
+    ["eslint"] {
+        // filter staged files to those matching these globs; skip if none match
+        glob = List("*.js", "*.ts")
+        // read-only check command
+        check = "eslint {{files}}"
+        // fix command that modifies files in place
+        fix = "eslint --fix {{files}}"
+    }
+    // linters can also come from the Builtins library
+    ["prettier"] = Builtins.prettier
+}
+
+hooks {
+    ["pre-commit"] {
+        fix = true       // run the fix command to auto-modify files
+        stash = "git"    // stash unstaged changes before running fix steps
+        steps = linters
+    }
+    ["pre-push"] {
+        steps = linters
+    }
+    // "fix" and "check" are special hooks for `hk fix` and `hk check` commands
+    ["fix"] {
+        fix = true
+        steps = linters
+    }
+    ["check"] {
+        steps = linters
+        // optional: run a report after the hook finishes; HK_REPORT_JSON contains timing JSON
+        report = #"node scripts/upload-timings.js <<<"$HK_REPORT_JSON""#
+    }
+}
+```
+
+The first line (`amends`) is critical — it imports the base configuration schema for type-checking and base classes.
+
+### `hk.local.pkl`
+
+If `hk.local.pkl` exists it is used instead of `hk.pkl`. It is intended for local developer overrides and should not be committed to source control.
+
+The first line should amend `./hk.pkl`:
+
+```pkl hk.local.pkl theme={null}
+amends "./hk.pkl"
+import "./hk.pkl" as repo_config
+
+hooks = (repo_config.hooks) {
+    ["pre-commit"] {
+        (steps) {
+            ["custom-step"] = new Step {
+                check = "my-custom-check"
+            }
+        }
+    }
+}
+```
+
+## Step groups
+
+A `Group` is a collection of steps executed in parallel. All steps in a group must finish before the next group starts, and no step from the next group starts until the current group is complete.
+
+```pkl theme={null}
+hooks {
+    ["pre-commit"] {
+        steps {
+            ["build"] = new Group {
+                steps = new Mapping<String, Step> {
+                    ["ts"] = new Step {
+                        fix = "tsc -b"
+                    }
+                    ["rs"] = new Step {
+                        fix = "cargo build"
+                    }
+                }
+            }
+            // these steps run in parallel after "build" finishes
+            ["lint"] = new Group {
+                steps = new Mapping<String, Step> {
+                    ["prettier"] = new Step {
+                        check = "prettier --check {{files}}"
+                    }
+                    ["eslint"] = new Step {
+                        check = "eslint {{files}}"
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+Use `depends` and read/write locks for finer-grained ordering instead of groups where possible.
+
+## Git status in conditions and templates
+
+hk exposes the current git status to both condition expressions and Tera templates via a `git` object, so you can avoid shelling out in conditions.
+
+**Available fields:**
+
+* `git.staged_files`, `git.unstaged_files`, `git.untracked_files`, `git.modified_files`
+* Staged classifications: `git.staged_added_files`, `git.staged_modified_files`, `git.staged_deleted_files`, `git.staged_renamed_files`, `git.staged_copied_files`
+* Unstaged classifications: `git.unstaged_modified_files`, `git.unstaged_deleted_files`, `git.unstaged_renamed_files`
+
+<Tabs>
+  <Tab title="In conditions">
+    ```pkl theme={null}
+    // Run only if there are any staged files
+    condition = "git.staged_files != []"
+
+    // Run only if a Cargo.toml file is staged
+    condition = #"any(git.staged_files, {hasSuffix(#, "Cargo.toml")})"#
+
+    // Added or Renamed (AR):
+    condition = "(git.staged_added_files != []) || (git.staged_renamed_files != [])"
+
+    // Renamed or Deleted (RD):
+    condition = "(git.staged_renamed_files != []) || (git.staged_deleted_files != [])"
+    ```
+  </Tab>
+
+  <Tab title="In templates">
+    ```pkl theme={null}
+    check = "echo staged: {{ git.staged_files }}"
+    ```
+  </Tab>
+</Tabs>
+
+These lists contain repository-relative paths for files currently in each state.
+
+## `hkrc`
+
+<Warning>
+  `.hkrc.pkl` and `--hkrc` are deprecated and will be removed in hk v2.
+
+  * **Per-project overrides:** use `hk.local.pkl` in the project root.
+  * **Global user config:** use `~/.config/hk/config.pkl`.
+</Warning>
+
+The `hkrc` is a global configuration file applied to all projects. hk discovers it in this order (first match wins):
+
+| Precedence | Path                      | Purpose                                 |
+| ---------- | ------------------------- | --------------------------------------- |
+| 1          | `.hkrc.pkl` (CWD)         | Per-directory override **(deprecated)** |
+| 2          | `~/.hkrc.pkl`             | Home directory **(deprecated)**         |
+| 3          | `~/.config/hk/config.pkl` | XDG config directory **(recommended)**  |
+
+The hkrc file uses the same format as `hk.pkl`. It is merged with the project config using **project wins** semantics:
+
+* **Settings** (`jobs`, `fail_fast`, etc.): project config overrides hkrc.
+* **Environment variables**: hkrc values are set first; project config can override them.
+* **Hooks/steps**: additive — hkrc can add hooks and steps the project doesn't define, but when both define the same step, the project's definition wins.
+
+### Managing global hook preferences
+
+<AccordionGroup>
+  <Accordion title="Run your own linters on every project">
+    Add steps to your hkrc. hk merges them into every project's hooks:
+
+    ```pkl ~/.config/hk/config.pkl theme={null}
+    amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+
+    hooks {
+        ["pre-commit"] {
+            steps {
+                ["gitleaks"] { check = "gitleaks git --staged" }
+            }
+        }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Skip steps you don't want from a project">
+    hkrc can't remove project steps — project wins on collision. To skip a step, use git config (persists) or an env var (one session):
+
+    ```bash theme={null}
+    # Skip a step permanently in this repo
+    git config --local hk.skipSteps "slow-linter,noisy-formatter"
+
+    # Skip for one run
+    HK_SKIP_STEPS=slow-linter hk run pre-commit
+    ```
+  </Accordion>
+
+  <Accordion title="Completely replace a project's hooks locally">
+    Create `hk.local.pkl` in the project root and add it to `.gitignore`:
+
+    ```pkl hk.local.pkl theme={null}
+    amends "./hk.pkl"
+    import "./hk.pkl" as upstream
+
+    hooks = (upstream.hooks) {
+        ["pre-commit"] {
+            steps {
+                // keep only the steps you want
+                ["gitleaks"] = upstream.hooks["pre-commit"].steps["gitleaks"]
+            }
+        }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Settings reference
+
+Settings are sourced from multiple places; higher precedence overrides lower. List settings (`exclude`, `skip_steps`, `skip_hooks`, `hide_warnings`) use **union semantics** — values from all sources are combined.
+
+| Precedence  | Source                         | Example                                 |
+| ----------- | ------------------------------ | --------------------------------------- |
+| 1 (highest) | CLI flags                      | `hk check --fail-fast`                  |
+| 2           | Environment variables (`HK_*`) | `HK_JOBS=8 hk check`                    |
+| 3           | Git config (local repo)        | `git config --local hk.jobs 4`          |
+| 4           | Git config (global/system)     | `git config --global hk.failFast false` |
+| 5           | Project config (`hk.pkl`)      | `jobs = 4` in `hk.pkl`                  |
+| 6           | User rc (hkrc)                 | `jobs = 4` in `~/.config/hk/config.pkl` |
+| 7 (lowest)  | Built-in defaults              | `jobs = 0` (auto, CPU cores)            |
+
+<AccordionGroup>
+  <Accordion title="jobs">
+    **Type:** `UInt` | **Default:** `0` (auto-detect from CPU cores)
+
+    **Env var:** `HK_JOBS` | **Git config:** `hk.jobs`
+
+    The number of parallel processes hk uses to run steps concurrently. Set to `0` to let hk choose based on available CPU cores.
+
+    ```pkl theme={null}
+    jobs = 4
+    ```
+  </Accordion>
+
+  <Accordion title="fail_fast">
+    **Type:** `Boolean` | **Default:** `true`
+
+    **Env var:** `HK_FAIL_FAST` | **Git config:** `hk.failFast`
+
+    When `true`, hk stops remaining steps as soon as one fails. When `false`, hk continues and reports all failures at the end.
+
+    ```pkl theme={null}
+    fail_fast = false
+    ```
+  </Accordion>
+
+  <Accordion title="exclude">
+    **Type:** `String | List<String> | Regex` | **Default:** `(empty)`
+
+    **Env var:** `HK_EXCLUDE` | **Git config:** `hk.exclude`
+
+    Global exclude patterns applied to all hooks and steps. Simple directory names automatically match their contents. Values from all sources are unioned together.
+
+    ```pkl theme={null}
+    exclude = List("node_modules", "dist", "**/*.min.js")
+    ```
+  </Accordion>
+
+  <Accordion title="skip_steps">
+    **Type:** `List<String>` | **Default:** `(empty)`
+
+    **Env var:** `HK_SKIP_STEPS` | **Git config:** `hk.skipSteps`
+
+    Step names to skip when running hooks. Values from all sources are unioned together.
+
+    ```pkl theme={null}
+    skip_steps = List("slow-test")
+    ```
+  </Accordion>
+
+  <Accordion title="skip_hooks">
+    **Type:** `List<String>` | **Default:** `(empty)`
+
+    **Env var:** `HK_SKIP_HOOKS` | **Git config:** `hk.skipHook`
+
+    Hook names to skip entirely. Values from all sources are unioned together.
+
+    ```pkl theme={null}
+    skip_hooks = List("pre-push")
+    ```
+  </Accordion>
+
+  <Accordion title="profiles">
+    **Type:** `List<String>` | **Default:** `(empty)`
+
+    **Env var:** `HK_PROFILE` | **Git config:** `hk.profile`
+
+    Profiles to enable or disable. Steps opt in to profiles via `step.profiles`. Prefix a profile name with `!` to explicitly disable it.
+
+    ```pkl theme={null}
+    profiles = List("ci", "slow")
+    ```
+  </Accordion>
+
+  <Accordion title="stage">
+    **Type:** `Boolean` | **Default:** `true` (on hooks with `fix = true`)
+
+    **Env var:** `HK_STAGE`
+
+    When `true`, hk automatically stages files modified by fix commands. Set to `false` to apply fixes without re-staging (useful with `fail_on_fix = true` to force review).
+
+    ```pkl theme={null}
+    stage = false
+    ```
+  </Accordion>
+
+  <Accordion title="default_branch">
+    **Type:** `String` | **Default:** auto-detected
+
+    The default branch to compare against when hk needs a reference. Supports local branch names (`main`) and remote-qualified refs (`origin/main`).
+
+    ```pkl theme={null}
+    default_branch = "origin/main"
+    ```
+  </Accordion>
+
+  <Accordion title="stash_backup_count">
+    **Type:** `UInt` | **Default:** `20`
+
+    Number of backup patch files to keep per repository when using git stash. Set to `0` to disable patch backup creation.
+
+    ```pkl theme={null}
+    stash_backup_count = 5
+    ```
+  </Accordion>
+
+  <Accordion title="walk_ignore">
+    **Type:** `Boolean` | **Default:** `true`
+
+    When `true`, hk respects `.gitignore` and other ignore files when walking directories.
+
+    ```pkl theme={null}
+    walk_ignore = false
+    ```
+  </Accordion>
+
+  <Accordion title="warnings / hide_warnings">
+    **Type:** `List<String>` | **Default:** `(empty)`
+
+    **Git config:** `hk.warnings` / `hk.hideWarnings`
+
+    `warnings` controls which warning categories are shown (available tag: `missing-profiles`). `hide_warnings` suppresses specific warnings. Values from all sources are unioned together.
+
+    ```pkl theme={null}
+    warnings = List("missing-profiles")
+    hide_warnings = List("missing-profiles")
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Git configuration
+
+hk can be configured through git config. All keys use the `hk.` prefix:
+
+```bash theme={null}
+# Set number of parallel jobs
+git config --local hk.jobs 5
+
+# Disable fail-fast behavior
+git config --local hk.failFast false
+
+# Add profiles
+git config --local hk.profile slow
+git config --local --add hk.profile fast
+
+# Add exclude patterns (union semantics)
+git config --local hk.exclude "node_modules"
+git config --local --add hk.exclude "**/*.min.js"
+
+# Skip specific steps
+git config --local hk.skipSteps "slow-test,flaky-test"
+
+# Skip entire hooks
+git config --local hk.skipHook "pre-push"
+
+# Configure warnings
+git config --local hk.warnings "missing-profiles"
+git config --local hk.hideWarnings "missing-profiles"
+```
+
+Git config supports both multi-value entries (multiple keys with the same name) and comma-separated values in a single entry.
+
+## User configuration
+
+User-specific defaults live in `~/.config/hk/config.pkl`:
+
+```pkl ~/.config/hk/config.pkl theme={null}
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+
+jobs = 4
+fail_fast = false
+exclude = List("node_modules", "dist", "build")
+skip_steps = List("slow-test")
+skip_hooks = List("pre-push")
+```
+
+## Configuration introspection
+
+Use the `hk config` commands to inspect your active configuration:
+
+```bash theme={null}
+# Show effective configuration (all sources merged)
+hk config dump
+
+# Get a specific configuration value
+hk config get exclude
+hk config get skip_steps
+
+# Show configuration source precedence
+hk config sources
+```
+
+
+# Environment variables
+Source: https://www.mintlify.com/jdx/hk/environment-variables
+
+Full reference for all HK_* environment variables used to configure hk.
+
+Environment variables can be used to configure hk. They apply to the current command or, when exported, to all commands in the session.
+
+## Core
+
+<ParamField type="string">
+  The configuration file to use.
+
+  ```bash theme={null}
+  HK_FILE=my-hk.pkl hk check
+  ```
+</ParamField>
+
+<ParamField type="bool">
+  If set to `false`, hk will not run fix steps. Use this to enforce check-only mode.
+
+  ```bash theme={null}
+  HK_FIX=false hk check
+  ```
+</ParamField>
+
+<ParamField type="usize">
+  The number of steps to run in parallel. Defaults to the number of logical CPU cores on the machine.
+
+  ```bash theme={null}
+  HK_JOBS=4 hk check
+  ```
+</ParamField>
+
+<ParamField type="string[] (comma-separated)">
+  The profile(s) to activate when running hooks. Steps that require a profile not in this list are skipped.
+
+  ```bash theme={null}
+  HK_PROFILE=ci,slow hk check
+  ```
+</ParamField>
+
+## Git integration
+
+<ParamField type="git | patch-file | none">
+  Controls how unstaged changes are stashed before hooks run.
+
+  * `git` — use `git stash` to stash unstaged changes
+  * `patch-file` — use an hk-generated patch file (typically faster, avoids `index is locked` errors)
+  * `none` — do not stash; faster but may accidentally stage unstaged changes if they overlap with staged files that are fixed
+
+  ```bash theme={null}
+  HK_STASH=patch-file hk run pre-commit
+  ```
+</ParamField>
+
+<ParamField type="bool">
+  If `true`, untracked files are also stashed along with unstaged changes. Set to `false` to leave untracked files in the working tree during hook execution.
+</ParamField>
+
+<ParamField type="bool">
+  If `false`, hk shells out to git commands instead of using the embedded libgit2 library. This can improve performance when `fsmonitor` is active or when libgit2 has trouble with a repository layout.
+</ParamField>
+
+## Paths
+
+<ParamField type="path">
+  The directory where hk stores cached data.
+</ParamField>
+
+<ParamField type="path">
+  The directory where hk stores runtime state, including the default log file.
+</ParamField>
+
+<ParamField type="path">
+  The file path for log output. Set to a custom path to redirect logs.
+
+  ```bash theme={null}
+  HK_LOG_FILE=/tmp/my-hk.log hk check
+  ```
+</ParamField>
+
+## Logging
+
+<ParamField type="trace | debug | info | warn | error">
+  The minimum log level for console output.
+
+  ```bash theme={null}
+  HK_LOG=debug hk check
+  ```
+</ParamField>
+
+<ParamField type="trace | debug | info | warn | error">
+  The minimum log level written to the log file. Defaults to the same level as `HK_LOG`. Set this independently to capture detailed logs in the file without verbose console output.
+
+  ```bash theme={null}
+  HK_LOG=warn HK_LOG_FILE_LEVEL=trace hk check
+  ```
+</ParamField>
+
+<ParamField type="1 | text | json">
+  Enables tracing output for performance analysis. `1` and `text` produce human-readable hierarchical output. `json` produces newline-delimited JSON (JSONL) suitable for programmatic analysis.
+
+  ```bash theme={null}
+  HK_TRACE=text hk check
+  HK_TRACE=json hk check > trace.jsonl
+  ```
+</ParamField>
+
+<ParamField type="bool">
+  Controls whether per-step output summaries are printed in plain text mode. By default, summaries are only shown when hk renders progress bars. Set to `true` to force summaries to appear in text (non-TTY) mode.
+
+  ```bash theme={null}
+  HK_SUMMARY_TEXT=1 hk check
+  ```
+</ParamField>
+
+## Skipping
+
+<ParamField type="string[] (comma-separated)">
+  A list of step names to skip when running pre-commit and pre-push hooks. All skip sources (env var, git config, user config) are unioned together.
+
+  ```bash theme={null}
+  HK_SKIP_STEPS=lint,typecheck hk run pre-commit
+  ```
+
+  This can also be configured via:
+
+  * Git config: `git config hk.skipSteps "lint,typecheck"`
+  * User config (`.hkrc.pkl`): `skip_steps = List("lint", "typecheck")`
+</ParamField>
+
+<ParamField type="string[] (comma-separated)">
+  A list of hook names to skip entirely. Unlike `HK_SKIP_STEPS`, this skips the entire hook and all of its steps.
+
+  ```bash theme={null}
+  HK_SKIP_HOOK=pre-commit hk run pre-commit
+  ```
+
+  This can also be configured via:
+
+  * Git config: `git config hk.skipHook "pre-commit"`
+  * User config (`.hkrc.pkl`): `skip_hooks = List("pre-commit")`
+</ParamField>
+
+## Performance
+
+<ParamField type="bool">
+  When `true`, hk runs check commands first, then runs fix commands only for steps that failed and whose files overlap with other steps. This allows maximum parallelism: multiple check commands can run concurrently against the same file, while fix commands — which may write to files — are serialized only when necessary.
+
+  When `false`, hk uses simpler logic that always runs fix commands serially for overlapping files.
+</ParamField>
+
+<ParamField type="bool">
+  If `true`, hk stops executing remaining steps after the first step fails.
+</ParamField>
+
+## Output
+
+<ParamField type="string[] (comma-separated)">
+  A list of warning tags to suppress. Available tags:
+
+  * `missing-profiles` — suppresses warnings about steps being skipped due to missing profiles
+
+  ```bash theme={null}
+  HK_HIDE_WARNINGS=missing-profiles hk check
+  ```
+
+  Warning categories can also be opted into in `hk.pkl` or `.hkrc.pkl`:
+
+  ```pkl theme={null}
+  warnings = List("missing-profiles")
+  ```
+</ParamField>
+
+<ParamField type="bool">
+  If `true`, hk clears the progress output once the hook finishes successfully. Errors are always shown regardless of this setting.
+</ParamField>
+
+<ParamField type="path">
+  If set to a file path, hk writes a JSON timing report at the end of the run. The report includes total wall time and per-step wall time. Overlapping parallel intervals are merged so time is not double-counted.
+
+  ```bash theme={null}
+  HK_TIMING_JSON=/tmp/hk-timing.json hk check
+  ```
+
+  The `steps` object maps step names to:
+
+  * `wall_time_ms` — merged wall time in milliseconds
+  * `profiles` — (optional) profiles required by the step; omitted if none
+
+  Example output:
+
+  ```json theme={null}
+  {
+    "total": { "wall_time_ms": 12456 },
+    "steps": {
+      "lint": { "wall_time_ms": 4321, "profiles": ["ci", "fast"] },
+      "fmt": { "wall_time_ms": 2100 },
+      "typecheck": { "wall_time_ms": 6035 }
+    }
+  }
+  ```
+
+  When a hook-level `report` command is configured in `hk.pkl`, hk also sets `HK_REPORT_JSON` to the same timing JSON content in memory and executes the command after the hook finishes. This lets custom scripts post-process or upload timing data without reading a file.
+</ParamField>
+
+## Misc
+
+<ParamField type="bool">
+  When `true`:
+
+  * `hk install` uses `mise x` to execute hooks, so mise tools are available without activating mise in the shell
+  * `hk init` generates a `mise.toml` file with hk configured
+
+  ```bash theme={null}
+  HK_MISE=true hk install
+  ```
+</ParamField>
+
+<ParamField type="string[] (comma-separated)">
+  Glob patterns to exclude from processing. These are unioned with exclude patterns from git config, user config, and project config. Supports both directory names and glob patterns.
+
+  ```bash theme={null}
+  # Exclude specific directories
+  HK_EXCLUDE=node_modules,dist hk check
+
+  # Exclude using glob patterns
+  HK_EXCLUDE="**/*.min.js,**/*.map" hk check
+  ```
+</ParamField>
+
+<ParamField type="pklr | pkl">
+  Controls which backend evaluates `hk.pkl` configuration files.
+
+  * `pklr` — use the built-in Rust Pkl evaluator ([pklr](https://github.com/jdx/pklr)). No external pkl CLI required. This is experimental and may not support every Pkl feature yet.
+  * `pkl` — use the external `pkl` CLI (the default). Install it with `mise use -g pkl`.
+
+  ```bash theme={null}
+  # Use the built-in evaluator (no pkl CLI needed)
+  HK_PKL_BACKEND=pklr hk check
+  ```
+
+  See [Pkl configuration language](/pkl-introduction) for details.
+</ParamField>
+
+
+# Hooks
+Source: https://www.mintlify.com/jdx/hk/hooks
+
+How hk executes git hooks, the read/write locking model, and a reference for every supported hook type and step property.
+
+hk wraps git hooks and runs their configured steps as fast as possible using a read/write locking model. Each step declares whether it reads or writes files, and hk schedules them concurrently while preventing conflicting operations from overlapping.
+
+## Hook execution flow
+
+When a hook runs with `fix = true`, hk performs the following sequence:
+
+<Steps>
+  <Step title="Stash unstaged changes">
+    Unstaged and untracked changes are stashed so the linters only see staged content. Disable with `stash = "none"`.
+  </Step>
+
+  <Step title="Gather files">
+    hk collects the list of staged files (or all files when running `hk run pre-commit --all`) and filters them against each step's `glob` patterns.
+  </Step>
+
+  <Step title="Run steps in parallel">
+    Steps run concurrently up to `HK_JOBS` at a time. hk creates per-file read/write locks based on each step's glob patterns:
+
+    * **Check steps** acquire read locks — multiple check steps on the same file run simultaneously.
+    * **Fix steps** acquire write locks — a fix step blocks other steps on the same file until it completes.
+    * If `check_first = true` (the default), hk runs the check command first with read locks. Only if it fails does hk acquire write locks and run the fix command.
+    * If `check_list_files` is defined, hk uses its output to acquire write locks only for files that actually need fixing.
+    * If `check_diff` is defined, hk attempts to apply the diff output directly with `git apply` instead of running the fix command.
+    * `exclusive = true` steps wait for all previous steps to finish and block later steps from starting.
+  </Step>
+
+  <Step title="Stage modified files">
+    Files modified by fix steps that match the step's `stage` globs (defaults to the step's `glob`) are added to the git index.
+  </Step>
+
+  <Step title="Unstash">
+    The stashed changes are restored.
+  </Step>
+</Steps>
+
+When `fix = false`, hk only runs check steps and skips the locking machinery entirely.
+
+## Supported hooks
+
+<AccordionGroup>
+  <Accordion title="pre-commit">
+    Runs before `git commit` creates the commit. This is the most common hook — use it for formatting and linting staged files.
+
+    ```pkl theme={null}
+    hooks {
+        ["pre-commit"] {
+            fix = true
+            stash = "git"
+            steps {
+                ["cargo-fmt"] {
+                    glob = "**/*.rs"
+                    check_first = true
+                    check = "cargo fmt --check"
+                    fix = "cargo fmt"
+                }
+                ["cargo-clippy"] {
+                    glob = "**/*.rs"
+                    check_first = true
+                    check = "cargo clippy"
+                    fix = "cargo clippy --fix --allow-dirty --allow-staged"
+                }
+            }
+        }
+    }
+    ```
+
+    You can also use prelint and postlint bookend steps with `exclusive = true` to sequence work:
+
+    ```pkl theme={null}
+    hooks {
+        ["pre-commit"] {
+            fix = true
+            stash = "git"
+            steps {
+                ["prelint"] {
+                    check = "mise run prelint"
+                    exclusive = true
+                }
+                ...linters
+                ["postlint"] {
+                    check = "mise run postlint"
+                    exclusive = true
+                }
+            }
+        }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="prepare-commit-msg">
+    Runs before the commit message editor opens. Useful for rendering a default commit message template.
+
+    The `{{commit_msg_file}}` template variable contains the path to the commit message file.
+
+    ```pkl theme={null}
+    hooks {
+        ["prepare-commit-msg"] {
+            steps {
+                ["render-commit-msg"] {
+                    check = "echo 'default commit message' > {{commit_msg_file}}"
+                }
+            }
+        }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="commit-msg">
+    Runs after the commit message is created. Useful for validating that commit messages follow a convention.
+
+    The `{{commit_msg_file}}` template variable contains the path to the commit message file.
+
+    ```pkl theme={null}
+    hooks {
+        ["commit-msg"] {
+            steps {
+                ["validate-commit-msg"] {
+                    check = "grep -q '^(fix|feat|chore):' {{commit_msg_file}} || exit 1"
+                }
+            }
+        }
+    }
+    ```
+
+    You can also use `Builtins.check_conventional_commit` for this:
+
+    ```pkl theme={null}
+    import "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Builtins.pkl"
+
+    hooks {
+        ["commit-msg"] {
+            steps {
+                ["check-conventional-commit"] = Builtins.check_conventional_commit
+            }
+        }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="pre-push">
+    Runs before `git push`. Use it for slower checks that are too expensive to run on every commit.
+
+    ```pkl theme={null}
+    hooks {
+        ["pre-push"] {
+            steps = linters
+        }
+    }
+    ```
+
+    Because `fix` is not set (defaults to `false`), hk runs only check steps and skips all write locking — making pre-push faster than pre-commit.
+  </Accordion>
+
+  <Accordion title="fix and check (special hooks)">
+    `fix` and `check` are not git hooks — they are special hooks for the `hk fix` and `hk check` commands. Define them to enable manual linting runs outside of git.
+
+    ```pkl theme={null}
+    hooks {
+        ["fix"] {
+            fix = true
+            steps = linters
+        }
+        ["check"] {
+            steps = linters
+            // optional: upload timing data after the run
+            report = #"node scripts/upload-timings.js <<<"$HK_REPORT_JSON""#
+        }
+    }
+    ```
+
+    Run them with:
+
+    ```bash theme={null}
+    hk fix          # run fix steps on all files
+    hk check        # run check steps on all files
+    hk check --all  # check every file, not just staged ones
+    ```
+  </Accordion>
+</AccordionGroup>
+
+hk also supports all other standard git hooks. See the [git documentation](https://git-scm.com/book/en/v2/Customizing-Git-Git-Hooks) for the full list.
+
+## Step properties
+
+Steps are configured as entries in a `Mapping<String, Step>` inside a hook's `steps` field. Every property is optional unless noted.
+
+<AccordionGroup>
+  <Accordion title="check">
+    A read-only command to validate files. Should exit non-zero if there are errors. Runs with read locks; multiple check steps can run simultaneously on the same file.
+
+    ```pkl theme={null}
+    check = "eslint {{files}}"
+    ```
+
+    **Template variables:** `{{files}}`, `{{workspace}}`, `{{workspace_indicator}}`, `{{workspace_files}}`
+  </Accordion>
+
+  <Accordion title="fix">
+    A command that modifies files in place. Runs with write locks. When `check_first = true` (the default), hk only runs fix if the check command fails first.
+
+    ```pkl theme={null}
+    fix = "eslint --fix {{files}}"
+    ```
+  </Accordion>
+
+  <Accordion title="check_diff">
+    A command that outputs a unified diff of what would be changed. hk attempts to apply it with `git apply` instead of running the fix command — more efficient for tools like `black`, `ruff`, and `shfmt`.
+
+    ```pkl theme={null}
+    check_diff = "black --check --diff {{files}}"
+    ```
+  </Accordion>
+
+  <Accordion title="check_list_files">
+    A command that returns the list of files that need fixing. Used with `check_first` to acquire write locks only for files that actually need changes.
+
+    ```pkl theme={null}
+    check_list_files = "prettier --list-different {{files}}"
+    ```
+  </Accordion>
+
+  <Accordion title="glob">
+    File patterns (glob or regex) the step runs on. Only staged files matching these patterns are passed to the step. If unset, the step always runs.
+
+    ```pkl theme={null}
+    glob = List("**/*.js", "**/*.ts")
+    ```
+  </Accordion>
+
+  <Accordion title="batch">
+    **Default:** `false`
+
+    When `true`, hk splits the file list into batches and runs them in parallel. Useful for single-threaded tools like eslint and prettier.
+
+    ```pkl theme={null}
+    batch = true
+    ```
+  </Accordion>
+
+  <Accordion title="check_first">
+    **Default:** `true`
+
+    When `true`, hk runs the check command first with read locks. If it fails, hk acquires write locks and runs the fix command. Set to `false` to always run fix directly — avoid this when possible as it hurts parallelism.
+
+    ```pkl theme={null}
+    check_first = false
+    ```
+  </Accordion>
+
+  <Accordion title="exclusive">
+    **Default:** `false`
+
+    When `true`, this step waits for all previous steps to complete before starting, and no subsequent steps start until this one finishes. Useful for bookend steps that must run in isolation.
+
+    ```pkl theme={null}
+    exclusive = true
+    ```
+  </Accordion>
+
+  <Accordion title="depends">
+    A step name or list of step names that must complete before this step starts.
+
+    ```pkl theme={null}
+    depends = List("prettier")
+    // or a single string:
+    depends = "prettier"
+    ```
+  </Accordion>
+
+  <Accordion title="profiles">
+    A list of profile names that must be active for this step to run. Prefix with `!` to disable the step when a profile is active.
+
+    ```pkl theme={null}
+    profiles = List("slow")         // only run when "slow" profile is active
+    profiles = List("!slow")        // skip when "slow" profile is active
+    ```
+
+    Enable profiles with `HK_PROFILE=slow` or via `git config hk.profile slow`.
+  </Accordion>
+
+  <Accordion title="workspace_indicator">
+    When set, hk groups files by the nearest parent directory containing this filename, then runs the step once per matching workspace.
+
+    ```pkl theme={null}
+    workspace_indicator = "Cargo.toml"
+    check = "cargo clippy --manifest-path {{workspace_indicator}}"
+    ```
+
+    Additional template variables become available: `{{workspace}}`, `{{workspace_indicator}}`, `{{workspace_files}}`.
+  </Accordion>
+
+  <Accordion title="env">
+    Environment variables scoped to this step.
+
+    ```pkl theme={null}
+    env {
+        ["NODE_ENV"] = "production"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="condition / step_condition">
+    An [expr](https://github.com/jdx/expr-rs) expression that controls whether the step runs.
+
+    * `condition` is evaluated per job (once per batch or workspace).
+    * `step_condition` is evaluated once for the entire step.
+
+    ```pkl theme={null}
+    condition = "git.staged_files != []"
+    step_condition = "exec('test -f .eslintrc.json')"
+    ```
+  </Accordion>
+
+  <Accordion title="dir">
+    Run the step's commands in this directory instead of the repository root.
+
+    ```pkl theme={null}
+    dir = "frontend"
+    ```
+  </Accordion>
+
+  <Accordion title="prefix">
+    Prepend this string to all step commands.
+
+    ```pkl theme={null}
+    prefix = "bun run"
+    ```
+  </Accordion>
+
+  <Accordion title="stage">
+    Glob patterns of files to stage after running a fix command. Defaults to the step's `glob` when staging is enabled.
+
+    ```pkl theme={null}
+    stage = List("*.js", "*.ts")
+    ```
+  </Accordion>
+
+  <Accordion title="stomp">
+    **Default:** `false`
+
+    When `true`, hk acquires a write lock immediately instead of attempting a read lock first. Use for tools that have their own internal locking.
+
+    ```pkl theme={null}
+    stomp = true
+    ```
+  </Accordion>
+
+  <Accordion title="output_summary">
+    **Default:** `"stderr"`
+
+    Controls which output stream is captured and printed after the hook run.
+
+    * `"stderr"` — capture only stderr (default)
+    * `"stdout"` — capture only stdout
+    * `"combined"` — capture both streams interleaved
+    * `"hide"` — suppress all output for this step
+
+    ```pkl theme={null}
+    output_summary = "combined"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+
+# Introduction
+Source: https://www.mintlify.com/jdx/hk/introduction
+
+hk is a high-performance git hook manager that runs linters in parallel using file-level read/write locks — safely, without race conditions.
+
+hk manages your git hooks and project lints with an emphasis on **performance**. Unlike other hook managers that shell out to linters sequentially, hk maintains a read/write lock for every file being linted and runs as many linters concurrently as possible.
+
+<Note>
+  hk is a single Rust binary with no runtime dependencies. The built-in `pklr` evaluator means you don't even need the pkl CLI installed.
+</Note>
+
+## What makes hk different
+
+Most git hook managers — pre-commit, prek, lefthook — work by shelling out to linters one after another. Running 10 linters sequentially means your commit time is the *sum* of every linter's runtime. hk runs them in parallel, making commit time closer to the *slowest* single linter.
+
+Safe parallelism requires coordination. If two linters both try to rewrite the same file at the same time, one will silently overwrite the other's changes. hk prevents this with **file-level read/write locks**: multiple linters can read the same file simultaneously, but a linter that needs to write first acquires an exclusive lock.
+
+Beyond speed, hk adds:
+
+* **Smart stashing** — a three-way merge strategy ensures your unstaged work-in-progress is never clobbered by fixers during a commit.
+* **120+ built-in linter configs** — Prettier, ESLint, Ruff, Cargo Clippy, Golangci-lint, and more, ready to drop in with a single line of Pkl.
+* **Type-safe Pkl configuration** — Apple's [Pkl](https://pkl-lang.org/) language gives you schema validation and IDE autocomplete instead of stringly-typed YAML.
+* **Secure plugin model** — builtins are Pkl config files in the hk repository, not third-party code downloaded from external git repos.
+
+## Feature comparison
+
+| Feature                    | hk                 | pre-commit         | lefthook       | prek               |
+| -------------------------- | ------------------ | ------------------ | -------------- | ------------------ |
+| Parallel execution         | File-locked        | No                 | Unsafe         | No                 |
+| Language                   | Rust               | Python             | Go             | Rust               |
+| Requires Python            | No                 | Yes                | No             | Often              |
+| Config format              | Pkl                | YAML               | YAML           | YAML               |
+| Built-in linter configs    | [120+](/builtins)  | —                  | —              | —                  |
+| Plugin model               | Pkl config (local) | Git repos (remote) | Shell commands | Git repos (remote) |
+| `check_diff` support       | Yes                | No                 | No             | No                 |
+| `check_list_files` support | Yes                | No                 | No             | No                 |
+| Stash management           | Yes                | Partial            | No             | Partial            |
+| Dependency resolution      | Yes                | No                 | No             | No                 |
+| Batched execution          | Yes                | No                 | No             | No                 |
+
+<Tip>
+  See [Benchmarks](/benchmarks) for reproducible performance numbers comparing hk against pre-commit, lefthook, and prek on a synthetic 6,000-file project with 10 overlapping linters.
+</Tip>
+
+## Next steps
+
+<CardGroup>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Install hk and configure your first project in under 5 minutes.
+  </Card>
+
+  <Card title="Why hk?" icon="bolt" href="/why-hk">
+    Deep dive into parallel execution, smart stashing, and how hk compares to alternatives.
+  </Card>
+
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Learn how to write `hk.pkl` with hooks, steps, globs, and builtins.
+  </Card>
+
+  <Card title="Built-in linters" icon="list-check" href="/builtins">
+    Browse 120+ pre-configured linters and formatters ready to use instantly.
+  </Card>
+</CardGroup>
+
+
+# Logging and debugging
+Source: https://www.mintlify.com/jdx/hk/logging
+
+Control log levels, enable tracing, generate timing reports, and debug common issues with hk.
+
+hk provides several ways to control logging output and diagnose problems during execution.
+
+## Log levels
+
+hk supports standard log levels that control how much information is displayed:
+
+| Level   | What you see                                                 |
+| ------- | ------------------------------------------------------------ |
+| `error` | Only error messages                                          |
+| `warn`  | Warnings and errors (console default)                        |
+| `info`  | Informational messages, warnings, and errors                 |
+| `debug` | Debug information including file operations and step details |
+| `trace` | All internal operations — very verbose                       |
+
+## Setting log levels
+
+### CLI flags
+
+The `-v` / `--verbose` flag is the quickest way to raise the log level for a single command:
+
+```bash theme={null}
+# debug level — shows which files are being checked or fixed
+hk check -v
+hk fix --verbose
+
+# trace level — shows all internal operations
+hk check -vv
+```
+
+* `-v` or `--verbose` sets the level to `debug`
+* `-vv` sets the level to `trace`
+
+### Environment variable
+
+Use `HK_LOG` to set the level for a command or for the entire session:
+
+```bash theme={null}
+# Single command
+HK_LOG=debug hk check
+HK_LOG=trace hk fix
+
+# Entire session
+export HK_LOG=debug
+hk check
+hk fix
+```
+
+### Log file output
+
+By default hk writes logs to `~/.local/state/hk/hk.log`. You can redirect the file or set an independent level for it:
+
+```bash theme={null}
+# Redirect to a custom path
+HK_LOG_FILE=/tmp/my-hk.log hk check
+
+# Capture trace logs in the file without cluttering the console
+HK_LOG=warn HK_LOG_FILE_LEVEL=trace hk check
+```
+
+`HK_LOG_FILE_LEVEL` defaults to the value of `HK_LOG` when not set.
+
+## Quiet and silent modes
+
+```bash theme={null}
+# Suppress all non-error output
+hk check --quiet
+hk check -q
+
+# Suppress all output — rely on exit codes only
+hk check --silent
+```
+
+## Tracing and performance diagnostics
+
+hk includes built-in tracing for detailed execution tracking and performance analysis.
+
+### Enabling tracing
+
+Use the `--trace` flag or the `HK_TRACE` environment variable:
+
+```bash theme={null}
+# Console trace output (text mode)
+hk check --trace
+HK_TRACE=1 hk check
+HK_TRACE=text hk check
+
+# JSON/JSONL output for programmatic analysis
+HK_TRACE=json hk check > trace.jsonl
+hk check --trace --json > trace.jsonl
+```
+
+### Trace output formats
+
+**Text mode** — human-readable hierarchical output with timing:
+
+```
+  0.123s INFO Starting check
+  0.456s ├─ lint::eslint
+  0.789s │  ├─ Running eslint on 45 files
+  1.234s │  └─ Complete (478ms)
+  1.567s └─ Complete (1.444s)
+```
+
+**JSON mode** — newline-delimited JSON (JSONL), suitable for piping to `jq` or other tools:
+
+```json theme={null}
+{"type":"meta","span_schema_version":1,"hk_version":"1.12.1","pid":12345}
+{"type":"span_start","ts_ns":123456,"id":"span_0","name":"check","attrs":{}}
+{"type":"span_start","ts_ns":456789,"id":"span_1","name":"lint","attrs":{"step":"eslint"},"parent_id":"span_0"}
+{"type":"span_end","ts_ns":789012,"id":"span_1"}
+{"type":"span_end","ts_ns":1234567,"id":"span_0"}
+```
+
+### Performance timing reports
+
+`HK_TIMING_JSON` writes a structured JSON report at the end of a run. Overlapping parallel intervals are merged so time is not double-counted:
+
+```bash theme={null}
+HK_TIMING_JSON=/tmp/timing.json hk check
+cat /tmp/timing.json | jq .
+```
+
+Example report:
+
+```json theme={null}
+{
+  "total": { "wall_time_ms": 12456 },
+  "steps": {
+    "lint": { "wall_time_ms": 4321, "profiles": ["ci", "fast"] },
+    "fmt": { "wall_time_ms": 2100 },
+    "typecheck": { "wall_time_ms": 6035 }
+  }
+}
+```
+
+`steps` maps each step name to:
+
+* `wall_time_ms` — merged wall time in milliseconds
+* `profiles` — (optional) profiles required by the step; omitted when none
+
+## Common debugging scenarios
+
+<AccordionGroup>
+  <Accordion title="Debugging step execution">
+    To see which files are being processed by each step:
+
+    ```bash theme={null}
+    # Debug level shows file operations
+    HK_LOG=debug hk check
+
+    # Trace level shows every internal operation
+    HK_LOG=trace hk check
+    ```
+
+    To see exactly which steps would run without executing them, use `--plan`:
+
+    ```bash theme={null}
+    hk check --plan
+    ```
+  </Accordion>
+
+  <Accordion title="Debugging configuration issues">
+    Validate your configuration:
+
+    ```bash theme={null}
+    hk validate
+    ```
+
+    Check which steps are loaded and their file matches with `--plan`:
+
+    ```bash theme={null}
+    hk check --all --plan
+    ```
+  </Accordion>
+
+  <Accordion title="Debugging performance issues">
+    Generate a timing report to identify slow steps:
+
+    ```bash theme={null}
+    HK_TIMING_JSON=/tmp/timing.json hk check
+    cat /tmp/timing.json | jq .
+    ```
+
+    Use tracing for a step-by-step execution timeline:
+
+    ```bash theme={null}
+    hk check --trace
+    ```
+
+    For machine-readable analysis, capture JSONL output:
+
+    ```bash theme={null}
+    HK_TRACE=json hk check > trace.jsonl
+    jq 'select(.type == "span_end")' trace.jsonl
+    ```
+  </Accordion>
+
+  <Accordion title="Debugging configuration issues">
+    Validate your configuration with verbose output:
+
+    ```bash theme={null}
+    hk validate -v
+    ```
+
+    Check which steps are loaded and their file matches:
+
+    ```bash theme={null}
+    hk check --all --plan
+    ```
+
+    Debug a specific profile:
+
+    ```bash theme={null}
+    HK_LOG=debug hk check --profile slow
+    ```
+  </Accordion>
+
+  <Accordion title="Debugging git hook issues">
+    Test a hook directly with debug output:
+
+    ```bash theme={null}
+    HK_LOG=debug hk run pre-commit
+    ```
+
+    Check whether hooks are installed correctly:
+
+    ```bash theme={null}
+    ls -la .git/hooks/
+    ```
+
+    If you suspect stash behavior is causing issues, switch to patch-file mode and add debug logging:
+
+    ```bash theme={null}
+    HK_STASH=patch-file HK_LOG=debug hk run pre-commit
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Tips
+
+<Tip>
+  Start with `-v`. For most debugging, `hk check -v` provides enough detail without overwhelming output.
+</Tip>
+
+<Tip>
+  Use log files for trace-level detail. Set `HK_LOG_FILE_LEVEL=trace` to capture a full trace to disk while keeping the console clean.
+</Tip>
+
+<Tip>
+  Pipe JSON trace output to `jq` for filtering and analysis. For example, `jq 'select(.type == "span_end")' trace.jsonl` shows only completed spans.
+</Tip>
+
+<Tip>
+  Debug specific profiles with `HK_LOG=debug hk check --profile slow` to narrow down which steps in that profile are misbehaving.
+</Tip>
+
+
+# mise integration
+Source: https://www.mintlify.com/jdx/hk/mise-integration
+
+How to use hk alongside mise-en-place for tool management, task running, environment variables, and automated hook installation.
+
+Most git hook managers provide features that hk's sister project, [mise-en-place](https://github.com/jdx/mise), already covers well. Using hk and mise together gives you the best of both: hk handles the git lifecycle and linting, while mise manages tool versions, tasks, and environment variables.
+
+To opt in to all mise-specific features at once, set:
+
+```bash theme={null}
+export HK_MISE=1
+```
+
+<Info>
+  Setting `HK_MISE=1` wraps your git hooks with `mise x`. This ensures mise sets up the correct environment and tool versions before running hk, even for developers who haven't activated mise in their shell.
+</Info>
+
+## `hk init --mise`
+
+The `--mise` flag on `hk init` generates a `mise.toml` in the repository root. It installs hk and defines a `pre-commit` task so developers can run `mise run pre-commit` as a consistent project action alongside other mise tasks.
+
+```bash theme={null}
+hk init --mise
+```
+
+## `hk install --mise`
+
+The `--mise` flag on `hk install` wraps each git hook script with `mise x`, so the mise environment (tool versions, PATH shims, env vars) is available when hooks fire:
+
+```bash theme={null}
+hk install --mise
+```
+
+This is useful for teams where some developers have not activated mise in their shell — the hooks will still work correctly because `mise x` sets up the environment each time.
+
+## Tool management
+
+mise's tool management lets you pin the exact version of every tool used by `hk.pkl` in a single `mise.toml`:
+
+```bash theme={null}
+mise use hk
+mise use pkl
+mise use npm:prettier
+mise use jq
+```
+
+This creates (or updates) `mise.toml`, which you commit to the repository:
+
+```toml mise.toml theme={null}
+[tools]
+hk = "latest"
+pkl = "latest"
+"npm:prettier" = "latest"
+jq = "latest"
+```
+
+See the [mise dev tools docs](https://mise.jdx.dev/dev-tools/) for the full list of supported tool registries and version pinning options.
+
+## Task management
+
+[mise tasks](https://mise.jdx.dev/tasks/) can be called directly inside hk steps. This gives you access to task features like dependency management, option parsing, and parallel execution.
+
+```pkl hk.pkl theme={null}
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+
+hooks {
+    ["pre-commit"] {
+        fix = true
+        stash = "git"
+        steps {
+            ["prelint"] {
+                check = "mise run prelint"
+                exclusive = true  // ensure this finishes before other steps start
+            }
+            // ... more steps ...
+            ["postlint"] {
+                check = "mise run postlint"
+                exclusive = true  // wait for all previous steps to finish
+            }
+        }
+    }
+}
+```
+
+## Environment variables
+
+Define an `[env]` section in `mise.toml` to inject environment variables into every hook run:
+
+```toml mise.toml theme={null}
+[env]
+PRETTIER_CONFIG = ".prettierrc.json"
+NODE_ENV = "development"
+```
+
+When hooks run with `mise x` (via `hk install --mise` or `HK_MISE=1`), these variables are set automatically. mise has much richer environment variable support — see the [mise environments docs](https://mise.jdx.dev/environments/) for path manipulation, templating, and more.
+
+## Recommended setup
+
+The recommended approach is to use `mise.toml` as the single source of truth for tools and environment, and use hk only for the git lifecycle. Set `HK_MISE=1` in `mise.toml` and use a `postinstall` hook to automate hook installation for your whole team:
+
+```toml mise.toml theme={null}
+[tools]
+hk = "latest"
+pkl = "latest"
+# add other tools here: prettier, actionlint, etc.
+
+[env]
+HK_MISE = "1"
+
+[hooks]
+# automatically install/update hooks whenever tools are installed
+postinstall = "hk install --mise"
+```
+
+With this setup:
+
+<Steps>
+  <Step title="Developer clones the repo">
+    A new team member clones the repository.
+  </Step>
+
+  <Step title="Developer runs `mise install`">
+    mise installs all pinned tools and then runs the `postinstall` hook.
+  </Step>
+
+  <Step title="Hooks are installed automatically">
+    `hk install --mise` installs git hooks wrapped with `mise x`. No manual hook installation needed.
+  </Step>
+
+  <Step title="Hooks run in the correct environment">
+    When the developer commits or pushes, hooks fire with the full mise environment — correct tool versions, PATH shims, and env vars — regardless of whether mise is activated in their shell.
+  </Step>
+</Steps>
+
+
+# Pkl configuration language
+Source: https://www.mintlify.com/jdx/hk/pkl-introduction
+
+An introduction to Pkl — the configuration language hk uses — covering syntax, imports, amending, caching, and how to test your config.
+
+hk uses [Pkl](https://pkl-lang.org/) from Apple as its configuration language. Pkl is a statically-typed, schema-validated configuration language designed for building safe, composable configs. This page covers the Pkl concepts you need to write and maintain `hk.pkl` files.
+
+## Why Pkl?
+
+* **Built-in schema validation** — your editor can display type errors in your config, not just syntax errors.
+* **Native imports** — Pkl can import other Pkl files from the filesystem or HTTP URLs, so hk doesn't need its own import system.
+* **Amend / compose** — you can create shared objects and override specific fields without duplicating the rest. This makes patterns like local overrides clean and explicit.
+* **Static but expressive** — Pkl is comprehensive enough that hk doesn't need a plugin system. Shared, cached Pkl files keep evaluation fast.
+
+## Downsides
+
+Pkl is a young language with some rough edges worth knowing about:
+
+* Editor / syntax-highlighting support is still maturing (though it's backed by Apple, so it's improving quickly).
+* `List(a, b, c)` instead of `[a, b, c]` — the list literal syntax is unusual.
+* The `amends` model can be confusing at first.
+* The `default` behavior in mappings has some surprising edge cases.
+* Caching means env vars embedded in `hk.pkl` won't cause a re-evaluation when they change.
+
+AI tools (Cursor, Copilot, etc.) handle Pkl well — you can ask them to write or explain Pkl snippets for you.
+
+## Dependencies
+
+hk supports two Pkl backends:
+
+<Tabs>
+  <Tab title="pklr (built-in, recommended)">
+    hk includes a built-in Pkl evaluator called [pklr](https://github.com/jdx/pklr). Enable it with:
+
+    ```bash theme={null}
+    export HK_PKL_BACKEND=pklr
+    ```
+
+    No external Pkl installation required. pklr is experimental and may not support every Pkl feature yet, but it will eventually become the default backend.
+  </Tab>
+
+  <Tab title="pkl CLI">
+    The default backend uses the `pkl` CLI. Install it with mise:
+
+    ```bash theme={null}
+    mise use -g pkl
+    ```
+
+    If you run into issues with pklr, unset `HK_PKL_BACKEND` to fall back to the pkl CLI.
+  </Tab>
+</Tabs>
+
+## Basic syntax
+
+### Types
+
+```pkl theme={null}
+my_string = "hello"
+my_number = 1
+my_boolean = true
+list_of_strings = List("a", "b", "c")
+```
+
+### Mappings
+
+Mappings are key-value pairs, like objects or dictionaries in other languages:
+
+```pkl theme={null}
+my_mapping = new Mapping<String, String> {
+    ["key"] = "value"
+    ["another"] = "value2"
+}
+```
+
+### Listings and lists
+
+Use `List(...)` for simple ordered collections of scalar values:
+
+```pkl theme={null}
+my_list = List("a", "b", "c")
+```
+
+Use `new Listing<T>` for ordered collections of complex objects:
+
+```pkl theme={null}
+my_listing = new Listing<Step> {
+    new Step {
+        check = "make lint"
+    }
+    new Step {
+        check = "make format"
+    }
+}
+```
+
+### Local variables
+
+hk will reject any top-level property it doesn't recognize. Use the `local` keyword for intermediate variables:
+
+```pkl theme={null}
+local my_step = new Step {
+    check = "make lint"
+}
+```
+
+### Amending objects
+
+Amend an existing object to override specific fields while keeping the rest:
+
+```pkl theme={null}
+local make_lint = new Step {
+    check = "make lint"
+}
+
+local linters = new Mapping<String, Step> {
+    ["proj-a"] = (make_lint) {
+        dir = "proj_a"
+    }
+    ["proj-b"] = (make_lint) {
+        dir = "proj_b"
+    }
+}
+```
+
+This is equivalent to copying the object and changing only the `dir` field in each copy. The amend syntax `(object) { overrides }` is used extensively with builtins:
+
+```pkl theme={null}
+["prettier"] = (Builtins.prettier) {
+    glob = List("src/**/*.js", "src/**/*.ts")
+}
+```
+
+### Comments
+
+```pkl theme={null}
+// Single-line comment
+/*
+  Multi-line comment
+*/
+/// Doc comment (not currently used by hk)
+```
+
+### Classes
+
+You won't usually define your own classes in an hk config, but you will instantiate classes provided by `Config.pkl`:
+
+```pkl theme={null}
+local step = new Step {
+    glob = "**/*.rs"
+    check = "cargo fmt --check"
+    fix = "cargo fmt"
+}
+```
+
+## The `amends` line
+
+Every `hk.pkl` must start with an `amends` declaration. This line points at the base schema, which provides type checking and base class definitions:
+
+```pkl theme={null}
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+```
+
+The `amends` line means "this file extends and overrides values from that file." It is what lets your config be validated against the schema — your IDE can show errors for wrong property names or types.
+
+For `hk.local.pkl`, amend the project's `hk.pkl` instead:
+
+```pkl theme={null}
+amends "./hk.pkl"
+```
+
+## Imports
+
+Import other Pkl files to reference their values:
+
+```pkl theme={null}
+// Import the Builtins module
+import "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Builtins.pkl"
+
+// Import a local file
+import "./shared-steps.pkl" as shared
+
+// Import a remote file
+import "https://example.com/shared-config.pkl" as remote
+```
+
+Imported modules are referenced by their alias (or by their filename stem if no alias is given).
+
+## Caching
+
+hk caches the evaluated output of each `hk.pkl` file until the file is modified. This makes repeated hook runs fast.
+
+<Warning>
+  Do not embed environment variables directly inside `hk.pkl` as dynamic values — the cache will not invalidate when those env vars change. Use the `env` block inside steps or hooks instead, or pass values via `HK_*` environment variables at runtime.
+</Warning>
+
+## Testing your config
+
+Use `pkl eval` to see exactly what hk will receive from your config file, without running hk:
+
+```bash theme={null}
+$ pkl eval hk.pkl
+hooks {
+  ["pre-commit"] {
+    fix = true
+    steps {
+      ["prelint"] {
+        command = "lint"
+        args = ["--fix"]
+      }
+    }
+  }
+}
+```
+
+This is especially useful when using dynamic features like amending or local variables — you can verify the output before running any linters.
+
+You can also validate the config through hk itself:
+
+```bash theme={null}
+hk validate
+```
+
+If you use the built-in step test framework, run tests with:
+
+```bash theme={null}
+hk test                       # run all step tests
+hk test --step prettier       # run only prettier's tests
+hk test --name "formats json" # run a test by name
+hk test --list                # list tests without running them
+```
+
+## Full example
+
+Putting it all together — a complete `hk.pkl` using builtins, local variables, amending, and multiple hooks:
+
+```pkl hk.pkl theme={null}
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Builtins.pkl"
+
+// Define linters as a local variable to share across hooks
+local linters = new Mapping<String, Step> {
+    ["actionlint"] = Builtins.actionlint
+    ["cargo-fmt"] = Builtins.cargo_fmt
+    ["cargo-clippy"] = (Builtins.cargo_clippy) {
+        profiles = List("slow")
+        check = "cargo clippy --manifest-path {{workspace_indicator}} --quiet -- -D warnings"
+    }
+    ["cargo-check"] = (Builtins.cargo_check) {
+        profiles = List("!slow")
+    }
+    ["prettier"] = (Builtins.prettier) {
+        glob = List("*.js", "*.ts", "*.yml", "*.yaml")
+    }
+    ["newlines"] = Builtins.newlines
+    ["trailing-whitespace"] = Builtins.trailing_whitespace
+}
+
+hooks = new {
+    ["pre-commit"] {
+        fix = true
+        stash = "git"
+        steps = new {
+            ["prelint"] {
+                check = "mise run prelint"
+                exclusive = true
+            }
+            ...linters
+            ["postlint"] {
+                check = "echo postlint"
+                exclusive = true
+            }
+        }
+    }
+    ["pre-push"] {
+        steps = linters
+    }
+    ["check"] {
+        steps = linters
+    }
+    ["fix"] {
+        fix = true
+        steps = linters
+    }
+}
+
+warnings = List("missing-profiles")
+```
+
+
+# Quick start
+Source: https://www.mintlify.com/jdx/hk/quickstart
+
+Install hk and set up your first project with parallel linting in under 5 minutes.
+
+## Get up and running
+
+<Steps>
+  <Step title="Install hk">
+    The recommended way to install hk is with [mise-en-place](https://github.com/jdx/mise):
+
+    <CodeGroup>
+      ```bash mise (recommended) theme={null}
+      mise use hk
+      hk --version
+      ```
+
+      ```bash brew theme={null}
+      brew install hk
+      ```
+
+      ```bash cargo theme={null}
+      cargo install hk
+      ```
+
+      ```bash aqua theme={null}
+      aqua g -i jdx/hk
+      ```
+    </CodeGroup>
+
+    <Tip>
+      mise-en-place integrates well with hk. Features common in similar git hook managers — dependency management, task dependencies, and env vars — can be provided by mise. See [mise integration](/mise-integration) for details.
+    </Tip>
+
+    <Tip>
+      By default hk uses the pkl CLI to evaluate configuration. Set `HK_PKL_BACKEND=pklr` to use the built-in Rust evaluator instead, which removes the pkl CLI dependency entirely. This is experimental — see [Pkl introduction](/pkl-introduction) for details.
+    </Tip>
+  </Step>
+
+  <Step title="Initialize your project">
+    Inside a git repository, run `hk init` to generate a `hk.pkl` configuration file:
+
+    ```bash theme={null}
+    hk init
+    ```
+
+    This creates a `hk.pkl` file in the root of your repository.
+  </Step>
+
+  <Step title="Configure your linters">
+    Edit `hk.pkl` to define your hooks and steps. Here's an example that uses the built-in ESLint and Prettier configs, with pre- and post-lint tasks:
+
+    ```pkl hk.pkl theme={null}
+    amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+    import "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Builtins.pkl"
+
+    local linters = new Mapping<String, Step> {
+        // linters can be manually defined
+        ["eslint"] {
+            // files to run the linter on — if no files match, the step is skipped
+            glob = List("*.js", "*.ts")
+            // a command that returns non-zero to fail the check
+            check = "eslint {{files}}"
+        }
+        // linters can also be specified with the builtins pkl library
+        ["prettier"] = Builtins.prettier
+        // with pkl, builtins can be extended:
+        ["prettier-yaml"] = (Builtins.prettier) {
+            glob = List("*.yaml", "*.yml")
+        }
+    }
+
+    hooks {
+        ["pre-commit"] {
+            fix = true    // runs the "fix" step of linters to modify files
+            stash = "git" // stashes unstaged changes when running fix steps
+            steps {
+                ["prelint"] {
+                    check = "mise run prelint"
+                    exclusive = true // blocks other steps from starting until this one finishes
+                }
+                ...linters
+                ["postlint"] {
+                    check = "mise run postlint"
+                    exclusive = true
+                }
+            }
+        }
+    }
+    ```
+
+    The `...linters` spread operator expands all entries from the `linters` mapping directly into `steps`. hk runs all non-exclusive steps in parallel using file-level read/write locks.
+
+    See [configuration](/configuration) for the full reference.
+  </Step>
+
+  <Step title="Install the git hooks">
+    Run `hk install` to wire up the hooks defined in `hk.pkl` to your repository's `.git/hooks/` directory:
+
+    ```bash theme={null}
+    hk install
+    ```
+
+    From now on, `git commit` will automatically trigger the `pre-commit` hook and run your linters in parallel.
+  </Step>
+
+  <Step title="Check and fix code manually">
+    You can run linters outside of a git commit at any time.
+
+    Run linters in check-only mode against modified files:
+
+    ```bash theme={null}
+    hk check
+    ```
+
+    Run linters and auto-fix issues in modified files:
+
+    ```bash theme={null}
+    hk fix
+    ```
+
+    <Tip>
+      Use `hk check --all` in CI to lint every file in the repository, or `hk check --from-ref main --to-ref HEAD` to lint only files that have changed since the `main` branch. Use `hk check --pr` as a shortcut for checking only PR diff files.
+    </Tip>
+
+    To explicitly trigger a hook without going through git — useful for local testing:
+
+    ```bash theme={null}
+    hk run pre-commit
+    ```
+  </Step>
+</Steps>
+
+## Next steps
+
+<CardGroup>
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Full reference for `hk.pkl` — hooks, steps, globs, stashing, and more.
+  </Card>
+
+  <Card title="Built-in linters" icon="list-check" href="/builtins">
+    Browse 120+ pre-configured linters ready to drop into your `hk.pkl`.
+  </Card>
+
+  <Card title="Why hk?" icon="bolt" href="/why-hk">
+    Learn how parallel execution and smart stashing work under the hood.
+  </Card>
+
+  <Card title="CLI reference" icon="terminal" href="/cli/overview">
+    Full reference for all hk commands and flags.
+  </Card>
+</CardGroup>
+
+
+# Why hk?
+Source: https://www.mintlify.com/jdx/hk/why-hk
+
+How hk's parallel execution model, smart stashing, and secure builtins make it faster and safer than pre-commit, lefthook, prek, and husky.
+
+Tools like pre-commit, prek, and lefthook work by shelling out to linters one at a time. That means if two linters try to modify the same file at the same time, there will be a race condition — so they don't even try. hk solves this at the core and unlocks safe parallelism.
+
+## Parallel execution with file-level locking
+
+hk maintains a **read/write lock for every file being linted**. A linter that only reads a file acquires a shared read lock — multiple linters can hold read locks on the same file simultaneously. A linter that needs to write a file acquires an exclusive write lock — it waits for any readers to finish, then runs alone.
+
+This means linters with non-overlapping file sets always run in parallel. Linters with overlapping files run in parallel where possible, and coordinate only when they would genuinely conflict.
+
+### How hk avoids write locks
+
+hk goes further by actively avoiding write locks through linter-specific integration:
+
+**ruff** — has diff output, which is ideal. hk runs `ruff format --diff` to get a patch without touching any files. hk holds only a read lock while running ruff, then applies the diff itself later. If multiple linters edited the same lines, it re-runs ruff to resolve conflicts.
+
+**prettier** — supports `--list-different`, which returns the names of files that need formatting without modifying them. hk uses this to run the check phase with only read locks across all targeted files, then narrows the set before running `prettier --write` on just the files that need it.
+
+For linters with no diff or list mode (eslint is the main example), hk falls back to a write lock on all targeted files. Other linters that don't touch the same files still run in parallel. You can also use the `check_first` option to run a check pass first and only invoke the fix on failing files.
+
+<Note>
+  This integration work is why hk ships a large library of [builtins](/builtins) — you get the benefits without having to configure each linter's lock strategy yourself.
+</Note>
+
+## Smart stashing
+
+Here's a scenario every developer hits: you have a file with some changes staged and other changes you're still working on. Your pre-commit hook runs a formatter — and suddenly your unstaged work-in-progress gets formatted and staged along with everything else. Your careful partial commit is ruined.
+
+hk solves this with a **three-way merge stash strategy**:
+
+1. **Before hooks run** — hk snapshots your working tree and stashes only the unstaged changes (the diff between your worktree and your index). Your working tree now matches your staged content exactly.
+2. **Hooks run** — linters and fixers see only what you're actually committing. If prettier reformats a file, it reformats the staged version, not your work-in-progress.
+3. **After hooks run** — hk does a three-way merge to combine the fixer's changes with your unstaged work. If the fixer changed line 5 and your unstaged changes are on line 20, both are preserved. If there's a conflict, your unstaged changes take priority — hk never destroys your in-progress work.
+
+This works even with partially staged hunks in a single file. If you `git add -p` to stage just one function, hk will lint that function, apply fixes to it, and leave your other unstaged changes untouched.
+
+Other tools either don't stash at all (lefthook), or do basic stashing that can lose changes when fixers and unstaged edits touch the same lines (pre-commit, prek).
+
+## Built-in utilities
+
+hk ships fast **Rust-native utilities** for common checks: trailing whitespace removal, end-of-file newline fixing, and merge conflict detection. These run as part of the hk binary itself — no extra tools to install, and no subprocess overhead. They use `check_diff` mode so they always run in parallel with other linters.
+
+## Plugin security
+
+pre-commit and prek download hook implementations from external git repositories. Each hook repo contains its own environment setup, dependencies, and entry points — you're running code pulled from third-party repos on every commit.
+
+hk builtins are just [Pkl](https://pkl-lang.org/) config files hosted in the [hk repository](https://github.com/jdx/hk/tree/main/pkl/builtins) and fetched via the `import` statement in your `hk.pkl`. They define how to invoke linters that are already on your system — they don't download or execute third-party code. You can read exactly what each builtin does in a few lines of Pkl:
+
+```pkl theme={null}
+// This is an entire hk builtin.
+prettier = new Config.Step {
+  glob = List("**/*.js", "**/*.ts", "**/*.css", "**/*.json", "**/*.md")
+  check = "prettier --check {{ files }}"
+  check_list_files = "prettier --list-different {{ files }}"
+  fix = "prettier --write {{ files }}"
+}
+```
+
+Compare that to pre-commit:
+
+```yaml theme={null}
+# pre-commit: hooks are downloaded from external git repos
+repos:
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.1.0
+    hooks:
+      - id: prettier
+```
+
+## Comparisons
+
+<AccordionGroup>
+  <Accordion title="vs pre-commit">
+    [pre-commit](https://pre-commit.com/) is the most popular hook manager. It's written in Python and requires Python as a runtime dependency.
+
+    * Runs hooks **sequentially** — hook B waits for hook A to finish completely before starting.
+    * Downloads hook code from external git repos, running third-party code on every commit.
+    * Requires Python on every developer's machine.
+    * Configuration is YAML with no schema validation.
+
+    hk gets its speed from parallelism. Running 10 linters in parallel is fundamentally faster than running them one at a time, regardless of how fast the manager itself is.
+  </Accordion>
+
+  <Accordion title="vs prek">
+    [prek](https://github.com/j178/prek) is pre-commit reimplemented in Rust. It's faster than pre-commit at startup but follows the same execution model:
+
+    * Still runs hooks **sequentially** — same fundamental bottleneck as pre-commit.
+    * Still downloads hook code from external git repos.
+    * prek itself doesn't require Python, but Python-based hooks (which are most of the pre-commit ecosystem) still need Python at runtime — prek manages it automatically via uv.
+    * prek does have some built-in Rust-native hooks for common checks, similar to hk's `hk util` commands.
+
+    The core difference: prek is a faster *runner* of the same sequential model. hk is a different model entirely.
+  </Accordion>
+
+  <Accordion title="vs lefthook">
+    [lefthook](https://github.com/evilmartians/lefthook) is a hook manager written in Go. It's the closest to hk in philosophy — it supports parallel execution.
+
+    The problem: lefthook has **no file-level coordination**. If two parallel jobs modify the same file, you get a race condition — the last writer wins and the other's changes are silently discarded. In practice you either accept the risk or configure your hooks to have non-overlapping file patterns, which defeats the purpose of built-in parallelism.
+
+    Other differences:
+
+    * lefthook has no built-in linter definitions — you write raw shell commands in YAML.
+    * lefthook does not stash unstaged changes before running fix hooks, which can cause in-progress work to be accidentally staged.
+    * lefthook uses YAML; hk uses [Pkl](https://pkl-lang.org/) for type-safe, composable configuration.
+  </Accordion>
+
+  <Accordion title="vs husky + lint-staged">
+    [husky](https://github.com/typicode/husky) (\~35k stars) and [lint-staged](https://github.com/lint-staged/lint-staged) (\~14k stars) are the most popular combination in the JavaScript ecosystem.
+
+    husky is intentionally minimal — it just wires up git hooks to scripts. lint-staged handles the actual linting orchestration. lint-staged runs tasks matched to *different* glob patterns in parallel, but tasks targeting the *same* glob run sequentially. There's no file-level coordination, so if two tasks touch the same file through different globs, you get a race condition.
+
+    Both require Node.js. If your project isn't a JavaScript project, you're adding a Node.js runtime dependency purely for your hook manager.
+  </Accordion>
+</AccordionGroup>
+
+## Feature comparison
+
+| Feature                    | hk                 | pre-commit         | lefthook       | prek               |
+| -------------------------- | ------------------ | ------------------ | -------------- | ------------------ |
+| Parallel execution         | File-locked        | No                 | Unsafe         | No                 |
+| Language                   | Rust               | Python             | Go             | Rust               |
+| Requires Python            | No                 | Yes                | No             | Often              |
+| Config format              | Pkl                | YAML               | YAML           | YAML               |
+| Built-in linter configs    | [120+](/builtins)  | —                  | —              | —                  |
+| Plugin model               | Pkl config (local) | Git repos (remote) | Shell commands | Git repos (remote) |
+| `check_diff` support       | Yes                | No                 | No             | No                 |
+| `check_list_files` support | Yes                | No                 | No             | No                 |
+| Stash management           | Yes                | Partial            | No             | Partial            |
+| Dependency resolution      | Yes                | No                 | No             | No                 |
+| Batched execution          | Yes                | No                 | No             | No                 |
+
+See [Benchmarks](/benchmarks) for reproducible performance numbers — hk, lefthook, pre-commit, and prek running 10 linters on a synthetic 6,000-file project.
+
+Ready to try it? [Get started](/quickstart).
+
+

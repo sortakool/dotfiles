@@ -41,14 +41,53 @@ Do **not** use it when:
   flat index of titles + short descriptions, not a search endpoint;
   do keyword filtering client-side.
 
-## Step-by-step lookup pattern
+## Local cache — use this FIRST
+
+As of 2026-04-07, every repo in `docs/research/mintlify-catalog.md`
+has both `llms.txt` and `llms-full.txt` cached under
+`docs/research/mintlify-cache/<owner>/<repo>/`. **Grep the local
+cache before reaching for `curl`** — zero latency, no network
+round-trips, greppable across the whole cache:
+
+```bash
+# Fast page-title/description index:
+grep -i <topic> docs/research/mintlify-cache/jdx/mise/llms.txt
+
+# Full inline content of every page, grep-friendly:
+grep -B1 -A15 -i <topic> docs/research/mintlify-cache/jdx/mise/llms-full.txt
+
+# Search across every cached repo at once:
+grep -rHi <topic> docs/research/mintlify-cache/
+```
+
+Per-repo line counts, sha256s, and the refresh protocol are in
+`docs/research/mintlify-cache/README.md`. Fall back to `curl` only
+when (a) the topic touches a repo not yet in the cache or (b) the
+cache is stale relative to an upstream doc update.
+
+## Step-by-step lookup pattern (cache-first)
 
 Pick the repo you want, then walk the two steps in order:
 
-### Step 1 — discover pages via `llms.txt`
+### Step 1 — grep the local cache (preferred)
+
+```bash
+# Index (cheap, page titles + 1-line descriptions):
+grep -i <topic> docs/research/mintlify-cache/<owner>/<repo>/llms.txt
+# Full inline content (use when llms.txt titles don't surface what you need):
+grep -B1 -A15 -i <topic> docs/research/mintlify-cache/<owner>/<repo>/llms-full.txt
+```
+
+`llms-full.txt` inlines the full content of every page concatenated
+(e.g., `jdx/mise/llms-full.txt` = 5,436 lines of inline doc content
+vs. ~40 lines in `llms.txt`). Grep it when the page title alone
+doesn't tell you what you need.
+
+### Step 1 (fallback) — `curl` when cache miss
 
 ```bash
 curl -sSL "https://www.mintlify.com/<owner>/<repo>/llms.txt" | head -40
+curl -sSL "https://www.mintlify.com/<owner>/<repo>/llms-full.txt" | grep -B2 -A15 -i <topic>
 ```
 
 Output is one line per page, each in the form:
@@ -68,16 +107,18 @@ curl -sSL "https://www.mintlify.com/<owner>/<repo>/<path>.md"
 Returns clean markdown — title, headings, code blocks, tables, no
 HTML chrome. Pipe to `head -N` to bound context cost.
 
-### Worked example — looking up mise's `[shell_alias]` docs
+### Worked example — looking up mise's `[shell_alias]` docs (cache-first)
 
 ```bash
-# Step 1: find the aliases page
-curl -sSL "https://www.mintlify.com/jdx/mise/llms.txt" | grep -i alias
-# → - [Aliases](https://www.mintlify.com/jdx/mise/dev-tools/aliases.md): ...
+# Step 1: grep the cached llms-full.txt for inline content
+grep -B2 -A15 -i 'shell_alias' docs/research/mintlify-cache/jdx/mise/llms-full.txt
 
-# Step 2: fetch it
+# Fallback step 2 (only if llms-full.txt didn't give enough context):
 curl -sSL "https://www.mintlify.com/jdx/mise/dev-tools/aliases.md" | head -60
 ```
+
+The cached file usually gives you enough inline content that the
+per-page `.md` fetch is unnecessary.
 
 This is the exact path used in
 `docs/research/devcontainer-spec-delta-2026-04-06.md` to validate

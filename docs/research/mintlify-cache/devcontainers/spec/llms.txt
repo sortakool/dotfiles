@@ -1,0 +1,32 @@
+# Dev Container Specification
+
+## Docs
+
+- [Authoring Features](https://www.mintlify.com/devcontainers/spec/ecosystem/authoring-features.md): A practical guide to creating and publishing Dev Container Features, from folder structure to OCI registry distribution.
+- [Authoring Templates](https://www.mintlify.com/devcontainers/spec/ecosystem/authoring-templates.md): A practical guide to creating and publishing Dev Container Templates, including option substitution syntax and OCI registry distribution.
+- [Contributing to the spec](https://www.mintlify.com/devcontainers/spec/ecosystem/contributing.md): How to propose changes, file issues, and engage with the Dev Container Specification community.
+- [Features distribution](https://www.mintlify.com/devcontainers/spec/ecosystem/features-distribution.md): How to package, publish, and distribute Dev Container Features via OCI registries, direct tarballs, or local paths.
+- [Features overview](https://www.mintlify.com/devcontainers/spec/ecosystem/features-overview.md): Dev Container Features are self-contained, shareable units of installation code and development container configuration that let you quickly add tooling, runtimes, and libraries to any dev container.
+- [Features reference](https://www.mintlify.com/devcontainers/spec/ecosystem/features-reference.md): Complete reference for the devcontainer-feature.json metadata file, including all properties, options, lifecycle hooks, and option resolution.
+- [Lockfile](https://www.mintlify.com/devcontainers/spec/ecosystem/lockfile.md): How devcontainer-lock.json pins Feature versions to exact digest hashes for reproducible, secure dev container builds.
+- [Supporting tools and services](https://www.mintlify.com/devcontainers/spec/ecosystem/supporting-tools.md): Editors, tools, and cloud services that implement the Dev Container Specification.
+- [Templates distribution](https://www.mintlify.com/devcontainers/spec/ecosystem/templates-distribution.md): Publish Dev Container Templates to an OCI registry so any supporting tool can discover and apply them.
+- [Templates overview](https://www.mintlify.com/devcontainers/spec/ecosystem/templates-overview.md): Dev Container Templates are pre-packaged configurations that set up a complete development environment, ready to use in any supporting tool.
+- [Introduction](https://www.mintlify.com/devcontainers/spec/introduction.md): Learn what development containers are, how the specification works, and why dev containers improve consistency across tools and teams.
+- [Quickstart](https://www.mintlify.com/devcontainers/spec/quickstart.md): Create your first devcontainer.json, open it in a supporting tool, and start developing inside a container in minutes.
+- [The devcontainerId variable](https://www.mintlify.com/devcontainers/spec/spec/devcontainer-id-variable.md): Use ${devcontainerId} to reference a stable, unique identifier for a dev container — useful for scoping named volumes and other resources to a specific container.
+- [Dev Container reference](https://www.mintlify.com/devcontainers/spec/spec/devcontainer-reference.md): Core concepts of the Dev Container Specification: what development containers are, how metadata is structured, environment variables, mounts, and users.
+- [devcontainer.json reference](https://www.mintlify.com/devcontainers/spec/spec/devcontainerjson-reference.md): Complete reference for all properties available in devcontainer.json, the metadata file that configures a development container.
+- [GPU host requirement](https://www.mintlify.com/devcontainers/spec/spec/gpu-host-requirement.md): Declare GPU requirements in devcontainer.json so cloud services and local tools can provision or validate the right hardware for your container.
+- [Image metadata](https://www.mintlify.com/devcontainers/spec/spec/image-metadata.md): How to store dev container configuration in prebuilt images using the devcontainer.metadata label, and how that metadata is merged at container creation time.
+- [Container lifecycle](https://www.mintlify.com/devcontainers/spec/spec/lifecycle.md): The four phases of a dev container's lifecycle: Configuration Validation, Environment Creation, Environment Stop, and Environment Resume — including all lifecycle scripts and parallel execution.
+- [Orchestration](https://www.mintlify.com/devcontainers/spec/spec/orchestration.md): The three orchestration modes in the Dev Container Specification: image-based, Dockerfile-based, and Docker Compose-based configurations.
+- [Secrets support](https://www.mintlify.com/devcontainers/spec/spec/secrets-support.md): Declare recommended secrets in devcontainer.json so supporting tools can prompt users and inject them securely into the container environment.
+- [Variables reference](https://www.mintlify.com/devcontainers/spec/spec/variables.md): Template variables available in devcontainer.json string values, including host environment variables, container paths, and the unique container identifier.
+
+## OpenAPI Specs
+
+- [openapi](https://www.mintlify.com/devcontainers/spec/api-reference/openapi.json)
+
+
+Built with [Mintlify](https://mintlify.com).

@@ -1,0 +1,17 @@
+# mise-env-fnox
+
+## Docs
+
+- [Environment-specific configuration](https://www.mintlify.com/jdx/mise-env-fnox/configuration/environments.md): Use mise environment blocks to load different fnox profiles in development, staging, and production.
+- [Configuration options](https://www.mintlify.com/jdx/mise-env-fnox/configuration/options.md): Reference for all options available when configuring the mise-env-fnox plugin.
+- [Caching](https://www.mintlify.com/jdx/mise-env-fnox/guides/caching.md): How mise-env-fnox uses mise's environment caching to avoid re-fetching secrets on every shell activation.
+- [How it works](https://www.mintlify.com/jdx/mise-env-fnox/guides/how-it-works.md): A step-by-step walkthrough of the secret resolution lifecycle when mise activates your project with mise-env-fnox.
+- [Installation](https://www.mintlify.com/jdx/mise-env-fnox/installation.md): Add the mise-env-fnox plugin to your project's mise.toml to start loading fnox secrets as environment variables.
+- [Introduction](https://www.mintlify.com/jdx/mise-env-fnox/introduction.md): mise-env-fnox is a mise env plugin that loads fnox secrets as environment variables into your development environment.
+
+## OpenAPI Specs
+
+- [openapi](https://www.mintlify.com/jdx/mise-env-fnox/api-reference/openapi.json)
+
+
+Built with [Mintlify](https://mintlify.com).

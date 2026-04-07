@@ -1,0 +1,5002 @@
+# devcontainer build
+Source: https://www.mintlify.com/devcontainers/cli/commands/build
+
+Build a dev container image.
+
+The `build` command builds the Docker image for a dev container without starting a container. It processes `devcontainer.json`, applies any configured features, and produces a tagged image you can push to a registry or reuse across environments.
+
+This is useful in CI/CD pipelines to prebuild images and speed up container startup times.
+
+## Usage
+
+```bash theme={null}
+devcontainer build [path] [options]
+```
+
+The optional `path` positional argument sets the workspace folder directly.
+
+## Options
+
+### Workspace and configuration
+
+<ParamField type="string">
+  Workspace folder path. The `devcontainer.json` will be looked up relative to this path. If not provided, defaults to the current directory.
+</ParamField>
+
+<ParamField type="string">
+  `devcontainer.json` path. The default is to use `.devcontainer/devcontainer.json` or, if that does not exist, `.devcontainer.json` in the workspace folder.
+</ParamField>
+
+<ParamField type="string">
+  Additional features to apply to the dev container (JSON as per `"features"` section in `devcontainer.json`).
+</ParamField>
+
+### Image naming
+
+<ParamField type="string">
+  Image name. Can be specified multiple times to tag the image with multiple names.
+</ParamField>
+
+<ParamField type="string">
+  Provide key and value configuration that adds metadata to an image. Can be specified multiple times.
+</ParamField>
+
+### Build behavior
+
+<ParamField type="boolean">
+  Builds the image with `--no-cache`.
+</ParamField>
+
+<ParamField type="string">
+  Control whether BuildKit should be used. Accepted values: `auto`, `never`.
+</ParamField>
+
+<ParamField type="string">
+  Set target platforms (e.g., `linux/amd64,linux/arm64`). Requires BuildKit.
+</ParamField>
+
+### Caching
+
+<ParamField type="string">
+  Additional image to use as potential layer cache. Can be specified multiple times.
+</ParamField>
+
+<ParamField type="string">
+  A destination of buildx cache.
+</ParamField>
+
+### Registry
+
+<ParamField type="boolean">
+  Push to a container registry.
+</ParamField>
+
+<ParamField type="string">
+  Overrides the default behavior to load built images into the local Docker registry. Valid options are the same ones provided to the `--output` option of `docker buildx build`.
+</ParamField>
+
+### Logging
+
+<ParamField type="string">
+  Log level. Accepted values: `info`, `debug`, `trace`.
+</ParamField>
+
+<ParamField type="string">
+  Log format. Accepted values: `text`, `json`.
+</ParamField>
+
+## Output
+
+On success, the command writes a JSON object to stdout:
+
+```json theme={null}
+{
+  "outcome": "success",
+  "imageName": ["ghcr.io/myorg/my-devcontainer:latest"]
+}
+```
+
+On failure:
+
+```json theme={null}
+{
+  "outcome": "error",
+  "message": "An error occurred building the container.",
+  "description": "..."
+}
+```
+
+## Examples
+
+### Build the image for the current workspace
+
+```bash theme={null}
+devcontainer build --workspace-folder .
+```
+
+### Build and tag with a specific name
+
+```bash theme={null}
+devcontainer build \
+  --workspace-folder . \
+  --image-name ghcr.io/myorg/my-devcontainer:latest
+```
+
+### Build for multiple platforms
+
+<Note>
+  Multi-platform builds require Docker BuildKit and a configured buildx builder.
+</Note>
+
+```bash theme={null}
+devcontainer build \
+  --workspace-folder . \
+  --platform linux/amd64,linux/arm64 \
+  --image-name ghcr.io/myorg/my-devcontainer:latest
+```
+
+### Build and push to a registry in one step
+
+```bash theme={null}
+devcontainer build \
+  --workspace-folder . \
+  --image-name ghcr.io/myorg/my-devcontainer:latest \
+  --push
+```
+
+### Build without cache
+
+```bash theme={null}
+devcontainer build \
+  --workspace-folder . \
+  --no-cache \
+  --image-name ghcr.io/myorg/my-devcontainer:latest
+```
+
+### Use a cache source to speed up CI builds
+
+```bash theme={null}
+devcontainer build \
+  --workspace-folder . \
+  --cache-from ghcr.io/myorg/my-devcontainer:cache \
+  --image-name ghcr.io/myorg/my-devcontainer:latest
+```
+
+### Export the image to a tarball instead of loading it locally
+
+```bash theme={null}
+devcontainer build \
+  --workspace-folder . \
+  --output type=tar,dest=./devcontainer-image.tar \
+  --image-name my-devcontainer
+```
+
+### Apply additional features at build time
+
+```bash theme={null}
+devcontainer build \
+  --workspace-folder . \
+  --additional-features '{"ghcr.io/devcontainers/features/python:1": {"version": "3.12"}}' \
+  --image-name ghcr.io/myorg/my-devcontainer:py312
+```
+
+### Add image labels
+
+```bash theme={null}
+devcontainer build \
+  --workspace-folder . \
+  --label org.opencontainers.image.source=https://github.com/myorg/myrepo \
+  --label org.opencontainers.image.version=1.0.0 \
+  --image-name ghcr.io/myorg/my-devcontainer:latest
+```
+
+
+# devcontainer exec
+Source: https://www.mintlify.com/devcontainers/cli/commands/exec
+
+Execute a command on a running dev container.
+
+The `exec` command runs an arbitrary command inside an already-running dev container. It resolves the container by workspace folder, container ID, or id-labels, then executes the given command with the remote user's environment applied.
+
+Use `exec` to run builds, tests, or any shell command in the same environment your dev container provides, without opening an interactive shell.
+
+## Usage
+
+```bash theme={null}
+devcontainer exec [options] <cmd> [args..]
+```
+
+`<cmd>` and any following `[args..]` are passed directly to the container.
+
+## Options
+
+### Container identification
+
+<ParamField type="string">
+  Workspace folder path. The `devcontainer.json` will be looked up relative to this path. If `--container-id`, `--id-label`, and `--workspace-folder` are not provided, this defaults to the current directory.
+</ParamField>
+
+<ParamField type="string">
+  Id of the container to run the user commands for.
+</ParamField>
+
+<ParamField type="string">
+  Id label(s) of the format `name=value`. If no `--container-id` is given the id labels will be used to look up the container. If no `--id-label` is given, one will be inferred from the `--workspace-folder` path.
+</ParamField>
+
+### Configuration
+
+<ParamField type="string">
+  `devcontainer.json` path. The default is to use `.devcontainer/devcontainer.json` or, if that does not exist, `.devcontainer.json` in the workspace folder.
+</ParamField>
+
+<ParamField type="string">
+  `devcontainer.json` path to override any `devcontainer.json` in the workspace folder (or built-in configuration). This is required when there is no `devcontainer.json` otherwise.
+</ParamField>
+
+### Environment
+
+<ParamField type="string">
+  Remote environment variables of the format `name=value`. These will be added when executing the user commands. Can be specified multiple times.
+</ParamField>
+
+<ParamField type="string">
+  Default value for the `devcontainer.json`'s `"userEnvProbe"`. Accepted values: `none`, `loginInteractiveShell`, `interactiveShell`, `loginShell`.
+</ParamField>
+
+### Docker
+
+<ParamField type="string">
+  Docker CLI path.
+</ParamField>
+
+<ParamField type="string">
+  Docker Compose CLI path.
+</ParamField>
+
+### Logging
+
+<ParamField type="string">
+  Log level for the terminal log file. When set to `trace`, the log level for the log file will also be set to `trace`. Accepted values: `info`, `debug`, `trace`.
+</ParamField>
+
+<ParamField type="string">
+  Log format. Accepted values: `text`, `json`.
+</ParamField>
+
+## Examples
+
+### Run a build command
+
+```bash theme={null}
+devcontainer exec --workspace-folder . cargo build --release
+```
+
+### Run tests
+
+```bash theme={null}
+devcontainer exec --workspace-folder . npm test
+```
+
+### Open an interactive shell
+
+```bash theme={null}
+devcontainer exec --workspace-folder . bash
+```
+
+### Target a container by ID
+
+```bash theme={null}
+devcontainer exec --container-id abc123def456 go test ./...
+```
+
+### Target a container using id-labels
+
+```bash theme={null}
+devcontainer exec \
+  --id-label devcontainer.local_folder=/home/user/my-project \
+  pytest tests/
+```
+
+### Pass extra environment variables
+
+```bash theme={null}
+devcontainer exec \
+  --workspace-folder . \
+  --remote-env CI=true \
+  --remote-env BUILD_NUMBER=42 \
+  make all
+```
+
+### Use a custom config path
+
+```bash theme={null}
+devcontainer exec \
+  --workspace-folder . \
+  --config .devcontainer/ci.devcontainer.json \
+  ./scripts/validate.sh
+```
+
+<Tip>
+  The exit code of `exec` mirrors the exit code of the command you ran inside the container, so it integrates naturally with CI pipelines.
+</Tip>
+
+
+# devcontainer read-configuration
+Source: https://www.mintlify.com/devcontainers/cli/commands/read-configuration
+
+Read and output the resolved dev container configuration.
+
+The `read-configuration` command parses and resolves a `devcontainer.json` file (and any applicable image metadata), then writes the result as JSON to stdout. No container is created or started.
+
+Use this command to inspect the effective configuration before provisioning, or to integrate configuration data into tooling and scripts.
+
+## Usage
+
+```bash theme={null}
+devcontainer read-configuration [options]
+```
+
+## Options
+
+### Workspace and container identification
+
+<ParamField type="string">
+  Workspace folder path. The `devcontainer.json` will be looked up relative to this path. If `--container-id`, `--id-label`, and `--workspace-folder` are not provided, this defaults to the current directory.
+</ParamField>
+
+<ParamField type="string">
+  Id of the container to run the user commands for.
+</ParamField>
+
+<ParamField type="string">
+  Id label(s) of the format `name=value`. If no `--container-id` is given the id labels will be used to look up the container. If no `--id-label` is given, one will be inferred from the `--workspace-folder` path.
+</ParamField>
+
+### Configuration
+
+<ParamField type="string">
+  `devcontainer.json` path. The default is to use `.devcontainer/devcontainer.json` or, if that does not exist, `.devcontainer.json` in the workspace folder.
+</ParamField>
+
+<ParamField type="string">
+  `devcontainer.json` path to override any `devcontainer.json` in the workspace folder (or built-in configuration). This is required when there is no `devcontainer.json` otherwise.
+</ParamField>
+
+<ParamField type="string">
+  Additional features to apply to the dev container (JSON as per `"features"` section in `devcontainer.json`).
+</ParamField>
+
+### Output options
+
+<ParamField type="boolean">
+  Include features configuration.
+</ParamField>
+
+<ParamField type="boolean">
+  Include merged configuration.
+</ParamField>
+
+### Docker
+
+<ParamField type="string">
+  Docker CLI path.
+</ParamField>
+
+<ParamField type="string">
+  Docker Compose CLI path.
+</ParamField>
+
+### Logging
+
+<ParamField type="string">
+  Log level for the terminal log file. When set to `trace`, the log level for the log file will also be set to `trace`. Accepted values: `info`, `debug`, `trace`.
+</ParamField>
+
+<ParamField type="string">
+  Log format. Accepted values: `text`, `json`.
+</ParamField>
+
+## Output format
+
+The command writes a JSON object to stdout with the following top-level fields:
+
+```json theme={null}
+{
+  "configuration": { ... },
+  "workspace": { ... },
+  "featuresConfiguration": null,
+  "mergedConfiguration": null
+}
+```
+
+| Field                   | Description                                                                                                                              |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `configuration`         | The resolved `devcontainer.json` contents after variable substitution.                                                                   |
+| `workspace`             | Workspace metadata such as the resolved workspace folder path.                                                                           |
+| `featuresConfiguration` | Feature resolution details. Only present when `--include-features-configuration` is set.                                                 |
+| `mergedConfiguration`   | The configuration after merging image metadata from features and base images. Only present when `--include-merged-configuration` is set. |
+
+### Example output
+
+```json theme={null}
+{
+  "configuration": {
+    "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+    "features": {
+      "ghcr.io/devcontainers/features/node:1": {}
+    },
+    "remoteUser": "vscode",
+    "postCreateCommand": "npm install"
+  },
+  "workspace": {
+    "workspaceFolder": "/workspaces/my-project"
+  },
+  "featuresConfiguration": null,
+  "mergedConfiguration": null
+}
+```
+
+## Examples
+
+### Read the configuration for the current workspace
+
+```bash theme={null}
+devcontainer read-configuration --workspace-folder .
+```
+
+### Read configuration and include merged metadata
+
+```bash theme={null}
+devcontainer read-configuration \
+  --workspace-folder . \
+  --include-merged-configuration
+```
+
+### Use a custom config file
+
+```bash theme={null}
+devcontainer read-configuration \
+  --workspace-folder . \
+  --config .devcontainer/ci.devcontainer.json
+```
+
+### Extract a single field with `jq`
+
+```bash theme={null}
+devcontainer read-configuration --workspace-folder . \
+  | jq '.configuration.remoteUser'
+```
+
+### Check the merged configuration including all feature contributions
+
+```bash theme={null}
+devcontainer read-configuration \
+  --workspace-folder . \
+  --include-features-configuration \
+  --include-merged-configuration \
+  | jq '.mergedConfiguration'
+```
+
+<Note>
+  When a running container is identified via `--container-id` or `--id-label`, the command applies container environment variable substitution on top of the base configuration, giving you the exact values the container sees.
+</Note>
+
+
+# devcontainer run-user-commands
+Source: https://www.mintlify.com/devcontainers/cli/commands/run-user-commands
+
+Run user commands on an existing dev container.
+
+The `run-user-commands` command executes the lifecycle hooks defined in `devcontainer.json` — such as `onCreateCommand`, `updateContentCommand`, `postCreateCommand`, and `postStartCommand` — against an already-running container.
+
+Use this command after `devcontainer set-up` to apply user-specific configuration (like dotfiles and post-create scripts) to a container that has already been provisioned.
+
+## Usage
+
+```bash theme={null}
+devcontainer run-user-commands [options]
+```
+
+## Options
+
+### Container identification
+
+<ParamField type="string">
+  Workspace folder path. The `devcontainer.json` will be looked up relative to this path. If `--container-id`, `--id-label`, and `--workspace-folder` are not provided, this defaults to the current directory.
+</ParamField>
+
+<ParamField type="string">
+  Id of the container to run the user commands for.
+</ParamField>
+
+<ParamField type="string">
+  Id label(s) of the format `name=value`. If no `--container-id` is given the id labels will be used to look up the container. If no `--id-label` is given, one will be inferred from the `--workspace-folder` path.
+</ParamField>
+
+### Configuration
+
+<ParamField type="string">
+  `devcontainer.json` path. The default is to use `.devcontainer/devcontainer.json` or, if that does not exist, `.devcontainer.json` in the workspace folder.
+</ParamField>
+
+<ParamField type="string">
+  `devcontainer.json` path to override any `devcontainer.json` in the workspace folder (or built-in configuration). This is required when there is no `devcontainer.json` otherwise.
+</ParamField>
+
+### Lifecycle control
+
+<ParamField type="boolean">
+  Stop running user commands after running the command configured with `waitFor` or the `updateContentCommand` by default.
+</ParamField>
+
+<ParamField type="boolean">
+  Stop after `onCreateCommand` and `updateContentCommand`, rerunning `updateContentCommand` if it has run before.
+</ParamField>
+
+### Environment
+
+<ParamField type="string">
+  Remote environment variables of the format `name=value`. These will be added when executing the user commands. Can be specified multiple times.
+</ParamField>
+
+<ParamField type="string">
+  Path to a JSON file containing secret environment variables as key-value pairs.
+</ParamField>
+
+### Dotfiles
+
+<ParamField type="string">
+  URL of a dotfiles Git repository (e.g., `https://github.com/owner/repository.git`).
+</ParamField>
+
+<ParamField type="string">
+  The command to run after cloning the dotfiles repository. Defaults to run the first file of `install.sh`, `install`, `bootstrap.sh`, `bootstrap`, `setup.sh` and `setup` found in the dotfiles repository's root folder.
+</ParamField>
+
+<ParamField type="string">
+  The path to clone the dotfiles repository to. Defaults to `~/dotfiles`.
+</ParamField>
+
+### Docker
+
+<ParamField type="string">
+  Docker CLI path.
+</ParamField>
+
+<ParamField type="string">
+  Docker Compose CLI path.
+</ParamField>
+
+### Logging
+
+<ParamField type="string">
+  Log level for the terminal log file. When set to `trace`, the log level for the log file will also be set to `trace`. Accepted values: `info`, `debug`, `trace`.
+</ParamField>
+
+<ParamField type="string">
+  Log format. Accepted values: `text`, `json`.
+</ParamField>
+
+## Output
+
+On success, the command writes a JSON object to stdout:
+
+```json theme={null}
+{
+  "outcome": "success"
+}
+```
+
+On failure:
+
+```json theme={null}
+{
+  "outcome": "error",
+  "message": "An error occurred running user commands in the container.",
+  "description": "..."
+}
+```
+
+## When to use this command
+
+`run-user-commands` is designed for scenarios where container provisioning is split into two phases:
+
+1. **Infrastructure phase** — `devcontainer set-up` or `devcontainer up --skip-post-create` creates the container and configures the system.
+2. **User phase** — `devcontainer run-user-commands` applies user-specific configuration (dotfiles, post-create scripts) without recreating the container.
+
+This split is useful for shared or hosted environments where system setup and personal configuration happen at different times or under different permissions.
+
+## Examples
+
+### Run all user commands for the current workspace
+
+```bash theme={null}
+devcontainer run-user-commands --workspace-folder .
+```
+
+### Run user commands on a specific container
+
+```bash theme={null}
+devcontainer run-user-commands --container-id abc123def456
+```
+
+### Target a container by id-label
+
+```bash theme={null}
+devcontainer run-user-commands \
+  --id-label devcontainer.local_folder=/home/user/my-project
+```
+
+### Install dotfiles during user setup
+
+```bash theme={null}
+devcontainer run-user-commands \
+  --workspace-folder . \
+  --dotfiles-repository https://github.com/myuser/dotfiles.git \
+  --dotfiles-install-command install.sh
+```
+
+### Run only up to `waitFor` (skip blocking post-create commands)
+
+```bash theme={null}
+devcontainer run-user-commands \
+  --workspace-folder . \
+  --skip-non-blocking-commands
+```
+
+### Stop after `onCreateCommand` for prebuild scenarios
+
+<Tip>
+  Combine `--prebuild` with a registry-push workflow so the result of `onCreateCommand` is cached in the image layer.
+</Tip>
+
+```bash theme={null}
+devcontainer run-user-commands \
+  --workspace-folder . \
+  --prebuild
+```
+
+### Inject secrets from a file
+
+<Warning>
+  Never commit secrets files to source control. Add the file to your `.gitignore`.
+</Warning>
+
+```bash theme={null}
+devcontainer run-user-commands \
+  --workspace-folder . \
+  --secrets-file ./my-secrets.json
+```
+
+### Pass extra environment variables
+
+```bash theme={null}
+devcontainer run-user-commands \
+  --workspace-folder . \
+  --remote-env MY_VAR=hello \
+  --remote-env ANOTHER_VAR=world
+```
+
+
+# devcontainer up
+Source: https://www.mintlify.com/devcontainers/cli/commands/up
+
+Create and run a dev container.
+
+The `up` command creates and starts a dev container based on your `devcontainer.json` configuration. It provisions the container, installs features, and runs lifecycle commands such as `onCreateCommand`, `postCreateCommand`, and `postStartCommand`.
+
+If a container already exists for the given workspace, `up` reuses it unless you pass `--remove-existing-container`.
+
+## Usage
+
+```bash theme={null}
+devcontainer up [options]
+```
+
+## Options
+
+### Workspace and configuration
+
+<ParamField type="string">
+  Workspace folder path. The `devcontainer.json` will be looked up relative to this path. If `--id-label`, `--override-config`, and `--workspace-folder` are not provided, this defaults to the current directory.
+</ParamField>
+
+<ParamField type="string">
+  `devcontainer.json` path. The default is to use `.devcontainer/devcontainer.json` or, if that does not exist, `.devcontainer.json` in the workspace folder.
+</ParamField>
+
+<ParamField type="string">
+  `devcontainer.json` path to override any `devcontainer.json` in the workspace folder (or built-in configuration). This is required when there is no `devcontainer.json` otherwise.
+</ParamField>
+
+<ParamField type="string">
+  Id label(s) of the format `name=value`. These will be set on the container and used to query for an existing container. If no `--id-label` is given, one will be inferred from the `--workspace-folder` path.
+</ParamField>
+
+<ParamField type="string">
+  Additional features to apply to the dev container (JSON as per `"features"` section in `devcontainer.json`).
+</ParamField>
+
+### Docker
+
+<ParamField type="string">
+  Docker CLI path.
+</ParamField>
+
+<ParamField type="string">
+  Docker Compose CLI path.
+</ParamField>
+
+### Container lifecycle
+
+<ParamField type="boolean">
+  Removes the dev container if it already exists.
+</ParamField>
+
+<ParamField type="boolean">
+  Fail if the container does not exist.
+</ParamField>
+
+<ParamField type="boolean">
+  Builds the image with `--no-cache` if the container does not exist.
+</ParamField>
+
+<ParamField type="boolean">
+  Do not run `onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand` or `postAttachCommand` and do not install dotfiles.
+</ParamField>
+
+<ParamField type="boolean">
+  Stop running user commands after running the command configured with `waitFor` or the `updateContentCommand` by default.
+</ParamField>
+
+<ParamField type="boolean">
+  Do not run `postAttachCommand`.
+</ParamField>
+
+<ParamField type="boolean">
+  Stop after `onCreateCommand` and `updateContentCommand`, rerunning `updateContentCommand` if it has run before.
+</ParamField>
+
+<ParamField type="string">
+  Default for updating the remote user's UID and GID to the local user's one. Accepted values: `never`, `on`, `off`.
+</ParamField>
+
+### Mounts and environment
+
+<ParamField type="string">
+  Additional mount point(s). Format: `type=<bind|volume>,source=<source>,target=<target>[,external=<true|false>]`. Can be specified multiple times.
+</ParamField>
+
+<ParamField type="string">
+  Remote environment variables of the format `name=value`. These will be added when executing the user commands. Can be specified multiple times.
+</ParamField>
+
+### Image caching
+
+<ParamField type="string">
+  Additional image to use as potential layer cache during image building. Can be specified multiple times.
+</ParamField>
+
+<ParamField type="string">
+  Additional image to use as potential layer cache during image building.
+</ParamField>
+
+<ParamField type="string">
+  Control whether BuildKit should be used. Accepted values: `auto`, `never`.
+</ParamField>
+
+### Dotfiles
+
+<ParamField type="string">
+  URL of a dotfiles Git repository (e.g., `https://github.com/owner/repository.git`).
+</ParamField>
+
+<ParamField type="string">
+  The command to run after cloning the dotfiles repository. Defaults to run the first file of `install.sh`, `install`, `bootstrap.sh`, `bootstrap`, `setup.sh` and `setup` found in the dotfiles repository's root folder.
+</ParamField>
+
+<ParamField type="string">
+  The path to clone the dotfiles repository to. Defaults to `~/dotfiles`.
+</ParamField>
+
+### Secrets
+
+<ParamField type="string">
+  Path to a JSON file containing secret environment variables as key-value pairs.
+</ParamField>
+
+### Output and logging
+
+<ParamField type="boolean">
+  Include configuration in result.
+</ParamField>
+
+<ParamField type="boolean">
+  Include merged configuration in result.
+</ParamField>
+
+<ParamField type="string">
+  Log level for the terminal log file. When set to `trace`, the log level for the log file will also be set to `trace`. Accepted values: `info`, `debug`, `trace`.
+</ParamField>
+
+<ParamField type="string">
+  Log format. Accepted values: `text`, `json`.
+</ParamField>
+
+## Output
+
+On success, the command writes a JSON object to stdout:
+
+```json theme={null}
+{
+  "outcome": "success",
+  "containerId": "abc123def456...",
+  "remoteUser": "vscode",
+  "remoteWorkspaceFolder": "/workspaces/my-project"
+}
+```
+
+On failure, it writes:
+
+```json theme={null}
+{
+  "outcome": "error",
+  "message": "An error occurred setting up the container.",
+  "description": "..."
+}
+```
+
+## Examples
+
+### Start a dev container in the current directory
+
+```bash theme={null}
+devcontainer up --workspace-folder .
+```
+
+### Use a custom config file
+
+```bash theme={null}
+devcontainer up --workspace-folder . --config ./custom/.devcontainer.json
+```
+
+### Add an extra bind mount
+
+```bash theme={null}
+devcontainer up \
+  --workspace-folder . \
+  --mount type=bind,source=/host/data,target=/container/data
+```
+
+### Pass remote environment variables
+
+```bash theme={null}
+devcontainer up \
+  --workspace-folder . \
+  --remote-env MY_VAR=hello \
+  --remote-env ANOTHER_VAR=world
+```
+
+### Rebuild without cache and remove any existing container
+
+```bash theme={null}
+devcontainer up \
+  --workspace-folder . \
+  --remove-existing-container \
+  --build-no-cache
+```
+
+### Apply additional features at runtime
+
+```bash theme={null}
+devcontainer up \
+  --workspace-folder . \
+  --additional-features '{"ghcr.io/devcontainers/features/node:1": {}}'
+```
+
+### Install dotfiles during setup
+
+```bash theme={null}
+devcontainer up \
+  --workspace-folder . \
+  --dotfiles-repository https://github.com/myuser/dotfiles.git \
+  --dotfiles-install-command install.sh
+```
+
+### Use a secrets file
+
+<Warning>
+  Never commit secrets files to source control. Add the file to your `.gitignore`.
+</Warning>
+
+```bash theme={null}
+devcontainer up \
+  --workspace-folder . \
+  --secrets-file ./my-secrets.json
+```
+
+Where `my-secrets.json` contains:
+
+```json theme={null}
+{
+  "NPM_TOKEN": "npm_abc123",
+  "GITHUB_TOKEN": "[REDACTED-GHTOKEN-DOCS-EXAMPLE]"
+}
+```
+
+### Use layer cache for faster builds
+
+```bash theme={null}
+devcontainer up \
+  --workspace-folder . \
+  --cache-from ghcr.io/myorg/my-devcontainer:cache
+```
+
+### Stop early for prebuild scenarios
+
+<Tip>
+  Use `--prebuild` in CI pipelines to bake `onCreateCommand` output into an image layer without running post-start hooks.
+</Tip>
+
+```bash theme={null}
+devcontainer up \
+  --workspace-folder . \
+  --prebuild
+```
+
+
+# Advanced Configuration
+Source: https://www.mintlify.com/devcontainers/cli/configuration/advanced
+
+GPU support, multi-container setups with Docker Compose, secrets, mounts, BuildKit caching, and lockfiles.
+
+## GPU support
+
+Dev containers can request GPU access for machine learning workloads, CUDA development, or any task that benefits from hardware acceleration.
+
+### The --gpu-availability flag
+
+Pass `--gpu-availability` to `devcontainer up` to control how the CLI handles GPU requirements:
+
+| Value      | Behavior                                                                      |
+| ---------- | ----------------------------------------------------------------------------- |
+| `"detect"` | Detect whether a GPU is available on the host and use it if present (default) |
+| `"all"`    | Require a GPU; fail if none is available                                      |
+| `"none"`   | Never use a GPU, even if one is present                                       |
+
+```bash theme={null}
+devcontainer up --workspace-folder . --gpu-availability all
+```
+
+### Declaring GPU requirements in devcontainer.json
+
+Use `hostRequirements.gpu` to declare that the container needs GPU access:
+
+```json devcontainer.json theme={null}
+{
+  "hostRequirements": {
+    "gpu": true
+  }
+}
+```
+
+Set `"optional"` to request a GPU when available without making it a hard requirement:
+
+```json theme={null}
+{
+  "hostRequirements": {
+    "gpu": "optional"
+  }
+}
+```
+
+Specify minimum hardware with a `HostGPURequirements` object:
+
+```json theme={null}
+{
+  "hostRequirements": {
+    "gpu": {
+      "cores": 4,
+      "memory": "8gb"
+    }
+  }
+}
+```
+
+***
+
+## Docker Compose
+
+Use Docker Compose when your development environment requires multiple services running together, such as a web app alongside a database or message queue.
+
+### Configuration
+
+A Docker Compose dev container requires three fields in `devcontainer.json`:
+
+```json devcontainer.json theme={null}
+{
+  "name": "Full Stack App",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspace"
+}
+```
+
+<AccordionGroup>
+  <Accordion title="dockerComposeFile">
+    Path to one or more Docker Compose files, resolved relative to `devcontainer.json`. Accepts a string or an array for multi-file setups.
+
+    ```json theme={null}
+    {
+      "dockerComposeFile": ["docker-compose.yml", "docker-compose.override.yml"]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="service">
+    The name of the Compose service the CLI should attach to. This service must exist in the Compose file.
+
+    ```json theme={null}
+    { "service": "app" }
+    ```
+  </Accordion>
+
+  <Accordion title="runServices">
+    An optional list of services to start. If omitted, all services defined in the Compose file are started.
+
+    ```json theme={null}
+    { "runServices": ["app", "db"] }
+    ```
+  </Accordion>
+
+  <Accordion title="shutdownAction">
+    What to do when the last client disconnects. For Docker Compose, use `"stopCompose"` to stop all services.
+
+    ```json theme={null}
+    { "shutdownAction": "stopCompose" }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### The --docker-compose-path flag
+
+If the `docker compose` or `docker-compose` binary is not on your `PATH`, specify its location:
+
+```bash theme={null}
+devcontainer up \
+  --workspace-folder . \
+  --docker-compose-path /usr/local/bin/docker-compose
+```
+
+### Complete example
+
+```yaml docker-compose.yml theme={null}
+services:
+  app:
+    build: .
+    volumes:
+      - ..:/workspace:cached
+    command: sleep infinity
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: devpassword
+      POSTGRES_DB: myapp
+```
+
+```json devcontainer.json theme={null}
+{
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspace",
+  "forwardPorts": [3000, 5432],
+  "postCreateCommand": "npm install && npm run db:migrate",
+  "shutdownAction": "stopCompose"
+}
+```
+
+***
+
+## Secrets
+
+Use `--secrets-file` to supply sensitive environment variables without exposing them in `devcontainer.json` or on the command line.
+
+### File format
+
+The secrets file is a JSON object where keys are environment variable names and values are their values:
+
+```json secrets.json theme={null}
+{
+  "GITHUB_TOKEN": "[REDACTED-GHTOKEN-DOCS-EXAMPLE]",
+  "NPM_TOKEN": "npm_xxxxxxxxxxxxxxxxxxxx",
+  "DATABASE_PASSWORD": "supersecret"
+}
+```
+
+### Usage
+
+```bash theme={null}
+devcontainer up \
+  --workspace-folder . \
+  --secrets-file ~/.config/devcontainer/secrets.json
+```
+
+The variables are injected into the container environment and available to lifecycle scripts and the remote session.
+
+<Warning>
+  Do not commit secrets files to source control. Add them to `.gitignore` and store them outside of your project directory when possible.
+</Warning>
+
+### Secrets vs --remote-env
+
+Prefer `--secrets-file` over `--remote-env` for sensitive values. `--remote-env` values appear in shell history and process listings. The secrets file is read once by the CLI process and not logged.
+
+***
+
+## Mounts
+
+### The --mount flag
+
+Add bind mounts or volumes at container start without modifying `devcontainer.json`:
+
+```bash theme={null}
+devcontainer up \
+  --workspace-folder . \
+  --mount "type=bind,source=/host/path,target=/container/path" \
+  --mount "type=volume,source=node_modules,target=/workspace/node_modules"
+```
+
+The `--mount` flag accepts the same format as `docker run --mount`. The full syntax is:
+
+```
+type=<bind|volume>,source=<source>,target=<target>[,external=<true|false>]
+```
+
+Pass `--mount` multiple times to add multiple mounts.
+
+### The mounts property in devcontainer.json
+
+Persistent mounts belong in `devcontainer.json` under the `mounts` property:
+
+```json devcontainer.json theme={null}
+{
+  "mounts": [
+    "type=bind,source=${localWorkspaceFolder}/data,target=/data",
+    {
+      "type": "volume",
+      "source": "node_modules",
+      "target": "/workspace/node_modules"
+    }
+  ]
+}
+```
+
+Each entry is either a mount string or a mount object with `type`, `source`, and `target` fields.
+
+<Tip>
+  Use a named volume for `node_modules` or other dependency directories to avoid the performance penalty of bind-mounting large directory trees from the host.
+</Tip>
+
+***
+
+## BuildKit and caching
+
+BuildKit is enabled by default (`--buildkit auto`) when it is available. The following flags control build behavior for both `devcontainer up` and `devcontainer build`.
+
+### --buildkit
+
+Control whether BuildKit is used:
+
+```bash theme={null}
+devcontainer build --workspace-folder . --buildkit never
+```
+
+| Value     | Behavior                              |
+| --------- | ------------------------------------- |
+| `"auto"`  | Use BuildKit if available (default)   |
+| `"never"` | Always use the classic Docker builder |
+
+### --cache-from
+
+Specify an image to use as a layer cache source. This is useful in CI to reuse layers from a previously built image:
+
+```bash theme={null}
+devcontainer build \
+  --workspace-folder . \
+  --cache-from ghcr.io/myorg/myrepo:cache
+```
+
+Pass `--cache-from` multiple times to specify multiple cache sources.
+
+### --cache-to
+
+Export the build cache to a destination after the build. Primarily useful with BuildKit's cache backends:
+
+```bash theme={null}
+devcontainer build \
+  --workspace-folder . \
+  --cache-to type=registry,ref=ghcr.io/myorg/myrepo:cache,mode=max
+```
+
+### --no-cache
+
+Build the image without using any cached layers:
+
+```bash theme={null}
+devcontainer build --workspace-folder . --no-cache
+```
+
+### CI caching example
+
+```bash theme={null}
+devcontainer build \
+  --workspace-folder . \
+  --cache-from ghcr.io/myorg/devcontainer:cache \
+  --cache-to type=registry,ref=ghcr.io/myorg/devcontainer:cache,mode=max \
+  --image-name ghcr.io/myorg/devcontainer:latest
+```
+
+***
+
+## Lockfiles (experimental)
+
+Lockfiles pin dev container Feature versions so your environment is reproducible across machines and over time.
+
+<Note>
+  Lockfile support is experimental. The flags are hidden and the format may change between releases.
+</Note>
+
+### Writing a lockfile
+
+Pass `--experimental-lockfile` to `devcontainer up` or `devcontainer build` to write a lockfile alongside `devcontainer.json`:
+
+```bash theme={null}
+devcontainer up \
+  --workspace-folder . \
+  --experimental-lockfile
+```
+
+### Enforcing a lockfile
+
+Pass `--experimental-frozen-lockfile` to fail if the resolved Feature versions differ from those in the lockfile:
+
+```bash theme={null}
+devcontainer up \
+  --workspace-folder . \
+  --experimental-frozen-lockfile
+```
+
+Use this in CI to detect when a Feature has changed unexpectedly.
+
+### Managing Feature versions
+
+Two commands help you inspect and update Feature versions:
+
+**Check for updates:**
+
+```bash theme={null}
+devcontainer outdated --workspace-folder .
+```
+
+This shows the current version of each Feature alongside the latest available version.
+
+**Upgrade the lockfile:**
+
+```bash theme={null}
+devcontainer upgrade --workspace-folder .
+```
+
+This resolves the latest compatible version of each Feature and rewrites the lockfile. Review the diff before committing.
+
+
+# devcontainer.json
+Source: https://www.mintlify.com/devcontainers/cli/configuration/devcontainer-json
+
+Configure your dev container with the devcontainer.json file.
+
+The `devcontainer.json` file is the central configuration file for a dev container. It tells the CLI how to build the container, what tools to install, which ports to expose, and what commands to run at each stage of the container lifecycle.
+
+## File location
+
+The CLI looks for `devcontainer.json` in the following locations, in order:
+
+1. `.devcontainer/devcontainer.json`
+2. `.devcontainer.json`
+
+Both paths are resolved relative to the workspace folder (`--workspace-folder`).
+
+## Base configuration types
+
+Every `devcontainer.json` must use one of three base configuration types. These are mutually exclusive.
+
+<Tabs>
+  <Tab title="Image">
+    Pull a pre-built image directly from a registry.
+
+    ```json devcontainer.json theme={null}
+    {
+      "name": "My Dev Container",
+      "image": "mcr.microsoft.com/devcontainers/base:ubuntu"
+    }
+    ```
+
+    Use this when you do not need to customize the image build step and an existing image meets your requirements.
+  </Tab>
+
+  <Tab title="Dockerfile">
+    Build a custom image from a Dockerfile.
+
+    ```json devcontainer.json theme={null}
+    {
+      "name": "My Dev Container",
+      "build": {
+        "dockerfile": "Dockerfile",
+        "context": "..",
+        "args": {
+          "NODE_VERSION": "20"
+        }
+      }
+    }
+    ```
+
+    The legacy `"dockerFile"` top-level key is also supported but `"build.dockerfile"` is preferred.
+  </Tab>
+
+  <Tab title="Docker Compose">
+    Run against a multi-container setup defined in a Docker Compose file.
+
+    ```json devcontainer.json theme={null}
+    {
+      "name": "My Dev Container",
+      "dockerComposeFile": "docker-compose.yml",
+      "service": "app",
+      "workspaceFolder": "/workspace"
+    }
+    ```
+
+    `workspaceFolder` is required when using Docker Compose.
+  </Tab>
+</Tabs>
+
+## Complete examples
+
+<AccordionGroup>
+  <Accordion title="Image-based">
+    ```json devcontainer.json theme={null}
+    {
+      "name": "Node.js",
+      "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+      "features": {
+        "ghcr.io/devcontainers/features/github-cli:1": {}
+      },
+      "forwardPorts": [3000],
+      "postCreateCommand": "npm install",
+      "remoteUser": "node"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Dockerfile-based">
+    ```json devcontainer.json theme={null}
+    {
+      "name": "Python",
+      "build": {
+        "dockerfile": "Dockerfile",
+        "args": {
+          "PYTHON_VERSION": "3.12"
+        }
+      },
+      "features": {
+        "ghcr.io/devcontainers/features/git:1": {}
+      },
+      "forwardPorts": [8000],
+      "postCreateCommand": "pip install -r requirements.txt",
+      "containerUser": "vscode",
+      "remoteUser": "vscode"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Docker Compose">
+    ```json devcontainer.json theme={null}
+    {
+      "name": "Full Stack App",
+      "dockerComposeFile": "docker-compose.yml",
+      "service": "app",
+      "workspaceFolder": "/workspace",
+      "forwardPorts": [3000, 5432],
+      "postCreateCommand": "npm install",
+      "shutdownAction": "stopCompose"
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Properties
+
+### Identity and image
+
+<AccordionGroup>
+  <Accordion title="name">
+    A display name for the dev container.
+
+    ```json theme={null}
+    { "name": "My Project" }
+    ```
+  </Accordion>
+
+  <Accordion title="image">
+    The Docker image to use as the base. Only applies to image-based configurations.
+
+    ```json theme={null}
+    { "image": "mcr.microsoft.com/devcontainers/base:ubuntu" }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Ports
+
+<AccordionGroup>
+  <Accordion title="forwardPorts">
+    An array of ports to forward from the container to the host. Accepts integers or `"host:container"` strings.
+
+    ```json theme={null}
+    { "forwardPorts": [3000, "8080:80"] }
+    ```
+  </Accordion>
+
+  <Accordion title="appPort">
+    A port or list of ports to publish from the container. Unlike `forwardPorts`, these are published at container start rather than forwarded by a client tool.
+
+    ```json theme={null}
+    { "appPort": [3000, "8080:80"] }
+    ```
+  </Accordion>
+
+  <Accordion title="portsAttributes">
+    Per-port configuration. Keys are port numbers or ranges as strings.
+
+    ```json theme={null}
+    {
+      "portsAttributes": {
+        "3000": {
+          "label": "Application",
+          "onAutoForward": "notify"
+        },
+        "5432": {
+          "label": "PostgreSQL",
+          "onAutoForward": "silent"
+        }
+      }
+    }
+    ```
+
+    `onAutoForward` accepts: `"notify"`, `"openBrowser"`, `"openBrowserOnce"`, `"openPreview"`, `"silent"`, `"ignore"`.
+  </Accordion>
+</AccordionGroup>
+
+### Features
+
+<AccordionGroup>
+  <Accordion title="features">
+    A map of dev container Features to install. Keys are Feature IDs; values are option objects, a version string, or `{}` for defaults.
+
+    ```json theme={null}
+    {
+      "features": {
+        "ghcr.io/devcontainers/features/git:1": {},
+        "ghcr.io/devcontainers/features/node:1": {
+          "version": "20"
+        }
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="overrideFeatureInstallOrder">
+    Control the order in which Features are installed. Provide an array of Feature IDs. Features not listed are installed after those that are.
+
+    ```json theme={null}
+    {
+      "overrideFeatureInstallOrder": [
+        "ghcr.io/devcontainers/features/common-utils",
+        "ghcr.io/devcontainers/features/node"
+      ]
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Environment variables
+
+<AccordionGroup>
+  <Accordion title="containerEnv">
+    Environment variables set inside the container at the system level. These are set before any lifecycle scripts run.
+
+    ```json theme={null}
+    {
+      "containerEnv": {
+        "NODE_ENV": "development",
+        "DATABASE_URL": "postgres://localhost/mydb"
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="remoteEnv">
+    Environment variables injected when a client (such as a terminal or editor) attaches to the container. Set a value to `null` to unset an inherited variable.
+
+    ```json theme={null}
+    {
+      "remoteEnv": {
+        "PATH": "${containerEnv:PATH}:/home/vscode/.local/bin",
+        "DEBUG": null
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Users
+
+<AccordionGroup>
+  <Accordion title="containerUser">
+    The user that processes inside the container run as. Equivalent to `--user` in Docker.
+
+    ```json theme={null}
+    { "containerUser": "root" }
+    ```
+  </Accordion>
+
+  <Accordion title="remoteUser">
+    The user that client-attached processes (terminals, lifecycle scripts) run as. Defaults to the container user.
+
+    ```json theme={null}
+    { "remoteUser": "vscode" }
+    ```
+  </Accordion>
+
+  <Accordion title="updateRemoteUserUID">
+    When `true`, the remote user's UID and GID are updated to match the host user's. Defaults to `true`. Set to `false` when running as root.
+
+    ```json theme={null}
+    { "updateRemoteUserUID": false }
+    ```
+  </Accordion>
+
+  <Accordion title="userEnvProbe">
+    Controls how the user's shell environment is sourced when running lifecycle commands. Accepted values:
+
+    | Value                     | Behavior                              |
+    | ------------------------- | ------------------------------------- |
+    | `"none"`                  | No shell sourcing                     |
+    | `"loginInteractiveShell"` | Login and interactive shell (default) |
+    | `"interactiveShell"`      | Interactive shell only                |
+    | `"loginShell"`            | Login shell only                      |
+
+    ```json theme={null}
+    { "userEnvProbe": "loginInteractiveShell" }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Container runtime
+
+<AccordionGroup>
+  <Accordion title="runArgs">
+    Additional arguments passed to `docker run` when creating the container.
+
+    ```json theme={null}
+    { "runArgs": ["--network=host", "--cpus=2"] }
+    ```
+  </Accordion>
+
+  <Accordion title="mounts">
+    Additional mount points. Each entry is a mount string or object.
+
+    ```json theme={null}
+    {
+      "mounts": [
+        "type=bind,source=${localWorkspaceFolder}/data,target=/data",
+        {
+          "type": "volume",
+          "source": "node_modules",
+          "target": "/workspace/node_modules"
+        }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="workspaceFolder">
+    The path inside the container to use as the working directory. Required for Docker Compose configurations.
+
+    ```json theme={null}
+    { "workspaceFolder": "/workspace" }
+    ```
+  </Accordion>
+
+  <Accordion title="workspaceMount">
+    Overrides the default bind mount used to mount the workspace into the container.
+
+    ```json theme={null}
+    { "workspaceMount": "type=bind,source=${localWorkspaceFolder},target=/workspace,consistency=cached" }
+    ```
+  </Accordion>
+
+  <Accordion title="overrideCommand">
+    When `true`, overrides the container's default `CMD` with an infinite sleep so the container stays running. Defaults to `true`.
+
+    ```json theme={null}
+    { "overrideCommand": false }
+    ```
+  </Accordion>
+
+  <Accordion title="shutdownAction">
+    What happens to the container when the last client disconnects.
+
+    * `"none"` — container keeps running
+    * `"stopContainer"` — container is stopped (default for image/Dockerfile)
+    * `"stopCompose"` — all Compose services are stopped (Docker Compose only)
+
+    ```json theme={null}
+    { "shutdownAction": "stopContainer" }
+    ```
+  </Accordion>
+
+  <Accordion title="init, privileged, capAdd, securityOpt">
+    Low-level Linux security and init options.
+
+    ```json theme={null}
+    {
+      "init": true,
+      "privileged": false,
+      "capAdd": ["SYS_PTRACE"],
+      "securityOpt": ["seccomp=unconfined"]
+    }
+    ```
+
+    * `init` — run an init process (`tini`) as PID 1
+    * `privileged` — run the container in privileged mode
+    * `capAdd` — Linux capabilities to add
+    * `securityOpt` — security options passed to `docker run`
+  </Accordion>
+</AccordionGroup>
+
+### Host requirements
+
+Declare the minimum host resources the container requires. Tools that support this can surface warnings or prevent startup when the host does not meet the requirements.
+
+```json theme={null}
+{
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "8gb",
+    "storage": "32gb",
+    "gpu": true
+  }
+}
+```
+
+`gpu` accepts `true`, `false`, `"optional"`, or an object with `cores` and `memory`:
+
+```json theme={null}
+{
+  "hostRequirements": {
+    "gpu": {
+      "cores": 2,
+      "memory": "4gb"
+    }
+  }
+}
+```
+
+### Customizations
+
+Tool-specific configuration lives under `customizations`. Each key is a tool identifier; the value is that tool's configuration schema.
+
+```json theme={null}
+{
+  "customizations": {
+    "vscode": {
+      "extensions": ["esbenp.prettier-vscode"],
+      "settings": {
+        "editor.formatOnSave": true
+      }
+    }
+  }
+}
+```
+
+<Note>
+  The top-level `extensions` and `settings` keys from older versions of the spec are automatically migrated to `customizations.vscode` at runtime.
+</Note>
+
+
+# Dotfiles
+Source: https://www.mintlify.com/devcontainers/cli/configuration/dotfiles
+
+Automatically personalize your dev container with your dotfiles repository.
+
+Dotfiles support lets you clone a personal Git repository into a dev container and run an install script, so your shell configuration, aliases, and editor settings follow you into every container automatically.
+
+## How it works
+
+<Steps>
+  <Step title="Clone the repository">
+    The CLI clones your dotfiles repository into the container at the path specified by `--dotfiles-target-path` (default: `~/dotfiles`).
+  </Step>
+
+  <Step title="Run the install script">
+    The CLI looks for an install script in the root of the cloned repository and runs it. The script is resolved by checking for the first of the following files that exists:
+
+    1. `install.sh`
+    2. `install`
+    3. `bootstrap.sh`
+    4. `bootstrap`
+    5. `setup.sh`
+    6. `setup`
+
+    You can override this with `--dotfiles-install-command`.
+  </Step>
+</Steps>
+
+<Note>
+  Dotfiles installation runs after `postCreateCommand` and is skipped when `--skip-post-create` is passed.
+</Note>
+
+## CLI flags
+
+Pass these flags to `devcontainer up` or `devcontainer run-user-commands`:
+
+<AccordionGroup>
+  <Accordion title="--dotfiles-repository">
+    The URL of the Git repository to clone.
+
+    ```bash theme={null}
+    --dotfiles-repository https://github.com/myuser/dotfiles
+    ```
+
+    Any Git URL accepted by `git clone` works, including SSH URLs.
+  </Accordion>
+
+  <Accordion title="--dotfiles-install-command">
+    The command to run after cloning. If omitted, the CLI searches the repository root for the default install scripts listed above.
+
+    ```bash theme={null}
+    --dotfiles-install-command "chmod +x install.sh && ./install.sh"
+    ```
+
+    The command runs from the repository root inside the container.
+  </Accordion>
+
+  <Accordion title="--dotfiles-target-path">
+    The path inside the container where the repository is cloned. Defaults to `~/dotfiles`.
+
+    ```bash theme={null}
+    --dotfiles-target-path /home/vscode/.dotfiles
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Example usage
+
+```bash theme={null}
+devcontainer up \
+  --workspace-folder . \
+  --dotfiles-repository https://github.com/myuser/dotfiles \
+  --dotfiles-install-command "install.sh" \
+  --dotfiles-target-path ~/dotfiles
+```
+
+## Setting dotfiles in devcontainer.json
+
+Some tools that wrap the CLI pass dotfiles configuration through their own settings UI rather than CLI flags. If you need to commit dotfiles configuration alongside a project, you can place it in `devcontainer.json` under `customizations`:
+
+```json devcontainer.json theme={null}
+{
+  "name": "My Dev Container",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "customizations": {
+    "dotfiles": {
+      "repository": "https://github.com/myuser/dotfiles",
+      "installCommand": "install.sh",
+      "targetPath": "~/dotfiles"
+    }
+  }
+}
+```
+
+<Warning>
+  Committing a personal dotfiles repository URL in a shared `devcontainer.json` applies your personal configuration to everyone who uses that container. Prefer passing `--dotfiles-repository` as a user-level or machine-level setting in your tool's configuration instead.
+</Warning>
+
+## Writing an idempotent install script
+
+The install script may run more than once if the container is rebuilt. Write it so it is safe to run repeatedly.
+
+<Tip>
+  Check whether a symlink or file already exists before creating it. Use `ln -sf` (force) or guard with `[ -f ]` checks.
+</Tip>
+
+```bash install.sh theme={null}
+#!/usr/bin/env bash
+set -euo pipefail
+
+DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+link() {
+  local src="$DOTFILES_DIR/$1"
+  local dst="$HOME/$2"
+  mkdir -p "$(dirname "$dst")"
+  ln -sf "$src" "$dst"
+  echo "Linked $dst -> $src"
+}
+
+link "zshrc"        ".zshrc"
+link "gitconfig"    ".gitconfig"
+link "config/nvim"  ".config/nvim"
+
+# Install tools only if not already present
+if ! command -v starship &>/dev/null; then
+  curl -sS https://starship.rs/install.sh | sh -s -- --yes
+fi
+```
+
+Key practices:
+
+* Use `ln -sf` so existing symlinks are overwritten without error.
+* Guard network installs with `command -v` or file existence checks.
+* Use `set -euo pipefail` so the script fails fast on errors.
+* Avoid hardcoding paths; derive them from `$HOME` or the script's own directory.
+
+
+# Lifecycle Scripts
+Source: https://www.mintlify.com/devcontainers/cli/configuration/lifecycle-scripts
+
+Run commands at specific stages of the dev container lifecycle.
+
+Lifecycle scripts let you automate setup and teardown tasks at well-defined points during a dev container's lifetime. Each hook maps to a field in `devcontainer.json`.
+
+## Command syntax
+
+Every lifecycle command accepts one of three forms:
+
+<Tabs>
+  <Tab title="String">
+    A single shell command. The shell is determined by the container's default shell.
+
+    ```json theme={null}
+    { "postCreateCommand": "npm install" }
+    ```
+  </Tab>
+
+  <Tab title="Array">
+    A command and its arguments as an array. No shell expansion is applied.
+
+    ```json theme={null}
+    { "postCreateCommand": ["npm", "install", "--prefer-offline"] }
+    ```
+  </Tab>
+
+  <Tab title="Object (parallel)">
+    A map of named commands that run in parallel. Keys are labels; values are strings or arrays.
+
+    ```json theme={null}
+    {
+      "postStartCommand": {
+        "server": "npm run dev",
+        "db": "docker-compose up -d db"
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Hooks
+
+The hooks run in the following order. Unless noted otherwise, they run inside the container as the `remoteUser`.
+
+```mermaid theme={null}
+flowchart TD
+    A[initializeCommand] -->|on host| B[Container created]
+    B --> C[onCreateCommand]
+    C --> D[updateContentCommand]
+    D --> E[postCreateCommand]
+    E --> F[Container started]
+    F --> G[postStartCommand]
+    G --> H[Client attaches]
+    H --> I[postAttachCommand]
+```
+
+<AccordionGroup>
+  <Accordion title="initializeCommand">
+    **Runs on: host**
+
+    Executes on the host machine before the container is created or started. Because the container does not exist yet, this hook cannot run container commands.
+
+    Use it for host-side prerequisites: checking environment variables, authenticating to a registry, or preparing bind-mount directories.
+
+    ```json theme={null}
+    {
+      "initializeCommand": "echo 'Starting container setup'"
+    }
+    ```
+
+    <Warning>
+      `initializeCommand` runs on the host, not inside the container. Do not rely on container tooling here.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="onCreateCommand">
+    **Runs on: container — once, on first creation**
+
+    Executes inside the container the first time it is created. It does not run again when the container is restarted or rebuilt unless the container is deleted and recreated.
+
+    Use it for one-time setup that is expensive to repeat, such as compiling native extensions or generating certificates.
+
+    ```json theme={null}
+    {
+      "onCreateCommand": "sudo apt-get install -y build-essential"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="updateContentCommand">
+    **Runs on: container — on creation and when workspace content changes**
+
+    Similar to `onCreateCommand`, but also re-runs whenever the workspace content is updated. This is intended for tools that rebuild indexes or caches when source files change.
+
+    ```json theme={null}
+    {
+      "updateContentCommand": "pip install -r requirements.txt"
+    }
+    ```
+
+    <Note>
+      When `--prebuild` is passed to `devcontainer up`, execution stops after `updateContentCommand`. This is useful for pre-building container images.
+    </Note>
+  </Accordion>
+
+  <Accordion title="postCreateCommand">
+    **Runs on: container — once, after first creation**
+
+    The most commonly used hook. Runs once after the container is created and `updateContentCommand` has finished. Use it for dependency installation, code generation, or any other setup that should happen exactly once.
+
+    ```json theme={null}
+    {
+      "postCreateCommand": "npm install"
+    }
+    ```
+
+    Multiple commands using parallel object syntax:
+
+    ```json theme={null}
+    {
+      "postCreateCommand": {
+        "deps": "npm install",
+        "hooks": "npx husky install"
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="postStartCommand">
+    **Runs on: container — every time the container starts**
+
+    Executes each time the container starts, including restarts. Use it for long-running background processes or tasks that must be re-initialized on each start.
+
+    ```json theme={null}
+    {
+      "postStartCommand": {
+        "server": "npm run dev",
+        "db": "docker-compose up -d db"
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="postAttachCommand">
+    **Runs on: container — each time a client attaches**
+
+    Executes each time a tool (such as an editor or terminal) attaches to the running container. Use it for per-session setup that depends on which client is connecting.
+
+    ```json theme={null}
+    {
+      "postAttachCommand": "zsh"
+    }
+    ```
+
+    Pass `--skip-post-attach` to `devcontainer up` to suppress this hook.
+  </Accordion>
+</AccordionGroup>
+
+## Controlling blocking with waitFor
+
+By default, `devcontainer up` waits for `updateContentCommand` to complete before returning. The `waitFor` property lets you change which command blocks the return.
+
+```json theme={null}
+{
+  "waitFor": "postCreateCommand"
+}
+```
+
+Accepted values match the `DevContainerConfigCommand` type:
+
+| Value                    | Blocks until                               |
+| ------------------------ | ------------------------------------------ |
+| `"initializeCommand"`    | `initializeCommand` completes              |
+| `"onCreateCommand"`      | `onCreateCommand` completes                |
+| `"updateContentCommand"` | `updateContentCommand` completes (default) |
+| `"postCreateCommand"`    | `postCreateCommand` completes              |
+| `"postStartCommand"`     | `postStartCommand` completes               |
+| `"postAttachCommand"`    | `postAttachCommand` completes              |
+
+Commands that run after the `waitFor` target execute in the background without blocking the caller.
+
+## CLI flags
+
+Two flags on `devcontainer up` modify lifecycle script behavior:
+
+<AccordionGroup>
+  <Accordion title="--skip-post-create">
+    Skips all of the following and does not install dotfiles:
+
+    * `onCreateCommand`
+    * `updateContentCommand`
+    * `postCreateCommand`
+    * `postStartCommand`
+    * `postAttachCommand`
+
+    ```bash theme={null}
+    devcontainer up --workspace-folder . --skip-post-create
+    ```
+
+    Use this when you want to start a container quickly for inspection without running setup scripts.
+  </Accordion>
+
+  <Accordion title="--skip-non-blocking-commands">
+    Stops after the command specified by `waitFor` (or `updateContentCommand` by default) without running the hooks that follow it.
+
+    ```bash theme={null}
+    devcontainer up --workspace-folder . --skip-non-blocking-commands
+    ```
+
+    This is useful in CI when you only need the container to be ready up to a specific point in the lifecycle.
+  </Accordion>
+</AccordionGroup>
+
+## Full example
+
+```json devcontainer.json theme={null}
+{
+  "name": "Full-stack App",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+
+  "initializeCommand": "docker network inspect devnet || docker network create devnet",
+
+  "onCreateCommand": "sudo apt-get update && sudo apt-get install -y postgresql-client",
+
+  "updateContentCommand": "npm ci",
+
+  "postCreateCommand": {
+    "db-migrate": "npm run db:migrate",
+    "git-hooks": "npx husky install"
+  },
+
+  "postStartCommand": {
+    "server": "npm run dev",
+    "watch": "npm run build:watch"
+  },
+
+  "postAttachCommand": "echo 'Welcome to the dev container!'",
+
+  "waitFor": "postCreateCommand"
+}
+```
+
+
+# Generating Feature documentation
+Source: https://www.mintlify.com/devcontainers/cli/features/generate-docs
+
+Auto-generate markdown documentation for your Dev Container Features.
+
+The `devcontainer features generate-docs` command reads each Feature's `devcontainer-feature.json` and writes a `README.md` into the same directory. Running this command as part of your CI pipeline keeps documentation in sync with Feature metadata automatically.
+
+## Usage
+
+```bash theme={null}
+devcontainer features generate-docs \
+  --namespace my-org/my-features-repo \
+  --github-owner my-org \
+  --github-repo my-features-repo
+```
+
+The command iterates over every non-hidden subdirectory at the project root's `src/` folder (or the path provided by `--project-folder`), finds `devcontainer-feature.json` in each, and writes `README.md` alongside it.
+
+## Flags
+
+| Flag               | Alias | Default   | Description                                                                                                                   |
+| ------------------ | ----- | --------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `--project-folder` | `-p`  | `.`       | Path to the folder containing the `src` subdirectory. Typically the git root.                                                 |
+| `--namespace`      | `-n`  | —         | **Required.** The OCI namespace for the collection (`<owner>/<repo>`). Used to build the example usage snippet in the README. |
+| `--registry`       | `-r`  | `ghcr.io` | OCI registry name. Used in the example usage snippet.                                                                         |
+| `--github-owner`   | —     | `""`      | GitHub owner. When provided alongside `--github-repo`, generates a link to the `devcontainer-feature.json` on GitHub.         |
+| `--github-repo`    | —     | `""`      | GitHub repository name.                                                                                                       |
+| `--log-level`      | —     | `info`    | One of `info`, `debug`, `trace`.                                                                                              |
+
+<Note>
+  If `--github-owner` and `--github-repo` are both set, the generated README links directly to the `devcontainer-feature.json` file on `github.com`. Otherwise, the link is the bare filename.
+</Note>
+
+## Generated README format
+
+Each `README.md` is generated from a standard template populated with fields from `devcontainer-feature.json`:
+
+````markdown src/my-feature/README.md theme={null}
+# My Feature (my-feature)
+
+Installs my-tool and configures the environment.
+
+## Example Usage
+
+```json
+"features": {
+    "ghcr.io/my-org/my-features-repo/my-feature:1": {}
+}
+```
+
+## Options
+
+| Options Id | Description | Type | Default Value |
+|-----|-----|-----|-----|
+| version | Version of my-tool to install. | string | latest |
+
+## Customizations
+
+### VS Code Extensions
+
+- `my-publisher.my-extension`
+
+---
+
+_Note: This file was auto-generated from the [devcontainer-feature.json](https://github.com/my-org/my-features-repo/blob/main/src/my-feature/devcontainer-feature.json).  Add additional notes to a `NOTES.md`._
+````
+
+The version tag in the example usage snippet is derived from the major component of the Feature's `version` field (e.g. `1.2.3` → `:1`). If no version is present, `latest` is used.
+
+### Customizing with NOTES.md
+
+To add content that should appear in the README but cannot be expressed in `devcontainer-feature.json`, create a `NOTES.md` file in the Feature directory. Its contents are appended after the options table and customizations section.
+
+```
+src/
+└── my-feature/
+    ├── devcontainer-feature.json
+    ├── install.sh
+    └── NOTES.md          ← appended verbatim to the generated README
+```
+
+### Deprecated and legacy Features
+
+If `deprecated: true` is set in `devcontainer-feature.json`, the generated README prepends a bold deprecation notice. Similarly, any `legacyIds` values are called out at the top of the file.
+
+## Running in CI
+
+Add `generate-docs` to your CI workflow after any change to a `devcontainer-feature.json` to keep READMEs up to date. A typical GitHub Actions step:
+
+```yaml .github/workflows/release.yaml theme={null}
+- name: Generate documentation
+  run: |
+    devcontainer features generate-docs \
+      --namespace ${{ github.repository }} \
+      --github-owner ${{ github.repository_owner }} \
+      --github-repo ${{ github.event.repository.name }}
+
+- name: Commit updated READMEs
+  run: |
+    git config user.name "github-actions[bot]"
+    git config user.email "github-actions[bot]@users.noreply.github.com"
+    git add src/*/README.md
+    git diff --cached --quiet || git commit -m "docs: regenerate Feature READMEs"
+    git push
+```
+
+<Tip>
+  Pin your CI workflow to a specific version of the Dev Containers CLI to avoid unexpected output changes when the template is updated.
+</Tip>
+
+
+# Dev Container Features
+Source: https://www.mintlify.com/devcontainers/cli/features/overview
+
+Add tools, runtimes, and utilities to any dev container using Features.
+
+Dev Container Features are self-contained, shareable units of installation code and configuration. A Feature encapsulates everything needed to install a tool, runtime, or utility into a dev container — you reference it by ID in your `devcontainer.json`, and the CLI handles the rest.
+
+Features are distributed as OCI artifacts, primarily via `ghcr.io`, and versioned using semver tags.
+
+## Using Features in devcontainer.json
+
+Add a `features` object to your `devcontainer.json`. Each key is a Feature identifier (registry path + version tag), and the value is a set of options to pass to that Feature's `install.sh`.
+
+```json devcontainer.json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  }
+}
+```
+
+<Tip>
+  Browse community-maintained Features at [containers.dev/features](https://containers.dev/features).
+</Tip>
+
+## Feature structure
+
+Every Feature lives in its own directory containing two required files:
+
+```
+src/
+└── my-feature/
+    ├── devcontainer-feature.json   # Metadata: id, version, options, description
+    └── install.sh                  # Installation script run inside the container
+```
+
+`devcontainer-feature.json` declares the Feature's identity, available options, and other metadata consumed by the CLI and the registry. `install.sh` is the script executed inside the container during the build phase.
+
+## OCI registry distribution
+
+Features are packaged as OCI artifacts and pushed to a registry such as `ghcr.io`. The Feature identifier in `devcontainer.json` is the full OCI reference:
+
+```
+ghcr.io/<owner>/<repo>/<feature-id>:<major-version>
+```
+
+A `devcontainer-collection.json` index is published alongside individual Features so tooling can enumerate all Features in a namespace.
+
+## CLI subcommands
+
+The `devcontainer features` group provides everything you need to test, package, publish, and inspect Features.
+
+<CardGroup>
+  <Card title="Test" icon="flask-conical" href="/features/test">
+    Run the built-in test framework against your local Feature source tree.
+  </Card>
+
+  <Card title="Package & Publish" icon="box" href="/features/package-publish">
+    Bundle Features into OCI artifacts and push them to a registry.
+  </Card>
+
+  <Card title="Generate docs" icon="file-text" href="/features/generate-docs">
+    Auto-generate a `README.md` for each Feature from its metadata.
+  </Card>
+
+  <Card title="Info" icon="circle-info" href="/features/package-publish#inspecting-published-features">
+    Fetch manifest, tags, or dependency information for a published Feature.
+  </Card>
+
+  <Card title="Resolve dependencies" icon="network" href="/features/package-publish#resolving-dependencies">
+    Inspect the installation order and dependency graph for Features in a config.
+  </Card>
+</CardGroup>
+
+
+# Packaging and Publishing Features
+Source: https://www.mintlify.com/devcontainers/cli/features/package-publish
+
+Package and publish Dev Container Features to an OCI registry.
+
+The `devcontainer features package` and `devcontainer features publish` commands bundle your Feature source into OCI artifacts and push them to a registry such as `ghcr.io`.
+
+## devcontainer-feature.json
+
+Every Feature must have a `devcontainer-feature.json` in its source directory. This file provides the metadata that drives packaging, publishing, and documentation generation.
+
+```json src/my-feature/devcontainer-feature.json theme={null}
+{
+  "id": "my-feature",
+  "version": "1.0.0",
+  "name": "My Feature",
+  "description": "Installs my-tool and configures the environment.",
+  "options": {
+    "version": {
+      "type": "string",
+      "default": "latest",
+      "description": "Version of my-tool to install."
+    }
+  },
+  "installsAfter": [],
+  "customizations": {
+    "vscode": {
+      "extensions": ["my-publisher.my-extension"]
+    }
+  }
+}
+```
+
+<Note>
+  The `version` field must follow semver (e.g. `1.2.3`). The publish command uses the major version component as the primary OCI tag and also pushes patch and minor tags.
+</Note>
+
+## Publishing workflow
+
+<Steps>
+  <Step title="Authenticate with the registry">
+    Log in to `ghcr.io` (or your chosen registry) using Docker:
+
+    ```bash theme={null}
+    echo $GITHUB_TOKEN | docker login ghcr.io -u $GITHUB_ACTOR --password-stdin
+    ```
+
+    The publish command reads credentials from the Docker credential store. Authentication must succeed before publishing.
+  </Step>
+
+  <Step title="Ensure devcontainer-feature.json is complete">
+    Each Feature in `src/<FEATURE>/` must have a `devcontainer-feature.json` with at minimum an `id` and a `version`.
+
+    Features without a `version` field are skipped with a warning during publish.
+  </Step>
+
+  <Step title="Package the Features">
+    The `package` command creates OCI-ready tarballs in the output directory without pushing:
+
+    ```bash theme={null}
+    devcontainer features package ./src --output-folder ./output
+    ```
+
+    The target can be either a `src/` folder containing multiple Features, or a path directly to a single Feature directory. A `devcontainer-collection.json` index is written to the output directory alongside the individual Feature archives.
+
+    | Flag                          | Alias | Default    | Description                                                         |
+    | ----------------------------- | ----- | ---------- | ------------------------------------------------------------------- |
+    | `--output-folder`             | `-o`  | `./output` | Directory where archives are written. Created if it does not exist. |
+    | `--force-clean-output-folder` | `-f`  | `false`    | Delete the output folder before packaging.                          |
+    | `--log-level`                 | —     | `info`     | One of `info`, `debug`, `trace`.                                    |
+  </Step>
+
+  <Step title="Publish to the registry">
+    The `publish` command packages Features and pushes each one to the registry in a single step:
+
+    ```bash theme={null}
+    devcontainer features publish ./src \
+      --registry ghcr.io \
+      --namespace my-org/my-features-repo
+    ```
+
+    The namespace identifies the collection. Published references take the form:
+
+    ```
+    ghcr.io/<namespace>/<feature-id>:<version>
+    ```
+
+    | Flag          | Alias | Default   | Description                                                            |
+    | ------------- | ----- | --------- | ---------------------------------------------------------------------- |
+    | `--registry`  | `-r`  | `ghcr.io` | OCI registry to publish to.                                            |
+    | `--namespace` | `-n`  | —         | **Required.** Unique identifier for the collection (`<owner>/<repo>`). |
+    | `--log-level` | —     | `info`    | One of `info`, `debug`, `trace`.                                       |
+
+    On success, the command outputs a JSON object mapping each Feature ID to its published digest and tags.
+  </Step>
+</Steps>
+
+<Warning>
+  If a Feature with `legacyIds` is published, the same artifact is also published under each legacy identifier to maintain backwards compatibility with older references.
+</Warning>
+
+## Inspecting published Features
+
+The `devcontainer features info` command queries a published Feature without downloading its full archive.
+
+```bash theme={null}
+devcontainer features info <mode> <feature>
+```
+
+Replace `<mode>` with one of:
+
+| Mode           | Description                                                  |
+| -------------- | ------------------------------------------------------------ |
+| `manifest`     | Fetch the OCI manifest and canonical identifier.             |
+| `tags`         | List all published version tags.                             |
+| `dependencies` | Build and display the dependency graph as a Mermaid diagram. |
+| `verbose`      | Return all of the above.                                     |
+
+**Examples:**
+
+```bash theme={null}
+# Show all published tags
+devcontainer features info tags ghcr.io/devcontainers/features/node
+
+# Show the OCI manifest as JSON
+devcontainer features info manifest ghcr.io/devcontainers/features/node --output-format json
+
+# Show the dependency graph
+devcontainer features info dependencies ghcr.io/devcontainers/features/node
+```
+
+Pass `--output-format json` to receive machine-readable JSON instead of formatted text.
+
+<Note>
+  If the manifest requires authentication, run `docker login` for the registry first. The info command will print `No manifest found! If this manifest requires authentication, please login.` if it cannot fetch the manifest.
+</Note>
+
+## Resolving dependencies
+
+The `devcontainer features resolve-dependencies` command reads the `devcontainer.json` in a workspace and outputs the resolved installation order for all Features, accounting for `dependsOn` relationships.
+
+```bash theme={null}
+devcontainer features resolve-dependencies --workspace-folder ./my-project
+```
+
+Output includes a Mermaid dependency diagram followed by a JSON object:
+
+```json theme={null}
+{
+  "installOrder": [
+    {
+      "id": "ghcr.io/devcontainers/features/common-utils@sha256:abc123...",
+      "options": {}
+    },
+    {
+      "id": "ghcr.io/devcontainers/features/node@sha256:def456...",
+      "options": { "version": "20" }
+    }
+  ]
+}
+```
+
+| Flag                 | Default           | Description                                                                                 |
+| -------------------- | ----------------- | ------------------------------------------------------------------------------------------- |
+| `--workspace-folder` | Current directory | Path to the workspace containing `.devcontainer.json` or `.devcontainer/devcontainer.json`. |
+| `--log-level`        | `error`           | One of `error`, `info`, `debug`, `trace`.                                                   |
+
+<Tip>
+  Paste the Mermaid diagram output into [mermaid.live](https://mermaid.live/) to visualize the dependency graph interactively.
+</Tip>
+
+
+# Testing Features
+Source: https://www.mintlify.com/devcontainers/cli/features/test
+
+Use the built-in test framework to validate your Dev Container Features.
+
+The `devcontainer features test` command provides a structured test framework for Feature authors. It uses the CLI's `build` and `exec` commands to spin up a container from your local source tree and run assertion scripts inside it.
+
+For a test to pass:
+
+1. The generated dev container must build and start successfully.
+2. The assertion script must exit with code `0`.
+
+<Note>
+  Auto-generated tests execute the Feature with its **default options**. Use scenarios to test specific option combinations.
+</Note>
+
+## Directory structure
+
+The test command expects `src` and `test` directories to mirror each other at the project root:
+
+```
+.
+├── src/
+│   ├── dotnet/
+│   │   ├── devcontainer-feature.json
+│   │   └── install.sh
+│   └── oryx/
+│       ├── devcontainer-feature.json
+│       └── install.sh
+└── test/
+    ├── _global/
+    │   ├── scenarios.json
+    │   └── some_global_scenario.sh
+    ├── dotnet/
+    │   ├── duplicate.sh
+    │   └── test.sh
+    └── oryx/
+        ├── scenarios.json
+        ├── install_dotnet_and_oryx.sh
+        └── test.sh
+```
+
+Each Feature under `src/<FEATURE>/` must have a corresponding `test/<FEATURE>/` directory containing at minimum a `test.sh`.
+
+## Test modes
+
+<Tabs>
+  <Tab title="Auto-generated">
+    The default mode. The CLI generates a minimal `devcontainer.json` using the Feature source from `src/<FEATURE>/`, the `--base-image`, and an optional `--remote-user`. It then runs `test/<FEATURE>/test.sh` inside the container.
+
+    This is the fastest way to assert that a Feature installs and runs correctly with its default options.
+
+    To skip this mode, pass `--skip-autogenerated`.
+  </Tab>
+
+  <Tab title="Scenarios">
+    Scenarios let you define richer test configurations — multiple Features, custom options, or Dockerfile-based builds. Each scenario is a named entry in `test/<FEATURE>/scenarios.json`.
+
+    For each scenario, the CLI builds the described container and runs a `.sh` file with the same name as the scenario key.
+
+    To skip this mode, pass `--skip-scenarios`.
+  </Tab>
+
+  <Tab title="Duplicate tests">
+    When `test/<FEATURE>/duplicate.sh` exists, the CLI generates a dev container that installs the same Feature **twice** with different options. This validates that a Feature is idempotent and can coexist with itself.
+
+    Option values are injected as environment variables into the assertion script (e.g., `VERSION`, `VERSION__DEFAULT`).
+
+    To skip this mode, pass `--skip-duplicated`.
+  </Tab>
+</Tabs>
+
+## Scenarios
+
+A `scenarios.json` file defines one or more named test scenarios. Each scenario is a valid `devcontainer.json` fragment.
+
+```json test/oryx/scenarios.json theme={null}
+{
+  "install_dotnet_and_oryx": {
+    "image": "ubuntu:focal",
+    "features": {
+      "dotnet": {
+        "version": "6",
+        "installUsingApt": "false"
+      },
+      "oryx": {}
+    }
+  }
+}
+```
+
+For this scenario, the CLI builds the container described above, then looks for `test/oryx/install_dotnet_and_oryx.sh` and executes it inside the container.
+
+### Providing additional build files
+
+To supply a `Dockerfile`, lifecycle scripts, or other files for a scenario, create a subdirectory under `test/<FEATURE>/` with the same name as the scenario key. Files placed there are copied into the hidden `.devcontainer` folder before the build.
+
+```json scenarios.json (excerpt) theme={null}
+{
+  "frowning_with_a_dockerfile": {
+    "build": {
+      "dockerfile": "Dockerfile"
+    },
+    "features": {
+      "smile": { "shouldFrown": true }
+    }
+  }
+}
+```
+
+```
+test/
+└── smile/
+    ├── frowning_with_a_dockerfile/     ← files copied to .devcontainer
+    │   └── Dockerfile
+    ├── frowning_with_a_dockerfile.sh
+    └── test.sh
+```
+
+### Global scenarios
+
+The `test/_global/` directory holds scenario tests that are not tied to a specific Feature. Use it to test interactions between multiple Features in the same repository.
+
+```
+test/
+└── _global/
+    ├── scenarios.json
+    └── my_cross_feature_scenario.sh
+```
+
+Pass `--global-scenarios-only` to run only these tests.
+
+## dev-container-features-test-lib
+
+The test library is a set of bash helper functions automatically made available inside test containers. Using it is optional but recommended.
+
+Source it at the top of any `test.sh` or scenario script:
+
+```bash test.sh theme={null}
+source dev-container-features-test-lib
+```
+
+### Available functions
+
+| Function                                | Description                                                          |
+| --------------------------------------- | -------------------------------------------------------------------- |
+| `check <label> <cmd> [args...]`         | Runs `cmd`. Prints pass/fail depending on exit code.                 |
+| `checkMultiple <label> <cmd> [args...]` | Like `check`, but accumulates results without stopping on failure.   |
+| `reportResults`                         | Prints a summary and exits with a non-zero code if any check failed. |
+
+### Example test script
+
+```bash test/oryx/install_dotnet_and_oryx.sh theme={null}
+#!/bin/bash
+
+set -e
+
+source dev-container-features-test-lib
+
+check "Oryx version" oryx --version
+check "Dotnet is available" dotnet --version
+check "oryx-install-dotnet-2.1" oryx prep --skip-detection --platforms-and-versions dotnet=2.1.30
+check "dotnet-2-installed-by-oryx" ls /opt/dotnet/ | grep 2.1
+
+# Report result
+reportResults
+```
+
+## Running tests
+
+To run all tests for a single Feature:
+
+```bash theme={null}
+devcontainer features test -f dotnet --base-image ubuntu
+```
+
+To run only global scenarios:
+
+```bash theme={null}
+devcontainer features test --global-scenarios-only
+```
+
+To run all tests in the current directory against a specific base image:
+
+```bash theme={null}
+devcontainer features test --base-image mcr.microsoft.com/devcontainers/base:ubuntu
+```
+
+## Flags reference
+
+| Flag                         | Alias | Default        | Description                                                                                         |
+| ---------------------------- | ----- | -------------- | --------------------------------------------------------------------------------------------------- |
+| `--project-folder`           | `-p`  | `.`            | Path to the folder containing `src` and `test`. Defaults to the current directory.                  |
+| `--features`                 | `-f`  | —              | One or more Feature names to test. Omit to test all. Cannot combine with `--global-scenarios-only`. |
+| `--filter`                   | —     | —              | Filter scenario tests to only those whose name contains this string.                                |
+| `--base-image`               | `-i`  | `ubuntu:focal` | Base image for auto-generated and duplicate tests. Not used for scenarios.                          |
+| `--remote-user`              | `-u`  | —              | Remote user for auto-generated tests.                                                               |
+| `--skip-autogenerated`       | —     | `false`        | Skip auto-generated tests.                                                                          |
+| `--skip-scenarios`           | —     | `false`        | Skip scenario tests. Cannot combine with `--global-scenarios-only`.                                 |
+| `--skip-duplicated`          | —     | `false`        | Skip duplicate-style tests.                                                                         |
+| `--global-scenarios-only`    | —     | `false`        | Run only tests in `test/_global/`. Cannot combine with `-f`.                                        |
+| `--preserve-test-containers` | —     | `false`        | Do not remove containers after the test run.                                                        |
+| `--quiet`                    | `-q`  | `false`        | Suppress output.                                                                                    |
+| `--log-level`                | —     | `info`         | One of `info`, `debug`, `trace`.                                                                    |
+
+
+# Installation
+Source: https://www.mintlify.com/devcontainers/cli/installation
+
+Install the Dev Containers CLI via npm, the standalone install script, or build from source.
+
+## Prerequisites
+
+Before installing the CLI, make sure you have the following:
+
+* **Docker** — required to build and run containers. Install from [docs.docker.com](https://docs.docker.com/get-docker/).
+* **Node.js >=20.0.0** — required for the npm installation method and for building from source. Not required when using the install script.
+
+## Installation methods
+
+### Install script
+
+The install script downloads a bundled Node.js runtime, so no pre-installed Node.js is required. It works on Linux and macOS (x64 and arm64).
+
+<Steps>
+  <Step title="Download and run the install script">
+    ```bash theme={null}
+    curl -fsSL https://raw.githubusercontent.com/devcontainers/cli/main/scripts/install.sh | sh
+    ```
+  </Step>
+
+  <Step title="Add the CLI to your PATH">
+    ```bash theme={null}
+    export PATH="$HOME/.devcontainers/bin:$PATH"
+    ```
+
+    To make this permanent, add the line above to your shell profile (e.g. `~/.bashrc`, `~/.zshrc`).
+  </Step>
+</Steps>
+
+#### Additional install script options
+
+```bash theme={null}
+# Install a specific version
+sh install.sh --version 0.82.0
+
+# Install to a custom directory
+sh install.sh --prefix ~/.local/devcontainers
+
+# Update to the latest version
+sh install.sh --update
+
+# Uninstall
+sh install.sh --uninstall
+```
+
+***
+
+### npm
+
+<Note>
+  Installing via npm requires Python and C/C++ to be present on your system in order to build one of the native dependencies.
+</Note>
+
+<CodeGroup>
+  ```bash npm theme={null}
+  npm install -g @devcontainers/cli
+  ```
+
+  ```bash yarn theme={null}
+  yarn global add @devcontainers/cli
+  ```
+
+  ```bash pnpm theme={null}
+  pnpm add -g @devcontainers/cli
+  ```
+</CodeGroup>
+
+***
+
+### Build from source
+
+Use this method to work with the latest unreleased code or contribute to the project.
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash theme={null}
+    git clone https://github.com/devcontainers/cli.git
+    cd cli
+    ```
+  </Step>
+
+  <Step title="Install dependencies and compile">
+    ```sh theme={null}
+    yarn
+    yarn compile
+    ```
+  </Step>
+
+  <Step title="Run the CLI from the build output">
+    ```sh theme={null}
+    node devcontainer.js --help
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  The repository includes a `devcontainer.json` configuration you can use to open the project itself in a dev container, which provides all required dependencies automatically.
+</Note>
+
+***
+
+## Verify installation
+
+After installing by any method, confirm the CLI is available:
+
+```bash theme={null}
+devcontainer --version
+```
+
+You should see output similar to:
+
+```
+0.85.0
+```
+
+To see all available commands:
+
+```bash theme={null}
+devcontainer --help
+```
+
+
+# Introduction
+Source: https://www.mintlify.com/devcontainers/cli/introduction
+
+What the Dev Containers CLI is and how it fits into the Dev Containers ecosystem.
+
+## What is a dev container?
+
+A development container lets you use a container as a full-featured development environment. Rather than installing tools, runtimes, and dependencies directly on your machine, you define them in a `devcontainer.json` file and run everything inside a container.
+
+Dev containers can be used to:
+
+* **Run your application** in an isolated, reproducible environment.
+* **Separate tools and runtimes** from your host system so team members get identical setups.
+* **Aid in continuous integration and testing** by running the same container in CI that you use locally.
+
+Dev containers can run locally or remotely, in private or public cloud environments.
+
+## What is the Dev Containers CLI?
+
+The Dev Containers CLI (`@devcontainers/cli`) is the reference implementation of the [Dev Containers specification](https://containers.dev/). It reads a `devcontainer.json` configuration file and creates, configures, and manages the container lifecycle from the command line.
+
+The CLI is published by Microsoft and is also the engine that powers the Dev Containers extension for VS Code and GitHub Codespaces.
+
+## Key use cases
+
+* **Local development** — spin up a fully configured environment on your machine with a single command.
+* **CI/CD pipelines** — run tests and build steps inside the same container used for development, eliminating environment drift.
+* **Pre-building images** — build and push dev container images ahead of time so containers start instantly.
+* **Authoring Features and Templates** — create, package, publish, and test reusable [Dev Container Features](https://containers.dev/implementors/features/) and [Templates](https://containers.dev/implementors/templates/).
+
+## How it relates to the specification
+
+The CLI implements the [Development Containers Specification](https://containers.dev/), which defines how `devcontainer.json` files are structured and how lifecycle commands, features, and environment variables are applied. Any tool that follows the spec — VS Code, GitHub Codespaces, JetBrains IDEs — produces and consumes the same configuration files.
+
+## Available commands
+
+| Command              | Description                                               |
+| -------------------- | --------------------------------------------------------- |
+| `up`                 | Create and run a dev container                            |
+| `build`              | Build or pre-build a dev container image                  |
+| `exec`               | Execute a command inside a running container              |
+| `run-user-commands`  | Run lifecycle commands such as `postCreateCommand`        |
+| `set-up`             | Set up an existing container as a dev container           |
+| `read-configuration` | Output the resolved configuration for a workspace         |
+| `outdated`           | Show current and available Feature versions               |
+| `upgrade`            | Upgrade the Feature lockfile to latest versions           |
+| `features`           | Author, package, publish, and test Dev Container Features |
+| `templates`          | Author, apply, publish, and test Dev Container Templates  |
+
+<Note>
+  `devcontainer stop` and `devcontainer down` are planned but not yet implemented. Use `docker stop` and `docker rm` in the meantime.
+</Note>
+
+## Get started
+
+<CardGroup>
+  <Card title="Installation" icon="download" href="/installation">
+    Install the CLI via the install script, npm, or from source.
+  </Card>
+
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Spin up your first dev container in under five minutes.
+  </Card>
+</CardGroup>
+
+
+# Quickstart
+Source: https://www.mintlify.com/devcontainers/cli/quickstart
+
+Spin up your first dev container in under five minutes.
+
+This guide walks you through starting a dev container using the Rust sample project from Microsoft. By the end you will have a running container and a compiled Rust program.
+
+## Prerequisites
+
+* Docker installed and running
+* The Dev Containers CLI installed — see [Installation](/installation)
+* Git
+
+## Steps
+
+<Steps>
+  <Step title="Install the CLI">
+    If you haven't already, install the CLI using the install script:
+
+    ```bash theme={null}
+    curl -fsSL https://raw.githubusercontent.com/devcontainers/cli/main/scripts/install.sh | sh
+    export PATH="$HOME/.devcontainers/bin:$PATH"
+    ```
+
+    Verify it works:
+
+    ```bash theme={null}
+    devcontainer --version
+    ```
+  </Step>
+
+  <Step title="Clone the sample repository">
+    Clone the Rust sample project to your machine:
+
+    ```bash theme={null}
+    git clone https://github.com/microsoft/vscode-remote-try-rust
+    ```
+  </Step>
+
+  <Step title="Start the dev container">
+    Run `devcontainer up` pointing at the cloned folder:
+
+    ```bash theme={null}
+    devcontainer up --workspace-folder vscode-remote-try-rust
+    ```
+
+    The CLI will build the container image and start it. You will see Docker build output followed by a JSON result line:
+
+    ```
+    [88 ms] dev-containers-cli 0.1.0.
+    [165 ms] Start: Run: docker build -f /home/node/vscode-remote-try-rust/.devcontainer/Dockerfile -t vsc-vscode-remote-try-rust-89420ad7399ba74f55921e49cc3ecfd2 --build-arg VARIANT=bullseye /home/node/vscode-remote-try-rust/.devcontainer
+    [+] Building 0.5s (5/5) FINISHED
+     => [internal] load build definition from Dockerfile                       0.0s
+     => => transferring dockerfile: 38B                                        0.0s
+     => [internal] load .dockerignore                                          0.0s
+     => => transferring context: 2B                                            0.0s
+     => [internal] load metadata for mcr.microsoft.com/vscode/devcontainers/r  0.4s
+     => CACHED [1/1] FROM mcr.microsoft.com/vscode/devcontainers/rust:1-bulls  0.0s
+     => exporting to image                                                     0.0s
+     => => exporting layers                                                    0.0s
+     => => writing image sha256:39873ccb81e6fb613975e11e37438eee1d49c963a436d  0.0s
+     => => naming to docker.io/library/vsc-vscode-remote-try-rust-89420ad7399  0.0s
+    {"outcome":"success","containerId":"f0a055ff056c1c1bb99cc09930efbf3a0437c54d9b4644695aa23c1d57b4bd11","remoteUser":"vscode","remoteWorkspaceFolder":"/workspaces/vscode-remote-try-rust"}
+    ```
+
+    The final JSON line confirms the container is running. Note the `containerId`, `remoteUser`, and `remoteWorkspaceFolder` fields — these describe the container that was just created.
+  </Step>
+
+  <Step title="Run a command inside the container">
+    Use `devcontainer exec` to run a command inside the running container:
+
+    ```bash theme={null}
+    devcontainer exec --workspace-folder vscode-remote-try-rust cargo run
+    ```
+
+    The CLI compiles and runs the Rust sample:
+
+    ```
+    [33 ms] dev-containers-cli 0.1.0.
+       Compiling hello_remote_world v0.1.0 (/workspaces/vscode-remote-try-rust)
+        Finished dev [unoptimized + debuginfo] target(s) in 1.06s
+         Running `target/debug/hello_remote_world`
+    Hello, VS Code Remote - Containers!
+    {"outcome":"success"}
+    ```
+
+    The program prints `Hello, VS Code Remote - Containers!` and the CLI reports `{"outcome":"success"}`.
+  </Step>
+</Steps>
+
+<Note>
+  On subsequent runs, Docker will use its layer cache so the container starts much faster.
+</Note>
+
+## What's next
+
+<CardGroup>
+  <Card title="devcontainer up" icon="play" href="/commands/up">
+    Learn all the options for starting and configuring dev containers.
+  </Card>
+
+  <Card title="devcontainer build" icon="hammer" href="/commands/build">
+    Pre-build images to speed up container startup times.
+  </Card>
+
+  <Card title="Dev Container Features" icon="puzzle-piece" href="/features/overview">
+    Add tools and runtimes to any dev container with reusable Features.
+  </Card>
+
+  <Card title="devcontainer.json reference" icon="file-code" href="/configuration/devcontainer-json">
+    Explore all the configuration options available in devcontainer.json.
+  </Card>
+</CardGroup>
+
+
+# devcontainer build
+Source: https://www.mintlify.com/devcontainers/cli/reference/build
+
+Complete reference for the devcontainer build command.
+
+The `devcontainer build` command builds a dev container image without starting it. On success it writes a JSON result to stdout and exits with code `0`. On failure it exits with code `1`.
+
+## Usage
+
+```bash theme={null}
+devcontainer build [path] [options]
+```
+
+The optional `[path]` positional is the workspace folder path. If omitted, the current directory is used.
+
+<Note>
+  `--push` and `--output` are mutually exclusive.
+</Note>
+
+<Warning>
+  `--platform`, `--push`, `--output`, and `--cache-to` are not supported when the devcontainer.json uses `dockerComposeFile`.
+</Warning>
+
+## Options
+
+<AccordionGroup>
+  <Accordion title="Docker">
+    <ParamField type="string">
+      Docker CLI path.
+    </ParamField>
+
+    <ParamField type="string">
+      Docker Compose CLI path.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="Workspace">
+    <ParamField type="string">
+      Workspace folder path. The devcontainer.json will be looked up relative to this path. If not provided, defaults to the current directory.
+    </ParamField>
+
+    <ParamField type="string">
+      devcontainer.json path. The default is to use `.devcontainer/devcontainer.json` or, if that does not exist, `.devcontainer.json` in the workspace folder.
+    </ParamField>
+
+    <ParamField type="string">
+      Host path to a directory that is intended to be persisted and share state between sessions.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="Logging">
+    <ParamField type="string">
+      Log level. Choices: `info`, `debug`, `trace`.
+    </ParamField>
+
+    <ParamField type="string">
+      Log format. Choices: `text`, `json`.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="Build">
+    <ParamField type="boolean">
+      Builds the image with `--no-cache`.
+    </ParamField>
+
+    <ParamField type="string">
+      Image name. May be specified multiple times to apply multiple tags.
+    </ParamField>
+
+    <ParamField type="string">
+      Additional image to use as potential layer cache.
+
+      May be specified multiple times.
+    </ParamField>
+
+    <ParamField type="string">
+      A destination of buildx cache.
+    </ParamField>
+
+    <ParamField type="string">
+      Control whether BuildKit should be used. Choices: `auto`, `never`.
+    </ParamField>
+
+    <ParamField type="string">
+      Set target platforms.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Push to a container registry.
+    </ParamField>
+
+    <ParamField type="string">
+      Provide key and value configuration that adds metadata to an image.
+
+      May be specified multiple times.
+    </ParamField>
+
+    <ParamField type="string">
+      Overrides the default behavior to load built images into the local docker registry. Valid options are the same ones provided to the `--output` option of `docker buildx build`.
+    </ParamField>
+
+    <ParamField type="string">
+      Additional features to apply to the dev container (JSON as per `"features"` section in devcontainer.json).
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+## Output
+
+All output is written to stdout as a single line of JSON.
+
+### Success
+
+```json theme={null}
+{
+  "outcome": "success",
+  "imageName": ["<image-name>"]
+}
+```
+
+`imageName` is an array containing one or more image name strings, corresponding to the tags applied during the build.
+
+### Error
+
+```json theme={null}
+{
+  "outcome": "error",
+  "message": "<short error message>",
+  "description": "<detailed description>"
+}
+```
+
+The process exits with code `1` on error.
+
+
+# devcontainer.json properties
+Source: https://www.mintlify.com/devcontainers/cli/reference/devcontainer-json-properties
+
+Complete reference for all supported devcontainer.json properties.
+
+A `devcontainer.json` file describes how to build and configure a development container. There are three mutually exclusive base configurations: image-based, Dockerfile-based, and Docker Compose-based. All three share a large set of common properties.
+
+## Base configuration
+
+Choose exactly one of the following approaches.
+
+<AccordionGroup>
+  <Accordion title="Image-based">
+    Use a pre-built Docker image as the base for your dev container.
+
+    <ResponseField name="image" type="string">
+      The name of a Docker image to use as the dev container base. Only optional when setting up an existing container as a dev container.
+
+      ```json theme={null}
+      { "image": "mcr.microsoft.com/devcontainers/base:ubuntu" }
+      ```
+    </ResponseField>
+  </Accordion>
+
+  <Accordion title="Dockerfile-based">
+    Build your dev container from a Dockerfile. You can use either the top-level shorthand or the nested `build` object.
+
+    <ResponseField name="dockerFile" type="string">
+      Path to the Dockerfile, relative to the `devcontainer.json` file. Shorthand alternative to `build.dockerfile`.
+
+      ```json theme={null}
+      { "dockerFile": "../Dockerfile" }
+      ```
+    </ResponseField>
+
+    <ResponseField name="context" type="string">
+      Path to the build context when using the `dockerFile` shorthand, relative to the `devcontainer.json` file.
+    </ResponseField>
+
+    <ResponseField name="build" type="object">
+      Object containing Dockerfile build settings.
+
+      <Expandable title="properties">
+        <ResponseField name="build.dockerfile" type="string">
+          Path to the Dockerfile, relative to the `devcontainer.json` file.
+
+          ```json theme={null}
+          { "build": { "dockerfile": "Dockerfile" } }
+          ```
+        </ResponseField>
+
+        <ResponseField name="build.context" type="string">
+          Path to the build context, relative to the `devcontainer.json` file. Defaults to the directory containing `devcontainer.json`.
+        </ResponseField>
+
+        <ResponseField name="build.args" type="object">
+          Build arguments (`--build-arg`) passed to `docker build` as key-value pairs.
+
+          ```json theme={null}
+          { "build": { "args": { "NODE_VERSION": "18" } } }
+          ```
+        </ResponseField>
+
+        <ResponseField name="build.target" type="string">
+          The target build stage to use when the Dockerfile contains multiple stages.
+        </ResponseField>
+
+        <ResponseField name="build.cacheFrom" type="string | string[]">
+          One or more image names to use as layer cache sources during the build.
+
+          ```json theme={null}
+          { "build": { "cacheFrom": "ghcr.io/myorg/myimage:latest" } }
+          ```
+        </ResponseField>
+
+        <ResponseField name="build.options" type="string[]">
+          Additional arguments to pass to `docker build`, for example `["--add-host=host.docker.internal:host-gateway"]`.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Accordion>
+
+  <Accordion title="Docker Compose-based">
+    Use Docker Compose to orchestrate multiple containers.
+
+    <ResponseField name="dockerComposeFile" type="string | string[]">
+      Path or array of paths to Docker Compose files, relative to the `devcontainer.json` file.
+
+      ```json theme={null}
+      { "dockerComposeFile": "docker-compose.yml" }
+      ```
+
+      ```json theme={null}
+      { "dockerComposeFile": ["docker-compose.yml", "docker-compose.override.yml"] }
+      ```
+    </ResponseField>
+
+    <ResponseField name="service" type="string">
+      The name of the service in the Docker Compose file to use as the dev container.
+    </ResponseField>
+
+    <ResponseField name="runServices" type="string[]">
+      Additional services from the Docker Compose file to start alongside the dev container service.
+
+      ```json theme={null}
+      { "runServices": ["db", "redis"] }
+      ```
+    </ResponseField>
+  </Accordion>
+</AccordionGroup>
+
+## Container identity
+
+<ResponseField name="name" type="string">
+  A display name for the dev container.
+</ResponseField>
+
+<ResponseField name="containerUser" type="string">
+  The user to run container processes as (equivalent to `--user` in `docker run`). If not set, the image's default user is used.
+</ResponseField>
+
+<ResponseField name="remoteUser" type="string">
+  The user that lifecycle scripts, remote tools, and terminal sessions run as inside the container. Defaults to `containerUser`.
+
+  <Note>This does not change which user the container process runs as — use `containerUser` for that.</Note>
+</ResponseField>
+
+<ResponseField name="updateRemoteUserUID" type="boolean">
+  When `true` (the default), the CLI updates the UID and GID of the `remoteUser` inside the container to match the local user's UID and GID. This avoids file permission issues when bind-mounting the workspace.
+</ResponseField>
+
+<ResponseField name="userEnvProbe" type="&#x22;none&#x22; | &#x22;loginInteractiveShell&#x22; | &#x22;interactiveShell&#x22; | &#x22;loginShell&#x22;">
+  Controls how the CLI probes the container to determine the remote user's environment, particularly `PATH`. The shell invocation method determines which profile and rc files are sourced. Defaults to `loginInteractiveShell`.
+
+  | Value                   | Shell invocation                                   |
+  | ----------------------- | -------------------------------------------------- |
+  | `none`                  | No shell is launched; no profile files are sourced |
+  | `loginInteractiveShell` | `bash --login -i`                                  |
+  | `interactiveShell`      | `bash -i`                                          |
+  | `loginShell`            | `bash --login`                                     |
+
+  See [Environment variables — userEnvProbe](/reference/environment-variables#userenvprobe) for details.
+</ResponseField>
+
+## Networking and ports
+
+<ResponseField name="forwardPorts" type="(number | string)[]">
+  Ports to forward from the container to the host. Each entry is either a port number or a `"host:container"` string to map to a specific host port.
+
+  ```json theme={null}
+  { "forwardPorts": [3000, "8080:80"] }
+  ```
+</ResponseField>
+
+<ResponseField name="appPort" type="number | string | (number | string)[]">
+  A port, string, or array of ports/strings to forward. Similar to `forwardPorts` but intended for the primary application port.
+</ResponseField>
+
+<ResponseField name="portsAttributes" type="object">
+  Per-port configuration. Keys are port numbers or ranges; values are `PortAttributes` objects.
+
+  <Expandable title="PortAttributes properties">
+    <ResponseField name="label" type="string">
+      A human-readable label for the port shown in tools like VS Code.
+    </ResponseField>
+
+    <ResponseField name="onAutoForward" type="string">
+      The action to take when the port is automatically forwarded. Common values: `"notify"`, `"openBrowser"`, `"openBrowserOnce"`, `"openPreview"`, `"silent"`, `"ignore"`.
+    </ResponseField>
+
+    <ResponseField name="elevateIfNeeded" type="boolean">
+      When `true`, elevates privileges if the port number requires it (ports below 1024 on Linux).
+    </ResponseField>
+  </Expandable>
+
+  ```json theme={null}
+  {
+    "portsAttributes": {
+      "3000": { "label": "Application", "onAutoForward": "openBrowser" },
+      "5432": { "label": "Postgres", "onAutoForward": "silent" }
+    }
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="otherPortsAttributes" type="object">
+  Default `PortAttributes` configuration applied to any port not explicitly listed in `portsAttributes`.
+</ResponseField>
+
+## Environment
+
+<ResponseField name="containerEnv" type="Record<string, string>">
+  Environment variables set on the container itself, available to all processes. Variables are passed to `docker run` via `--env`.
+
+  ```json theme={null}
+  { "containerEnv": { "MY_VARIABLE": "value" } }
+  ```
+
+  <Warning>These values are stored in image metadata. Do not use `containerEnv` for secrets.</Warning>
+</ResponseField>
+
+<ResponseField name="remoteEnv" type="Record<string, string | null>">
+  Environment variables injected by the CLI into lifecycle scripts and remote tool sessions. Supports variable substitution. Set a value to `null` to unset a variable.
+
+  ```json theme={null}
+  {
+    "remoteEnv": {
+      "PATH": "${containerEnv:PATH}:/home/user/.local/bin",
+      "LOCAL_HOME": "${localEnv:HOME}"
+    }
+  }
+  ```
+
+  See [Environment variables](/reference/environment-variables) for supported substitution patterns.
+</ResponseField>
+
+## Mounts and filesystem
+
+<ResponseField name="mounts" type="(Mount | string)[]">
+  Additional mount points added to the container. Each entry is either a mount object or a Docker `--mount` string.
+
+  <Expandable title="Mount object properties">
+    <ResponseField name="type" type="&#x22;bind&#x22; | &#x22;volume&#x22;">
+      The mount type.
+    </ResponseField>
+
+    <ResponseField name="source" type="string">
+      The source path on the host (for bind mounts) or the volume name.
+    </ResponseField>
+
+    <ResponseField name="target" type="string">
+      The absolute path inside the container.
+    </ResponseField>
+
+    <ResponseField name="external" type="boolean">
+      When `true`, marks the volume as external (not managed by the dev container lifecycle).
+    </ResponseField>
+  </Expandable>
+
+  ```json theme={null}
+  {
+    "mounts": [
+      {
+        "type": "bind",
+        "source": "${localEnv:HOME}/.ssh",
+        "target": "/home/user/.ssh"
+      }
+    ]
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="workspaceFolder" type="string">
+  The absolute path inside the container where the workspace is mounted. Required for Docker Compose configurations.
+</ResponseField>
+
+<ResponseField name="workspaceMount" type="string">
+  Overrides the default workspace mount. Uses Docker `--mount` string syntax. Useful when you need custom mount options.
+</ResponseField>
+
+## Container runtime
+
+<ResponseField name="runArgs" type="string[]">
+  Additional arguments passed to `docker run` when creating the container.
+
+  ```json theme={null}
+  { "runArgs": ["--network=host", "--cap-add=SYS_PTRACE"] }
+  ```
+</ResponseField>
+
+<ResponseField name="overrideCommand" type="boolean">
+  When `true` (the default), the container's default command (`CMD`) is overridden with a long-running process to keep it alive. Set to `false` to use the image's built-in command.
+</ResponseField>
+
+<ResponseField name="shutdownAction" type="&#x22;none&#x22; | &#x22;stopContainer&#x22; | &#x22;stopCompose&#x22;">
+  What happens to the container when the last client disconnects.
+
+  | Value           | Behavior                                                |
+  | --------------- | ------------------------------------------------------- |
+  | `none`          | Container keeps running                                 |
+  | `stopContainer` | Container is stopped (image-based and Dockerfile-based) |
+  | `stopCompose`   | All Compose services are stopped (Docker Compose only)  |
+</ResponseField>
+
+<ResponseField name="init" type="boolean">
+  When `true`, runs a minimal init process (`tini`) inside the container to forward signals and reap zombie processes. Equivalent to `docker run --init`.
+</ResponseField>
+
+<ResponseField name="privileged" type="boolean">
+  When `true`, runs the container in privileged mode. Equivalent to `docker run --privileged`.
+
+  <Warning>Privileged mode grants the container nearly full host access. Use only when required.</Warning>
+</ResponseField>
+
+<ResponseField name="capAdd" type="string[]">
+  Linux capabilities to add to the container. Equivalent to `docker run --cap-add`.
+
+  ```json theme={null}
+  { "capAdd": ["SYS_PTRACE"] }
+  ```
+</ResponseField>
+
+<ResponseField name="securityOpt" type="string[]">
+  Security options for the container. Equivalent to `docker run --security-opt`.
+
+  ```json theme={null}
+  { "securityOpt": ["seccomp=unconfined"] }
+  ```
+</ResponseField>
+
+## Features
+
+<ResponseField name="features" type="Record<string, string | boolean | object>">
+  Dev container Features to install. Keys are Feature identifiers (OCI references, GitHub references, or local paths); values are option objects, or a shorthand string/boolean for single-option Features.
+
+  ```json theme={null}
+  {
+    "features": {
+      "ghcr.io/devcontainers/features/node:1": { "version": "18" },
+      "ghcr.io/devcontainers/features/git:1": {}
+    }
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="overrideFeatureInstallOrder" type="string[]">
+  Explicitly sets the installation order for Features. Any Features not listed are installed after those that are, in an automatically determined order.
+
+  ```json theme={null}
+  { "overrideFeatureInstallOrder": ["ghcr.io/devcontainers/features/common-utils"] }
+  ```
+</ResponseField>
+
+## Lifecycle commands
+
+Lifecycle commands run at specific points during the container lifecycle. Each accepts a string (shell command), an array of strings (command + arguments, without a shell), or for some hooks an object whose keys are label names and values are commands to run in parallel.
+
+<Tip>Use `waitFor` to tell the CLI which command to wait on before declaring the container ready, enabling later commands to run in the background.</Tip>
+
+<ResponseField name="initializeCommand" type="string | string[]">
+  Runs on the **host** before the container is created or started. Because it runs on the host, this command has access to host environment variables and tools but not the container.
+</ResponseField>
+
+<ResponseField name="onCreateCommand" type="string | string[]">
+  Runs inside the container after it is created for the first time. Runs once per container lifetime.
+</ResponseField>
+
+<ResponseField name="updateContentCommand" type="string | string[]">
+  Runs inside the container when the source content changes (for example, after a `git pull`). May run more than once over the container lifetime.
+</ResponseField>
+
+<ResponseField name="postCreateCommand" type="string | string[]">
+  Runs inside the container after `onCreateCommand` and `updateContentCommand` complete. Runs once per container lifetime.
+</ResponseField>
+
+<ResponseField name="postStartCommand" type="string | string[]">
+  Runs inside the container each time the container starts (not just when it is first created).
+</ResponseField>
+
+<ResponseField name="postAttachCommand" type="string | string[]">
+  Runs inside the container each time a client attaches to it.
+</ResponseField>
+
+<ResponseField name="waitFor" type="&#x22;initializeCommand&#x22; | &#x22;onCreateCommand&#x22; | &#x22;updateContentCommand&#x22; | &#x22;postCreateCommand&#x22; | &#x22;postStartCommand&#x22; | &#x22;postAttachCommand&#x22;">
+  The lifecycle command the CLI should wait for before reporting the container as ready. Subsequent commands continue running in the background. Defaults to `updateContentCommand`.
+</ResponseField>
+
+## Host requirements
+
+The `hostRequirements` object declares minimum hardware the host must satisfy. Tools can use this to warn users or prevent container creation on under-resourced machines.
+
+<ResponseField name="hostRequirements" type="object">
+  <Expandable title="properties">
+    <ResponseField name="hostRequirements.cpus" type="number">
+      Minimum number of CPU cores required.
+    </ResponseField>
+
+    <ResponseField name="hostRequirements.memory" type="string">
+      Minimum memory required. Use a string with a unit suffix, for example `"4gb"`.
+    </ResponseField>
+
+    <ResponseField name="hostRequirements.storage" type="string">
+      Minimum storage required. Use a string with a unit suffix, for example `"32gb"`.
+    </ResponseField>
+
+    <ResponseField name="hostRequirements.gpu" type="boolean | &#x22;optional&#x22; | object">
+      GPU requirement. `true` requires a GPU; `"optional"` uses a GPU when available; an object specifies minimum GPU capabilities.
+
+      <Expandable title="GPU object properties">
+        <ResponseField name="cores" type="number">
+          Minimum number of GPU cores required.
+        </ResponseField>
+
+        <ResponseField name="memory" type="string">
+          Minimum GPU memory required, for example `"4gb"`.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+
+  ```json theme={null}
+  {
+    "hostRequirements": {
+      "cpus": 4,
+      "memory": "8gb",
+      "storage": "32gb",
+      "gpu": { "cores": 1, "memory": "4gb" }
+    }
+  }
+  ```
+</ResponseField>
+
+## Customizations
+
+<ResponseField name="customizations" type="Record<string, any>">
+  Tool-specific configuration. Each key is a tool identifier; the value is an object defined by that tool.
+
+  The VS Code extension uses `customizations.vscode` to configure extensions and settings:
+
+  ```json theme={null}
+  {
+    "customizations": {
+      "vscode": {
+        "extensions": ["dbaeumer.vscode-eslint"],
+        "settings": {
+          "editor.formatOnSave": true
+        }
+      }
+    }
+  }
+  ```
+
+  <Note>The top-level `extensions`, `settings`, and `devPort` properties are deprecated. Use `customizations.vscode` instead.</Note>
+</ResponseField>
+
+
+# Environment variables
+Source: https://www.mintlify.com/devcontainers/cli/reference/environment-variables
+
+Environment variables available inside dev containers and how to configure them.
+
+Dev containers provide several ways to set and propagate environment variables, from static values in `devcontainer.json` to dynamic substitution from the host environment.
+
+## Container environment variables
+
+### containerEnv
+
+`containerEnv` sets environment variables on the container process at creation time. Every process running in the container — including long-running services — sees these values.
+
+```json devcontainer.json theme={null}
+{
+  "containerEnv": {
+    "NODE_ENV": "development",
+    "PORT": "3000"
+  }
+}
+```
+
+Values are passed to `docker run --env` and are also stored in image metadata.
+
+<Warning>
+  Because `containerEnv` values are stored in image metadata, do not use this property for secrets or credentials. Use the `--secrets-file` CLI flag instead.
+</Warning>
+
+### remoteEnv
+
+`remoteEnv` sets environment variables that the CLI injects into lifecycle script executions and remote tool sessions (such as integrated terminals). These variables are layered on top of the container's environment; they are not set at the Docker level and do not affect services started independently inside the container.
+
+```json devcontainer.json theme={null}
+{
+  "remoteEnv": {
+    "PATH": "${containerEnv:PATH}:/home/user/.local/bin",
+    "LOCAL_HOME": "${localEnv:HOME}",
+    "WORKSPACE": "${containerWorkspaceFolder}"
+  }
+}
+```
+
+Setting a key to `null` unsets the variable:
+
+```json devcontainer.json theme={null}
+{
+  "remoteEnv": {
+    "UNWANTED_VAR": null
+  }
+}
+```
+
+## Variable substitution
+
+Both `containerEnv` and `remoteEnv` (as well as several other string-valued properties in `devcontainer.json`) support variable substitution using the `${variable}` syntax.
+
+<AccordionGroup>
+  <Accordion title="Host environment — ${localEnv:NAME}">
+    Reads the variable `NAME` from the host (local) environment at the time the CLI processes the configuration.
+
+    ```json theme={null}
+    { "remoteEnv": { "HOST_USER": "${localEnv:USER}" } }
+    ```
+
+    <Tip>If the variable is not set on the host, the substitution resolves to an empty string.</Tip>
+  </Accordion>
+
+  <Accordion title="Container environment — ${containerEnv:NAME}">
+    Reads the variable `NAME` from the running container's environment. Only valid in `remoteEnv`, where the container is already running when the substitution is evaluated.
+
+    ```json theme={null}
+    {
+      "remoteEnv": {
+        "PATH": "${containerEnv:PATH}:/usr/local/mytools/bin"
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Workspace paths">
+    | Pattern                           | Resolves to                                                           |
+    | --------------------------------- | --------------------------------------------------------------------- |
+    | `${localWorkspaceFolder}`         | Absolute path to the workspace folder on the **host**                 |
+    | `${containerWorkspaceFolder}`     | Absolute path to the workspace folder **inside the container**        |
+    | `${localWorkspaceFolderBasename}` | The base name (last path segment) of the workspace folder on the host |
+
+    ```json theme={null}
+    {
+      "remoteEnv": {
+        "PROJECT_ROOT": "${containerWorkspaceFolder}",
+        "PROJECT_NAME": "${localWorkspaceFolderBasename}"
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## userEnvProbe
+
+The `userEnvProbe` property controls how the CLI determines the remote user's shell environment — particularly the `PATH` — when entering the container. The CLI runs a short-lived shell using the specified invocation style and captures the resulting environment.
+
+```json devcontainer.json theme={null}
+{
+  "userEnvProbe": "loginInteractiveShell"
+}
+```
+
+| Value                   | Shell invocation  | Profile files sourced                          |
+| ----------------------- | ----------------- | ---------------------------------------------- |
+| `none`                  | No shell launched | None                                           |
+| `loginInteractiveShell` | `bash --login -i` | `/etc/profile`, `~/.bash_profile`, `~/.bashrc` |
+| `interactiveShell`      | `bash -i`         | `~/.bashrc`                                    |
+| `loginShell`            | `bash --login`    | `/etc/profile`, `~/.bash_profile`              |
+
+The default value is `loginInteractiveShell`, which sources the broadest set of profile files and produces an environment closest to an interactive login session.
+
+<Note>
+  Tools can override the default with the `--default-user-env-probe` CLI flag when invoking `devcontainer up`, `set-up`, or `run-user-commands`.
+</Note>
+
+## Remote environment via CLI flags
+
+You can inject additional remote environment variables at runtime without modifying `devcontainer.json` by using the `--remote-env` flag on the `up`, `set-up`, and `run-user-commands` commands.
+
+```bash theme={null}
+devcontainer up --workspace-folder . \
+  --remote-env MY_TOKEN=abc123 \
+  --remote-env DEBUG=true
+```
+
+The format is `NAME=VALUE`. Pass the flag multiple times to set multiple variables. These variables are added to the same layer as `remoteEnv` from `devcontainer.json` and are not stored in image metadata.
+
+<Note>The value may be empty: `--remote-env EMPTY_VAR=` is valid.</Note>
+
+## Secrets
+
+The `--secrets-file` flag on `up` and `run-user-commands` loads secret environment variables from a JSON file. Secrets are injected into lifecycle scripts and remote sessions in the same way as `remoteEnv`, but they are **never stored in container or image metadata**.
+
+```bash theme={null}
+devcontainer up --workspace-folder . --secrets-file ./secrets.json
+```
+
+The secrets file must be a flat JSON object of string key-value pairs:
+
+```json secrets.json theme={null}
+{
+  "NPM_TOKEN": "npm_xxxxxxxxxxxx",
+  "DATABASE_URL": "postgres://user:pass@localhost/mydb",
+  "API_KEY": "[REDACTED-OPENAI-DOCS-EXAMPLE]"
+}
+```
+
+<Warning>
+  Keep your secrets file out of source control. Add it to `.gitignore` and never commit it to your repository.
+</Warning>
+
+
+# devcontainer exec
+Source: https://www.mintlify.com/devcontainers/cli/reference/exec
+
+Complete reference for the devcontainer exec command.
+
+The `devcontainer exec` command runs a command inside an already-running dev container. The exit code mirrors the exit code of the executed command.
+
+## Usage
+
+```bash theme={null}
+devcontainer exec [options] <cmd> [args..]
+```
+
+<ParamField type="string">
+  Command to execute.
+</ParamField>
+
+<ParamField type="string[]">
+  Arguments to the command.
+</ParamField>
+
+<Note>
+  If `--container-id`, `--id-label`, and `--workspace-folder` are all omitted, `--workspace-folder` defaults to the current working directory.
+</Note>
+
+## Options
+
+<AccordionGroup>
+  <Accordion title="Container selection">
+    <ParamField type="string">
+      Workspace folder path. The devcontainer.json will be looked up relative to this path. If `--container-id`, `--id-label`, and `--workspace-folder` are not provided, this defaults to the current directory.
+    </ParamField>
+
+    <ParamField type="string">
+      Id of the container to run the user commands for.
+    </ParamField>
+
+    <ParamField type="string">
+      Id label(s) of the format `name=value`. If no `--container-id` is given the id labels will be used to look up the container. If no `--id-label` is given, one will be inferred from the `--workspace-folder` path.
+
+      May be specified multiple times.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="Configuration">
+    <ParamField type="string">
+      devcontainer.json path. The default is to use `.devcontainer/devcontainer.json` or, if that does not exist, `.devcontainer.json` in the workspace folder.
+    </ParamField>
+
+    <ParamField type="string">
+      devcontainer.json path to override any devcontainer.json in the workspace folder (or built-in configuration). This is required when there is no devcontainer.json otherwise.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="Docker">
+    <ParamField type="string">
+      Docker CLI path.
+    </ParamField>
+
+    <ParamField type="string">
+      Docker Compose CLI path.
+    </ParamField>
+
+    <ParamField type="string">
+      Container data folder where user data inside the container will be stored.
+    </ParamField>
+
+    <ParamField type="string">
+      Container system data folder where system data inside the container will be stored.
+    </ParamField>
+
+    <ParamField type="string">
+      Host path to a directory that is intended to be persisted and share state between sessions.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Mount the workspace using its Git root.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Mount the Git worktree common dir for Git operations to work in the container. This requires the worktree to be created with relative paths (`git worktree add --relative-paths`).
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="Logging">
+    <ParamField type="string">
+      Log level for the `--terminal-log-file`. When set to `trace`, the log level for `--log-file` will also be set to `trace`. Choices: `info`, `debug`, `trace`.
+    </ParamField>
+
+    <ParamField type="string">
+      Log format. Choices: `text`, `json`.
+    </ParamField>
+
+    <ParamField type="number">
+      Number of columns to render the output for. This is required for some of the subprocesses to correctly render their output. Implies `--terminal-rows`.
+    </ParamField>
+
+    <ParamField type="number">
+      Number of rows to render the output for. This is required for some of the subprocesses to correctly render their output. Implies `--terminal-columns`.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="Environment">
+    <ParamField type="string">
+      Default value for the devcontainer.json's `"userEnvProbe"`. Choices: `none`, `loginInteractiveShell`, `interactiveShell`, `loginShell`.
+    </ParamField>
+
+    <ParamField type="string">
+      Remote environment variables of the format `name=value`. These will be added when executing the user commands.
+
+      May be specified multiple times.
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+## Examples
+
+```bash theme={null}
+# Run a command in the container resolved from the current directory
+devcontainer exec -- bash -c "echo hello"
+
+# Run a command in a specific container
+devcontainer exec --container-id <id> node --version
+
+# Run a command with a custom remote environment variable
+devcontainer exec --remote-env MY_VAR=value -- make test
+```
+
+
+# devcontainer features
+Source: https://www.mintlify.com/devcontainers/cli/reference/features-commands
+
+Complete reference for all devcontainer features subcommands.
+
+The `devcontainer features` group of commands provides tooling to test, package, publish, and inspect dev container Features.
+
+## Subcommands
+
+<AccordionGroup>
+  <Accordion title="features test [target]">
+    Test Features in a collection.
+
+    ```bash theme={null}
+    devcontainer features test [target] [options]
+    ```
+
+    The deprecated `[target]` positional is the path to the folder containing `src` and `test` sub-folders. Use `--project-folder` instead.
+
+    <ParamField type="string">
+      Path to folder containing `src` and `test` sub-folders. This is likely the git root of the project. Alias: `-p`.
+    </ParamField>
+
+    <ParamField type="string[]">
+      Feature(s) to test as space-separated parameters. Omit to run all tests. Cannot be combined with `--global-scenarios-only`. Alias: `-f`.
+    </ParamField>
+
+    <ParamField type="string">
+      Filter current tests to only run scenarios containing this string. Cannot be combined with `--skip-scenarios`.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Run only scenario tests under `tests/_global`. Cannot be combined with `-f`.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Skip all `scenario` style tests. Cannot be combined with `--global-scenarios-only`.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Skip all `autogenerated` style tests (test.sh).
+    </ParamField>
+
+    <ParamField type="boolean">
+      Skip all `duplicate` style tests (duplicate.sh).
+    </ParamField>
+
+    <ParamField type="boolean">
+      Allow an element of randomness in test cases.
+    </ParamField>
+
+    <ParamField type="string">
+      Base Image. Not used for scenarios. Alias: `-i`.
+    </ParamField>
+
+    <ParamField type="string">
+      Remote user. Not used for scenarios. Alias: `-u`.
+    </ParamField>
+
+    <ParamField type="string">
+      Log level. Choices: `info`, `debug`, `trace`.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Do not remove test containers after running tests.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Quiets output. Alias: `-q`.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="features package <target>">
+    Package Features from a collection into distributable archives.
+
+    ```bash theme={null}
+    devcontainer features package <target> [options]
+    ```
+
+    <ParamField type="string">
+      Package features at provided `[target]` (default is cwd), where `[target]` is either:
+
+      1. A path to the `src` folder of the collection with one or more features.
+      2. A path to a single feature that contains a `devcontainer-feature.json`.
+
+      A `devcontainer-collection.json` will also be generated in the output directory.
+    </ParamField>
+
+    <ParamField type="string">
+      Path to output directory. Will create directories as needed. Alias: `-o`.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Automatically delete previous output directory before packaging. Alias: `-f`.
+    </ParamField>
+
+    <ParamField type="string">
+      Log level. Choices: `info`, `debug`, `trace`.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="features publish <target>">
+    Package and publish Features to an OCI registry.
+
+    ```bash theme={null}
+    devcontainer features publish <target> [options]
+    ```
+
+    <ParamField type="string">
+      Package and publish features at provided `[target]` (default is cwd), where `[target]` is either:
+
+      1. A path to the `src` folder of the collection with one or more features.
+      2. A path to a single feature that contains a `devcontainer-feature.json`.
+    </ParamField>
+
+    <ParamField type="string">
+      Name of the OCI registry. Alias: `-r`.
+    </ParamField>
+
+    <ParamField type="string">
+      Unique identifier for the collection of features. Example: `<owner>/<repo>`. Alias: `-n`.
+    </ParamField>
+
+    <ParamField type="string">
+      Log level. Choices: `info`, `debug`, `trace`.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="features info <mode> <feature>">
+    Fetch metadata for a published Feature.
+
+    ```bash theme={null}
+    devcontainer features info <mode> <feature> [options]
+    ```
+
+    <ParamField type="string">
+      Data to query. Choices: `manifest`, `tags`, `dependencies`, `verbose`. Select `verbose` to return everything.
+    </ParamField>
+
+    <ParamField type="string">
+      Feature identifier (e.g., `ghcr.io/devcontainers/features/node:1`).
+    </ParamField>
+
+    <ParamField type="string">
+      Log level. Choices: `info`, `debug`, `trace`.
+    </ParamField>
+
+    <ParamField type="string">
+      Output format. Choices: `text`, `json`.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="features resolve-dependencies">
+    Read and resolve the dependency graph from a devcontainer.json configuration, then output the computed installation order.
+
+    ```bash theme={null}
+    devcontainer features resolve-dependencies [options]
+    ```
+
+    <ParamField type="string">
+      Workspace folder to use for the configuration. If `--workspace-folder` is not provided, this defaults to the current directory.
+    </ParamField>
+
+    <ParamField type="string">
+      Log level. Choices: `error`, `info`, `debug`, `trace`.
+    </ParamField>
+
+    The command outputs a Mermaid dependency diagram followed by a JSON object:
+
+    ```json theme={null}
+    {
+      "installOrder": [
+        { "id": "<feature-ref>@<digest>", "options": {} }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="features generate-docs">
+    Generate documentation for a Feature collection.
+
+    ```bash theme={null}
+    devcontainer features generate-docs [options]
+    ```
+
+    <ParamField type="string">
+      Path to folder containing `src` and `test` sub-folders. This is likely the git root of the project. Alias: `-p`.
+    </ParamField>
+
+    <ParamField type="string">
+      Name of the OCI registry. Alias: `-r`.
+    </ParamField>
+
+    <ParamField type="string">
+      Unique identifier for the collection of features. Example: `<owner>/<repo>`. Alias: `-n`.
+    </ParamField>
+
+    <ParamField type="string">
+      GitHub owner for docs.
+    </ParamField>
+
+    <ParamField type="string">
+      GitHub repo for docs.
+    </ParamField>
+
+    <ParamField type="string">
+      Log level. Choices: `info`, `debug`, `trace`.
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+
+# devcontainer templates
+Source: https://www.mintlify.com/devcontainers/cli/reference/templates-commands
+
+Complete reference for all devcontainer templates subcommands.
+
+The `devcontainer templates` group of commands provides tooling to apply, package, publish, and inspect dev container Templates.
+
+## Subcommands
+
+<AccordionGroup>
+  <Accordion title="templates apply">
+    Apply a Template to the current project.
+
+    ```bash theme={null}
+    devcontainer templates apply [options]
+    ```
+
+    <ParamField type="string">
+      Target workspace folder to apply Template. If `--workspace-folder` is not provided, this defaults to the current directory. Alias: `-w`.
+    </ParamField>
+
+    <ParamField type="string">
+      Reference to a Template in a supported OCI registry. Alias: `-t`.
+    </ParamField>
+
+    <ParamField type="string">
+      Arguments to replace within the provided Template, provided as JSON. Alias: `-a`.
+    </ParamField>
+
+    <ParamField type="string">
+      Features to add to the provided Template, provided as JSON. Alias: `-f`.
+    </ParamField>
+
+    <ParamField type="string">
+      Log level. Choices: `info`, `debug`, `trace`.
+    </ParamField>
+
+    <ParamField type="string">
+      Directory to use for temporary files. If not provided, the system default will be inferred.
+    </ParamField>
+
+    <ParamField type="string">
+      List of paths within the Template to omit applying, provided as JSON. To ignore a directory append `/*`. Example: `[".github/*", "dir/a/*", "file.ts"]`.
+    </ParamField>
+
+    On success the command writes the applied file paths to stdout:
+
+    ```json theme={null}
+    { "files": ["<relative-path>", ...] }
+    ```
+  </Accordion>
+
+  <Accordion title="templates publish <target>">
+    Package and publish Templates to an OCI registry.
+
+    ```bash theme={null}
+    devcontainer templates publish <target> [options]
+    ```
+
+    <ParamField type="string">
+      Package and publish templates at provided `[target]` (default is cwd), where `[target]` is either:
+
+      1. A path to the `src` folder of the collection with one or more templates.
+      2. A path to a single template that contains a `devcontainer-template.json`.
+    </ParamField>
+
+    <ParamField type="string">
+      Name of the OCI registry. Alias: `-r`.
+    </ParamField>
+
+    <ParamField type="string">
+      Unique identifier for the collection of templates. Example: `<owner>/<repo>`. Alias: `-n`.
+    </ParamField>
+
+    <ParamField type="string">
+      Log level. Choices: `info`, `debug`, `trace`.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="templates metadata <templateId>">
+    Fetch a published Template's metadata from its OCI manifest.
+
+    ```bash theme={null}
+    devcontainer templates metadata <templateId> [options]
+    ```
+
+    <ParamField type="string">
+      Template identifier (e.g., `ghcr.io/devcontainers/templates/debian:latest`).
+    </ParamField>
+
+    <ParamField type="string">
+      Log level. Choices: `info`, `debug`, `trace`.
+    </ParamField>
+
+    <Warning>
+      Templates must have been published with a CLI version from after [this commit](https://github.com/devcontainers/cli/commit/6c6aebfa7b74aea9d67760fd1e74b09573d31536) to contain attached metadata in the manifest. Ask the Template owner to republish if metadata is missing.
+    </Warning>
+
+    On success the command writes the template metadata JSON to stdout.
+  </Accordion>
+
+  <Accordion title="templates generate-docs">
+    Generate documentation for a Template collection.
+
+    ```bash theme={null}
+    devcontainer templates generate-docs [options]
+    ```
+
+    <ParamField type="string">
+      Path to folder containing `src` and `test` sub-folders. This is likely the git root of the project. Alias: `-p`.
+    </ParamField>
+
+    <ParamField type="string">
+      GitHub owner for docs.
+    </ParamField>
+
+    <ParamField type="string">
+      GitHub repo for docs.
+    </ParamField>
+
+    <ParamField type="string">
+      Log level. Choices: `info`, `debug`, `trace`.
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+
+# devcontainer up
+Source: https://www.mintlify.com/devcontainers/cli/reference/up
+
+Complete reference for the devcontainer up command.
+
+The `devcontainer up` command creates and starts a dev container from a `devcontainer.json` configuration. On success it writes a JSON result to stdout and exits with code `0`. On failure it exits with code `1`.
+
+## Usage
+
+```bash theme={null}
+devcontainer up [options]
+```
+
+<Note>
+  If `--id-label`, `--override-config`, and `--workspace-folder` are all omitted, `--workspace-folder` defaults to the current working directory.
+</Note>
+
+## Options
+
+<AccordionGroup>
+  <Accordion title="Docker">
+    <ParamField type="string">
+      Docker CLI path.
+    </ParamField>
+
+    <ParamField type="string">
+      Docker Compose CLI path.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="Workspace">
+    <ParamField type="string">
+      Workspace folder path. The devcontainer.json will be looked up relative to this path. If `--id-label`, `--override-config`, and `--workspace-folder` are not provided, this defaults to the current directory.
+    </ParamField>
+
+    <ParamField type="string">
+      Workspace mount consistency. Choices: `consistent`, `cached`, `delegated`.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Mount the workspace using its Git root.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Mount the Git worktree common dir for Git operations to work in the container. This requires the worktree to be created with relative paths (`git worktree add --relative-paths`).
+    </ParamField>
+
+    <ParamField type="string">
+      Additional mount point(s). Format: `type=<bind|volume>,source=<source>,target=<target>[,external=<true|false>]`
+
+      May be specified multiple times.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="Container data folders">
+    <ParamField type="string">
+      Container data folder where user data inside the container will be stored.
+    </ParamField>
+
+    <ParamField type="string">
+      Container system data folder where system data inside the container will be stored.
+    </ParamField>
+
+    <ParamField type="string">
+      Folder to cache CLI data, for example userEnvProbe results.
+    </ParamField>
+
+    <ParamField type="string">
+      Host path to a directory that is intended to be persisted and share state between sessions.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="Configuration">
+    <ParamField type="string">
+      devcontainer.json path. The default is to use `.devcontainer/devcontainer.json` or, if that does not exist, `.devcontainer.json` in the workspace folder.
+    </ParamField>
+
+    <ParamField type="string">
+      devcontainer.json path to override any devcontainer.json in the workspace folder (or built-in configuration). This is required when there is no devcontainer.json otherwise.
+    </ParamField>
+
+    <ParamField type="string">
+      Id label(s) of the format `name=value`. These will be set on the container and used to query for an existing container. If no `--id-label` is given, one will be inferred from the `--workspace-folder` path.
+
+      May be specified multiple times.
+    </ParamField>
+
+    <ParamField type="string">
+      Additional features to apply to the dev container (JSON as per `"features"` section in devcontainer.json).
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="Logging">
+    <ParamField type="string">
+      Log level for the `--terminal-log-file`. When set to `trace`, the log level for `--log-file` will also be set to `trace`. Choices: `info`, `debug`, `trace`.
+    </ParamField>
+
+    <ParamField type="string">
+      Log format. Choices: `text`, `json`.
+    </ParamField>
+
+    <ParamField type="number">
+      Number of columns to render the output for. This is required for some of the subprocesses to correctly render their output. Implies `--terminal-rows`.
+    </ParamField>
+
+    <ParamField type="number">
+      Number of rows to render the output for. This is required for some of the subprocesses to correctly render their output. Implies `--terminal-columns`.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="GPU">
+    <ParamField type="string">
+      Availability of GPUs in case the dev container requires any. `all` expects a GPU to be available. Choices: `all`, `detect`, `none`.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="Environment">
+    <ParamField type="string">
+      Default value for the devcontainer.json's `"userEnvProbe"`. Choices: `none`, `loginInteractiveShell`, `interactiveShell`, `loginShell`.
+    </ParamField>
+
+    <ParamField type="string">
+      Remote environment variables of the format `name=value`. These will be added when executing the user commands.
+
+      May be specified multiple times.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="Build">
+    <ParamField type="boolean">
+      Builds the image with `--no-cache` if the container does not exist.
+    </ParamField>
+
+    <ParamField type="string">
+      Additional image to use as potential layer cache during image building.
+
+      May be specified multiple times.
+    </ParamField>
+
+    <ParamField type="string">
+      Additional image to use as potential layer cache during image building.
+    </ParamField>
+
+    <ParamField type="string">
+      Control whether BuildKit should be used. Choices: `auto`, `never`.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="Lifecycle">
+    <ParamField type="string">
+      Default for updating the remote user's UID and GID to the local user's one. Choices: `never`, `on`, `off`.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Removes the dev container if it already exists.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Fail if the container does not exist.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Do not run onCreateCommand, updateContentCommand, postCreateCommand, postStartCommand or postAttachCommand and do not install dotfiles.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Stop running user commands after running the command configured with waitFor or the updateContentCommand by default.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Do not run postAttachCommand.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Stop after onCreateCommand and updateContentCommand, rerunning updateContentCommand if it has run before.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Do not run postAttachCommand.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="Dotfiles">
+    <ParamField type="string">
+      URL of a dotfiles Git repository (e.g., `https://github.com/owner/repository.git`).
+    </ParamField>
+
+    <ParamField type="string">
+      The command to run after cloning the dotfiles repository. Defaults to run the first file of `install.sh`, `install`, `bootstrap.sh`, `bootstrap`, `setup.sh` and `setup` found in the dotfiles repository's root folder.
+    </ParamField>
+
+    <ParamField type="string">
+      The path to clone the dotfiles repository to. Defaults to `~/dotfiles`.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="Secrets">
+    <ParamField type="string">
+      Path to a json file containing secret environment variables as key-value pairs.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="Output">
+    <ParamField type="boolean">
+      Include configuration in result.
+    </ParamField>
+
+    <ParamField type="boolean">
+      Include merged configuration in result.
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+## Output
+
+All output is written to stdout as a single line of JSON.
+
+### Success
+
+```json theme={null}
+{
+  "outcome": "success",
+  "containerId": "<container-id>",
+  "remoteUser": "<username>",
+  "remoteWorkspaceFolder": "<path-inside-container>"
+}
+```
+
+### Error
+
+```json theme={null}
+{
+  "outcome": "error",
+  "message": "<short error message>",
+  "description": "<detailed description>"
+}
+```
+
+The process exits with code `1` on error.
+
+
+# Applying templates
+Source: https://www.mintlify.com/devcontainers/cli/templates/apply
+
+Apply a Dev Container Template to scaffold a new project.
+
+The `devcontainer templates apply` command pulls a template artifact from an OCI registry and writes the resulting `.devcontainer/` files into your workspace. Option values you supply are substituted before the files are written; any option you omit falls back to the `default` declared in the template's manifest.
+
+## Full workflow
+
+<Steps>
+  <Step title="Browse available templates">
+    Visit [containers.dev/templates](https://containers.dev/templates) to find a template for your stack. Each listing shows the template's OCI reference (e.g. `ghcr.io/devcontainers/templates/python`), the available options, and a link to its source.
+
+    You can also inspect a template's options directly from the CLI before applying it:
+
+    ```bash theme={null}
+    devcontainer templates metadata ghcr.io/devcontainers/templates/python
+    ```
+
+    The command prints the full `devcontainer-template.json` manifest as JSON, including every option name, type, default value, and description.
+  </Step>
+
+  <Step title="Apply the template">
+    Run `devcontainer templates apply` with at least `--template-id`. Pass `--template-args` to set option values and `--workspace-folder` to target a directory other than the current one.
+
+    ```bash theme={null}
+    devcontainer templates apply \
+      --template-id ghcr.io/devcontainers/templates/python \
+      --template-args '{"imageVariant": "3.12"}' \
+      --workspace-folder ./my-project
+    ```
+
+    The CLI prints a JSON object listing the files it wrote:
+
+    ```json theme={null}
+    {"files":["./.devcontainer/devcontainer.json"]}
+    ```
+
+    <Note>
+      If `--workspace-folder` is omitted, the template is applied to the current directory.
+    </Note>
+  </Step>
+
+  <Step title="Inspect the generated files">
+    The template scaffolds a `.devcontainer/` folder in the target workspace. For the Debian template, for example:
+
+    ```bash theme={null}
+    devcontainer templates apply \
+      --template-id ghcr.io/devcontainers/templates/debian \
+      --template-args '{"imageVariant": "buster"}' \
+      --workspace-folder ./my-project
+    ```
+
+    Produces:
+
+    ```
+    my-project/
+    └── .devcontainer/
+        └── devcontainer.json
+    ```
+
+    With the contents:
+
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "Debian",
+      "image": "mcr.microsoft.com/devcontainers/base:buster"
+    }
+    ```
+  </Step>
+
+  <Step title="Start the container">
+    Once the `.devcontainer/` folder is in place, open the workspace in a Dev Container-aware tool or use the CLI directly:
+
+    ```bash theme={null}
+    devcontainer up --workspace-folder ./my-project
+    ```
+  </Step>
+</Steps>
+
+## Command reference
+
+```bash theme={null}
+devcontainer templates apply [options]
+```
+
+### Flags
+
+<ParamField type="string">
+  OCI reference to the template to apply. Accepts a fully qualified reference such as `ghcr.io/devcontainers/templates/python` or `ghcr.io/devcontainers/templates/python:1`. Alias: `-t`.
+</ParamField>
+
+<ParamField type="string">
+  Path to the target workspace folder. The `.devcontainer/` files will be written here. Alias: `-w`.
+</ParamField>
+
+<ParamField type="string">
+  Template option values to substitute, provided as a JSON object. Keys map to option IDs declared in the template's `devcontainer-template.json`. Any key you omit falls back to the option's `default`. Alias: `-a`.
+</ParamField>
+
+<ParamField type="string">
+  Additional Features to inject into the generated `devcontainer.json`, provided as a JSON array of feature objects. Each object must have an `id` field and an optional `options` map. Alias: `-f`.
+
+  ```json theme={null}
+  [
+    { "id": "ghcr.io/devcontainers/features/git:1", "options": { "version": "latest" } }
+  ]
+  ```
+</ParamField>
+
+<ParamField type="string">
+  JSON array of paths within the template to skip when writing files. Append `/*` to omit an entire directory. Example: `[".github/*", "Makefile"]`.
+</ParamField>
+
+<ParamField type="string">
+  Directory to use for temporary files during the fetch. Defaults to the system temporary directory.
+</ParamField>
+
+<ParamField type="string">
+  Verbosity of log output written to stderr. One of `info`, `debug`, or `trace`.
+</ParamField>
+
+## Template options
+
+Template options are declared in the template's `devcontainer-template.json` under the `options` key. Each option has a type (`string` or `boolean`), an optional `default`, and an optional set of allowed values (`enum`) or non-binding suggestions (`proposals`).
+
+```json theme={null}
+{
+  "options": {
+    "imageVariant": {
+      "type": "string",
+      "description": "Python version to use",
+      "proposals": ["3.12", "3.11", "3.10"],
+      "default": "3.12"
+    },
+    "installTools": {
+      "type": "boolean",
+      "description": "Install common development tools",
+      "default": true
+    }
+  }
+}
+```
+
+Pass all option values as a flat JSON object to `--template-args`:
+
+```bash theme={null}
+devcontainer templates apply \
+  --template-id ghcr.io/devcontainers/templates/python \
+  --template-args '{"imageVariant": "3.11", "installTools": "false"}'
+```
+
+<Note>
+  All option values in `--template-args` are strings, including boolean options. Pass `"true"` or `"false"` as string values.
+</Note>
+
+Use `devcontainer templates metadata <templateId>` to print the full option schema for any published template before you apply it.
+
+## Merging with an existing devcontainer.json
+
+If your workspace already contains a `.devcontainer/devcontainer.json`, applying a template will overwrite only the files included in the template archive. To preserve specific files, use `--omit-paths` to exclude them from the apply operation.
+
+<Warning>
+  Files included in the template that share a name with existing files in your workspace will be overwritten without prompting.
+</Warning>
+
+## Adding Features at apply time
+
+Use `--features` to inject Dev Container Features into the generated configuration at the same time as you apply the template:
+
+```bash theme={null}
+devcontainer templates apply \
+  --template-id ghcr.io/devcontainers/templates/python \
+  --template-args '{"imageVariant": "3.12"}' \
+  --features '[
+    { "id": "ghcr.io/devcontainers/features/git:1" },
+    { "id": "ghcr.io/devcontainers/features/docker-in-docker:2" }
+  ]' \
+  --workspace-folder .
+```
+
+The listed Features are added to the `features` field of the generated `devcontainer.json`.
+
+
+# Dev Container Templates
+Source: https://www.mintlify.com/devcontainers/cli/templates/overview
+
+Bootstrap new projects with pre-configured Dev Container Templates.
+
+Dev Container Templates are pre-built, shareable configurations that scaffold an entire development environment for a specific language, framework, or stack. Applying a template writes a `.devcontainer/` folder — including `devcontainer.json` and any supporting files such as a `Dockerfile` — directly into your project.
+
+## What is a template?
+
+A template bundles everything needed to open a project in a container:
+
+* A `devcontainer.json` with the correct image, mounts, extensions, and settings for the target stack.
+* Optional supporting files such as a `Dockerfile` or `docker-compose.yml`.
+* A `devcontainer-template.json` manifest that describes the template, declares user-configurable options, and provides versioning metadata.
+
+When you apply a template, the CLI pulls the artifact from an OCI registry, substitutes any option values you supply, and writes the resulting files into your workspace.
+
+## Templates vs. Features
+
+Templates and Features both extend Dev Containers, but they serve different purposes.
+
+|                 | Templates                            | Features                                       |
+| --------------- | ------------------------------------ | ---------------------------------------------- |
+| **Purpose**     | Scaffold a new project from scratch  | Add tools or runtimes to an existing container |
+| **Scope**       | Replaces or creates `.devcontainer/` | Modifies `devcontainer.json` features field    |
+| **When to use** | Starting a new repo                  | Extending an existing configuration            |
+
+A template gives you a starting point. A feature adds something — a CLI tool, a language runtime, a service — on top of that starting point.
+
+## Template structure
+
+Each template lives in its own directory and follows this layout:
+
+<Tree>
+  <Tree.Folder name="src">
+    <Tree.Folder name="my-template">
+      <Tree.File name="devcontainer-template.json" />
+
+      <Tree.Folder name=".devcontainer">
+        <Tree.File name="devcontainer.json" />
+
+        <Tree.File name="Dockerfile" />
+      </Tree.Folder>
+    </Tree.Folder>
+  </Tree.Folder>
+</Tree>
+
+The `devcontainer-template.json` manifest declares the template's ID, version, human-readable name, description, and any user-configurable options:
+
+```json devcontainer-template.json theme={null}
+{
+  "id": "python",
+  "version": "1.0.0",
+  "name": "Python 3",
+  "description": "A Python 3 environment.",
+  "options": {
+    "imageVariant": {
+      "type": "string",
+      "description": "Python version",
+      "proposals": ["3.12", "3.11", "3.10"],
+      "default": "3.12"
+    }
+  }
+}
+```
+
+Option values you pass at apply time are substituted into the `.devcontainer/` files before they are written to disk. Any option you omit receives the `default` value declared in the manifest.
+
+## Community template registry
+
+The community maintains a public index of templates at [containers.dev/templates](https://containers.dev/templates). Templates listed there are published to `ghcr.io/devcontainers/templates` and can be applied directly with the CLI.
+
+## Available subcommands
+
+The `devcontainer templates` group provides four subcommands:
+
+| Subcommand      | Description                                                  |
+| --------------- | ------------------------------------------------------------ |
+| `apply`         | Download and apply a template to a workspace folder          |
+| `publish`       | Package and publish templates to an OCI registry             |
+| `metadata`      | Fetch the metadata manifest for a published template         |
+| `generate-docs` | Auto-generate README documentation for a template collection |
+
+```bash theme={null}
+devcontainer templates apply \
+  --template-id ghcr.io/devcontainers/templates/python:latest \
+  --workspace-folder .
+```
+
+<Columns>
+  <Card title="Applying templates" icon="download" href="/templates/apply">
+    Apply a template from an OCI registry to scaffold a new project.
+  </Card>
+
+  <Card title="Publishing templates" icon="upload" href="/templates/publish">
+    Package and publish your own templates to share with others.
+  </Card>
+</Columns>
+
+
+# Publishing templates
+Source: https://www.mintlify.com/devcontainers/cli/templates/publish
+
+Package and publish Dev Container Templates to an OCI registry.
+
+The `devcontainer templates publish` command packages each template in a source directory and pushes them to an OCI registry as individual artifacts. Published templates can then be applied by anyone using the `devcontainer templates apply` command.
+
+<Tip>
+  The [template-starter](https://github.com/devcontainers/template-starter) repository includes a ready-made GitHub Actions workflow that handles authentication and publishing automatically using the `devcontainers/action` action.
+</Tip>
+
+## Repository structure
+
+Organize your template source files under a `src/` directory. Each subdirectory of `src/` becomes a separate published template whose ID matches the directory name.
+
+<Tree>
+  <Tree.Folder name="src">
+    <Tree.Folder name="python">
+      <Tree.File name="devcontainer-template.json" />
+
+      <Tree.Folder name=".devcontainer">
+        <Tree.File name="devcontainer.json" />
+      </Tree.Folder>
+    </Tree.Folder>
+
+    <Tree.Folder name="node">
+      <Tree.File name="devcontainer-template.json" />
+
+      <Tree.Folder name=".devcontainer">
+        <Tree.File name="devcontainer.json" />
+
+        <Tree.File name="Dockerfile" />
+      </Tree.Folder>
+    </Tree.Folder>
+  </Tree.Folder>
+
+  <Tree.Folder name="test">
+    <Tree.Folder name="python">
+      <Tree.File name="test.sh" />
+    </Tree.Folder>
+
+    <Tree.Folder name="node">
+      <Tree.File name="test.sh" />
+    </Tree.Folder>
+  </Tree.Folder>
+</Tree>
+
+Pass the `src/` directory as the `<target>` positional argument to `devcontainer templates publish`.
+
+## devcontainer-template.json
+
+Every template directory must contain a `devcontainer-template.json` manifest. This file describes the template and declares its user-configurable options.
+
+### Required fields
+
+<ParamField type="string">
+  Unique identifier for the template. Must match the name of the source directory.
+</ParamField>
+
+<ParamField type="string">
+  Semantic version string (e.g. `"1.0.0"`). The CLI skips templates without a version field.
+</ParamField>
+
+### Optional fields
+
+<ParamField type="string">
+  Human-readable display name shown in registries and tooling.
+</ParamField>
+
+<ParamField type="string">
+  Short description of what the template configures.
+</ParamField>
+
+<ParamField type="string">
+  URL to extended documentation or the source repository.
+</ParamField>
+
+<ParamField type="string">
+  URL to the template's license.
+</ParamField>
+
+<ParamField type="string">
+  Name of the person or organization that maintains the template.
+</ParamField>
+
+<ParamField type="string[]">
+  Search keywords for registry indexing.
+</ParamField>
+
+<ParamField type="string[]">
+  Supported OS platforms, e.g. `["linux", "macOS", "windows"]`.
+</ParamField>
+
+<ParamField type="object">
+  Map of user-configurable option IDs to option definitions. See [template options](#template-options) below.
+</ParamField>
+
+<ParamField type="string[]">
+  OCI references to Features that the template depends on.
+</ParamField>
+
+<ParamField type="string[]">
+  Paths within the template that tools may omit when applying.
+</ParamField>
+
+### Example
+
+```json devcontainer-template.json theme={null}
+{
+  "id": "python",
+  "version": "1.0.0",
+  "name": "Python 3",
+  "description": "A Python 3 development environment.",
+  "documentationURL": "https://github.com/devcontainers/templates/tree/main/src/python",
+  "licenseURL": "https://github.com/devcontainers/templates/blob/main/LICENSE",
+  "publisher": "Microsoft Corporation",
+  "keywords": ["python", "django", "flask"],
+  "platforms": ["linux"],
+  "options": {
+    "imageVariant": {
+      "type": "string",
+      "description": "Python version (use -bullseye variants for older systems)",
+      "proposals": ["3.12", "3.11", "3.10", "3.12-bullseye", "3.11-bullseye"],
+      "default": "3.12"
+    }
+  }
+}
+```
+
+### Template options
+
+Each key in the `options` object maps to a configurable value that is substituted into the `.devcontainer/` files when a user applies the template.
+
+<AccordionGroup>
+  <Accordion title="String option">
+    ```json theme={null}
+    "imageVariant": {
+      "type": "string",
+      "description": "Python version to use",
+      "proposals": ["3.12", "3.11", "3.10"],
+      "default": "3.12"
+    }
+    ```
+
+    Use `proposals` for non-binding suggestions or `enum` to restrict to a fixed set of values.
+  </Accordion>
+
+  <Accordion title="Boolean option">
+    ```json theme={null}
+    "installTools": {
+      "type": "boolean",
+      "description": "Install common development tools",
+      "default": true
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Full publish workflow
+
+<Steps>
+  <Step title="Authenticate with the registry">
+    Publishing requires write access to the target OCI registry. For GitHub Container Registry, provide a Personal Access Token with `write:packages` scope.
+
+    <CodeGroup>
+      ```bash docker login theme={null}
+      echo $CR_PAT | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+      ```
+
+      ```bash environment variable theme={null}
+      export GITHUB_TOKEN="[REDACTED-GHTOKEN-DOCS-EXAMPLE]"
+      ```
+    </CodeGroup>
+
+    The CLI supports two authentication methods:
+
+    * **`~/.docker/config.json`** — written by `docker login`. Note that OS-specific credential helpers (such as the Docker Desktop credential helper) are not currently recognized.
+    * **`DEVCONTAINERS_OCI_AUTH` environment variable** — a comma-separated list of `service|user|token` tuples:
+      ```
+      DEVCONTAINERS_OCI_AUTH=ghcr.io|myuser|[REDACTED-GHTOKEN-DOCS-EXAMPLE]
+      ```
+  </Step>
+
+  <Step title="Organize the source directory">
+    Make sure each template has a `devcontainer-template.json` with a `version` field and a `.devcontainer/devcontainer.json`. The directory name is used as the template ID.
+
+    ```
+    src/
+    ├── python/
+    │   ├── devcontainer-template.json
+    │   └── .devcontainer/
+    │       └── devcontainer.json
+    └── node/
+        ├── devcontainer-template.json
+        └── .devcontainer/
+            ├── devcontainer.json
+            └── Dockerfile
+    ```
+  </Step>
+
+  <Step title="Run devcontainer templates publish">
+    Pass the source directory as the positional `<target>` argument along with `--registry` and `--namespace`:
+
+    ```bash theme={null}
+    GITHUB_TOKEN="$CR_PAT" devcontainer templates publish \
+      --registry ghcr.io \
+      --namespace my-org/templates \
+      ./src
+    ```
+
+    The CLI packages each template, pushes it to the registry under `<registry>/<namespace>/<id>`, and also publishes a collection index artifact. It prints a JSON summary of every template that was published.
+
+    <Note>
+      The CLI skips any template whose `devcontainer-template.json` does not contain a `version` field and logs a warning.
+    </Note>
+  </Step>
+
+  <Step title="Verify the published template">
+    Use `devcontainer templates metadata` to confirm that the manifest is reachable and contains the expected metadata:
+
+    ```bash theme={null}
+    devcontainer templates metadata ghcr.io/my-org/templates/python
+    ```
+
+    The output is the full `devcontainer-template.json` content as parsed from the OCI manifest annotations.
+  </Step>
+
+  <Step title="Apply the published template">
+    Once published, anyone can apply the template using its OCI reference:
+
+    ```bash theme={null}
+    devcontainer templates apply \
+      --template-id ghcr.io/my-org/templates/python \
+      --template-args '{"imageVariant": "3.12"}' \
+      --workspace-folder .
+    ```
+  </Step>
+</Steps>
+
+## Command reference
+
+```bash theme={null}
+devcontainer templates publish <target> [options]
+```
+
+### Arguments
+
+<ParamField type="string">
+  Path to the directory containing template source subdirectories (typically `./src`).
+</ParamField>
+
+### Flags
+
+<ParamField type="string">
+  Hostname of the OCI registry to publish to, e.g. `ghcr.io`. Alias: `-r`.
+</ParamField>
+
+<ParamField type="string">
+  Registry namespace (path prefix) under which templates are published, e.g. `my-org/templates`. Alias: `-n`.
+</ParamField>
+
+<ParamField type="string">
+  Verbosity of log output written to stderr. One of `info`, `debug`, or `trace`.
+</ParamField>
+
+## Versioning
+
+Templates use [semantic versioning](https://semver.org/). The version in `devcontainer-template.json` controls which tags are pushed to the registry. For a template at version `1.2.3`, the CLI publishes the following tags:
+
+* `1.2.3` (exact version)
+* `1.2` (minor alias)
+* `1` (major alias)
+* `latest`
+
+Increment the version in `devcontainer-template.json` before each publish to release a new version.
+
+## Generating documentation
+
+The `devcontainer templates generate-docs` command reads all `devcontainer-template.json` files in the source directory and writes a `README.md` for each template, documenting its options in a standard format.
+
+```bash theme={null}
+devcontainer templates generate-docs \
+  --project-folder . \
+  --github-owner my-org \
+  --github-repo my-templates
+```
+
+### Flags
+
+<ParamField type="string">
+  Root of the project containing `src/` and `test/` subdirectories. Alias: `-p`.
+</ParamField>
+
+<ParamField type="string">
+  GitHub owner used to construct source links in the generated documentation.
+</ParamField>
+
+<ParamField type="string">
+  GitHub repository name used to construct source links in the generated documentation.
+</ParamField>
+
+<Tip>
+  Run `generate-docs` as part of your CI pipeline before publishing so that each template always has up-to-date documentation committed alongside the source.
+</Tip>
+
+

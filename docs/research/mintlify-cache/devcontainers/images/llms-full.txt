@@ -1,0 +1,4681 @@
+# Adding an image
+Source: https://www.mintlify.com/devcontainers/images/build/adding-an-image
+
+Step-by-step guide to contributing a new devcontainer image, from creating the Dockerfile to configuring manifest.json and setting up tests.
+
+This guide walks you through adding a new image to the repository. Read the [build system overview](/build/overview) first if you haven't already.
+
+<Warning>
+  Only [@devcontainers/maintainers](https://github.com/orgs/devcontainers/teams/maintainers) can onboard an image to MCR because it requires access to the Microsoft Container Registry configuration. If you want to contribute your own pre-built image, you can reference it directly in your devcontainer without going through this process.
+</Warning>
+
+## Prerequisites
+
+Before you start, decide on the following:
+
+* The name of your image (used as the directory name under `src/` and as the repository name in MCR)
+* Which base image or parent devcontainer image you will build on
+* Which variants you need, if any (e.g., different OS versions or runtime versions)
+* Which CPU architectures to support (`linux/amd64` only, or also `linux/arm64`)
+
+***
+
+<Steps>
+  <Step title="Update ARG values in your Dockerfile">
+    Before anything else, update any `ARG` values in your `Dockerfile` to reflect the defaults you want built into the image. Use boolean `ARG`s with `if` statements to make optional components skippable:
+
+    ```dockerfile theme={null}
+    ARG INSTALL_ZSH="true"
+    ARG UPGRADE_PACKAGES="false"
+    ```
+
+    <Warning>
+      The `build.args` and `build.dockerfile` properties in `devcontainer.json` are **intentionally ignored** during image build. Only `build.context` is used. Set your actual build defaults directly in the `Dockerfile`.
+    </Warning>
+  </Step>
+
+  <Step title="Create the Dockerfile">
+    Create `src/<your-image-name>/Dockerfile`. This is the file used to build the actual image.
+
+    If you plan to use [variants](/build/manifest#the-build-namespace), add a `VARIANT` build argument before the `FROM` statement:
+
+    ```dockerfile theme={null}
+    ARG VARIANT=3.12
+    FROM python:${VARIANT}
+
+    # Install common dependencies
+    RUN apt-get update \
+        && export DEBIAN_FRONTEND=noninteractive \
+        && apt-get -y install --no-install-recommends git curl \
+        && apt-get autoremove -y \
+        && apt-get clean -y \
+        && rm -rf /var/lib/apt/lists/*
+    ```
+
+    See [Dockerfile tips](/tips) for best practices on layer caching and image size.
+
+    You can also create a stub `Dockerfile` that references the published image, which makes it easy for users to customize their container:
+
+    ```dockerfile theme={null}
+    # For information on the image contents, see the Dockerfile at:
+    # https://github.com/devcontainers/images/tree/main/src/<your-image-name>/Dockerfile
+    ARG VARIANT="3.12"
+    FROM mcr.microsoft.com/devcontainers/<your-image-name>:0-${VARIANT}
+    ```
+  </Step>
+
+  <Step title="Create manifest.json">
+    Create `src/<your-image-name>/manifest.json`. This file tells the build system how to tag and track your image. A minimal example:
+
+    ```json theme={null}
+    {
+      "build": {
+        "rootDistro": "debian",
+        "latest": true,
+        "architectures": ["linux/amd64", "linux/arm64"],
+        "tags": [
+          "my-image:${VERSION}"
+        ]
+      },
+      "dependencies": {
+        "image": "debian:bookworm",
+        "imageLink": "https://hub.docker.com/_/debian",
+        "apt": ["git", "curl"],
+        "other": {
+          "git": {}
+        }
+      }
+    }
+    ```
+
+    For a multi-variant image:
+
+    ```json theme={null}
+    {
+      "variants": ["3.12", "3.11", "3.10"],
+      "build": {
+        "rootDistro": "debian",
+        "latest": "3.12",
+        "architectures": ["linux/amd64", "linux/arm64"],
+        "tags": [
+          "my-image:${VERSION}-${VARIANT}"
+        ]
+      },
+      "dependencies": {
+        "image": "python:${VARIANT}",
+        "imageLink": "https://hub.docker.com/_/python"
+      }
+    }
+    ```
+
+    See the [manifest.json reference](/build/manifest) for all available fields.
+  </Step>
+
+  <Step title="Add a meta.env file">
+    Create an empty `src/<your-image-name>/meta.env` file:
+
+    ```bash theme={null}
+    touch src/<your-image-name>/meta.env
+    ```
+
+    The build system automatically populates this file with the image version, repository, and history file path at build time. This powers the `devcontainer-info` command that is added by `common-debian.sh`.
+
+    Do not add content to this file manually — it is overwritten during every build.
+  </Step>
+
+  <Step title="Set up testing">
+    Create a `test-project/` directory inside your image folder with a `test.sh` script. The smoke test workflows run this script inside the built container to verify correctness.
+
+    ```bash theme={null}
+    mkdir src/<your-image-name>/test-project
+    ```
+
+    A minimal `test.sh`:
+
+    ```bash theme={null}
+    #!/bin/bash
+    set -e
+
+    # Verify key tools are available
+    echo "Testing image..."
+    git --version
+    echo "All tests passed."
+    ```
+
+    Make the script executable:
+
+    ```bash theme={null}
+    chmod +x src/<your-image-name>/test-project/test.sh
+    ```
+
+    See [Testing](/build/testing) for instructions on running the smoke tests locally.
+  </Step>
+
+  <Step title="Test your build locally">
+    Build the image locally without pushing to verify your configuration:
+
+    ```bash theme={null}
+    build/vscdc push --no-push \
+      --registry mcr.microsoft.com \
+      --registry-path devcontainers \
+      --release main \
+      <your-image-name>
+    ```
+
+    Then run the container to verify its contents:
+
+    ```bash theme={null}
+    docker run -it --init --privileged --rm \
+      mcr.microsoft.com/devcontainers/<your-image-name>:dev bash
+    ```
+
+    See [Testing](/build/testing) for the full local test workflow.
+  </Step>
+
+  <Step title="Update MCR configuration (maintainers only)">
+    If you are a maintainer onboarding the image to MCR, update the internal vscode config files as described in the [MCR setup wiki](https://github.com/microsoft/vscode-internalbacklog/wiki/Remote-Container-Images-MCR-Setup).
+  </Step>
+</Steps>
+
+## Image directory structure
+
+After completing these steps, your image directory should look like this:
+
+```text theme={null}
+src/<your-image-name>/
+├── .devcontainer/
+│   ├── devcontainer.json
+│   └── Dockerfile          ← stub Dockerfile for users
+├── Dockerfile              ← used to build the actual image
+├── manifest.json
+├── meta.env
+├── README.md
+└── test-project/
+    └── test.sh
+```
+
+
+# manifest.json reference
+Source: https://www.mintlify.com/devcontainers/images/build/manifest
+
+Complete reference for every field in the manifest.json file that controls how devcontainer images are built, tagged, and tracked.
+
+Every image in `src/<image-name>/` has a `manifest.json` file that tells the build system how to build the image, which tags to apply, and which dependencies to track for component governance and history markdown generation.
+
+The file has two top-level namespaces: [`build`](#the-build-namespace) and [`dependencies`](#the-dependencies-namespace), plus an optional top-level [`version`](#the-version-property) and [`variants`](#the-variants-property) property.
+
+```json theme={null}
+{
+  "version": "1.0.0",
+  "variants": ["3.11", "3.12"],
+  "build": { ... },
+  "dependencies": { ... }
+}
+```
+
+***
+
+## The `build` namespace
+
+The `build` namespace defines how source files map to image tags in the registry.
+
+```json theme={null}
+"build": {
+  "architectures": ["linux/amd64", "linux/arm64"],
+  "rootDistro": "debian",
+  "latest": true,
+  "tags": [
+    "base:${VERSION}-debian-11",
+    "base:${VERSION}-bullseye"
+  ]
+}
+```
+
+<AccordionGroup>
+  <Accordion title="architectures">
+    Specifies which CPU architectures to build. By default only `linux/amd64` is built.
+
+    ```json theme={null}
+    "architectures": ["linux/amd64", "linux/arm64"]
+    ```
+
+    When using variants, you can specify different architectures per variant using an object:
+
+    ```json theme={null}
+    "architectures": {
+      "bullseye": ["linux/amd64", "linux/arm64"],
+      "buster": ["linux/amd64"]
+    }
+    ```
+
+    <Warning>
+      Adding `linux/arm64` does not work well with Debian 10/buster or Ubuntu 20.04/focal due to a `libssl` issue. Test each architecture carefully before adding it.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="rootDistro">
+    The Linux distribution family of the image. Controls how packages are detected for dependency tracking.
+
+    Accepted values: `"debian"`, `"alpine"`, `"redhat"`
+
+    ```json theme={null}
+    "rootDistro": "debian"
+    ```
+
+    <Tip>
+      Use `"debian"` for both Debian and Ubuntu-based images.
+    </Tip>
+  </Accordion>
+
+  <Accordion title="latest">
+    Controls whether the `latest` tag is applied to this image (or variant). Set to `true` to apply `latest`, `false` to skip it, or a variant name string to apply `latest` only to that variant.
+
+    ```json theme={null}
+    "latest": true
+    ```
+
+    With variants:
+
+    ```json theme={null}
+    "latest": "3.12"
+    ```
+  </Accordion>
+
+  <Accordion title="tags">
+    An array of tag patterns applied to every built image (or every variant when variants are defined). The `${VERSION}` placeholder is replaced with the image version at release time. The `${VARIANT}` placeholder is replaced with the current variant.
+
+    ```json theme={null}
+    "tags": [
+      "python:${VERSION}-${VARIANT}"
+    ]
+    ```
+
+    For a release `1.2.3` and variant `3.12`, this produces tags:
+
+    * `python:1.2.3-3.12`
+    * `python:1.2-3.12`
+    * `python:1-3.12`
+    * `python:3.12` (equivalent of latest for that variant)
+  </Accordion>
+
+  <Accordion title="variants">
+    An array of variant values. Each variant triggers a separate image build with `VARIANT` passed as a Docker build argument. The first entry (or the value of `build.latest`) receives the `latest` tag.
+
+    ```json theme={null}
+    "variants": ["3.12", "3.11", "3.10"]
+    ```
+
+    The corresponding Dockerfile uses `VARIANT` in its `FROM` statement:
+
+    ```dockerfile theme={null}
+    ARG VARIANT=3.12
+    FROM python:${VARIANT}
+    ```
+  </Accordion>
+
+  <Accordion title="variantTags">
+    Additional tags applied only to specific variants, supplementing the common `tags` array. Useful when certain variants need alias tags that don't apply to all variants.
+
+    ```json theme={null}
+    "variantTags": {
+      "bullseye": [
+        "base:debian-11",
+        "base:debian11",
+        "base:debian"
+      ],
+      "buster": [
+        "base:debian-10",
+        "base:debian10"
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="variantBuildArgs">
+    Per-variant Docker build arguments to pass in addition to `VARIANT`. Use this when your Dockerfile needs different argument values for each variant.
+
+    ```json theme={null}
+    "variantBuildArgs": {
+      "17-bullseye": {
+        "TARGET_JAVA_VERSION": "17",
+        "BASE_IMAGE_VERSION_CODENAME": "bullseye"
+      },
+      "11-bullseye": {
+        "TARGET_JAVA_VERSION": "11",
+        "BASE_IMAGE_VERSION_CODENAME": "bullseye"
+      }
+    }
+    ```
+
+    The Dockerfile receives these as build args:
+
+    ```dockerfile theme={null}
+    ARG TARGET_JAVA_VERSION=11
+    ARG BASE_IMAGE_VERSION_CODENAME=bullseye
+    FROM openjdk:${TARGET_JAVA_VERSION}-jdk-${BASE_IMAGE_VERSION_CODENAME}
+    ```
+  </Accordion>
+
+  <Accordion title="parent">
+    Specifies the parent image name within this repository when the image is built on top of another devcontainer image (rather than a public base image). The build system uses this to order builds correctly.
+
+    ```json theme={null}
+    "parent": "ruby"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+***
+
+## The `version` property
+
+By default, all images share the repository's version. When you need to version an image independently (for example, because upstream changes may cause breaking changes), set a `version` property at the top level:
+
+```json theme={null}
+"version": "1.3.13"
+```
+
+The version follows [semver](https://semver.org/) and is used in place of the repository version when generating image tags.
+
+***
+
+## The `variants` property
+
+See [`build.variants`](#the-build-namespace) above. The top-level `variants` array is the canonical list of variants to build; `build.latest` selects which one gets the `latest` tag.
+
+***
+
+## The `dependencies` namespace
+
+The `dependencies` namespace tracks what is installed in the image for component governance (`cgmanifest.json`) and version history markdown. It does **not** affect the build itself.
+
+<Warning>
+  Whenever you add a third-party OSS dependency, update `NOTICES.txt` in the repository root with its license terms. Packages installed directly from a Linux distribution's package manager can be skipped (they are covered by the distribution image). Closed-source dependencies are not allowed.
+</Warning>
+
+```json theme={null}
+"dependencies": {
+  "image": "debian:${VARIANT}",
+  "imageLink": "https://hub.docker.com/_/debian",
+  "apt": ["apt-utils", "git"],
+  "pip": ["requests"],
+  "gem": ["jekyll"],
+  "git": {
+    "Oh My Zsh!": "/home/vscode/.oh-my-zsh"
+  },
+  "other": {
+    "kubectl": null
+  },
+  "languages": {
+    "Python": { "cgIgnore": true, "path": "/usr/local" }
+  }
+}
+```
+
+<AccordionGroup>
+  <Accordion title="image and imageLink">
+    `image` is the base Docker image. `imageLink` is a URL to its description or registry page.
+
+    ```json theme={null}
+    "image": "continuumio/anaconda3:latest",
+    "imageLink": "https://hub.docker.com/r/continuumio/anaconda3"
+    ```
+  </Accordion>
+
+  <Accordion title="apt and apk">
+    Arrays of Debian/Ubuntu (`apt`) or Alpine (`apk`) package names. Most packages are tracked for visibility only and are not included in `cgmanifest.json` (they come from the distribution). For third-party repository packages, use object syntax to set `"cgIgnore": false`:
+
+    ```json theme={null}
+    "apt": [
+      {
+        "cgIgnore": false,
+        "name": "azure-cli",
+        "annotation": "Azure CLI"
+      },
+      "cmake",
+      "cppcheck"
+    ]
+    ```
+
+    Version information is extracted automatically.
+  </Accordion>
+
+  <Accordion title="git">
+    Dependencies installed via shallow `git clone`. Maps a human-readable name to the path where the clone lives in the image:
+
+    ```json theme={null}
+    "git": {
+      "Oh My Zsh!": "/home/vscode/.oh-my-zsh",
+      "nvm": "/usr/local/share/nvm"
+    }
+    ```
+
+    The commit ID is extracted automatically.
+  </Accordion>
+
+  <Accordion title="pip and pipx">
+    Python packages installed via `pip` or `pipx`:
+
+    ```json theme={null}
+    "pip": ["requests", "numpy", "certifi"],
+    "pipx": ["pylint", "virtualenv"]
+    ```
+  </Accordion>
+
+  <Accordion title="gem and npm">
+    Ruby gems and globally installed npm packages:
+
+    ```json theme={null}
+    "gem": ["rake", "jekyll", "bundler"],
+    "npm": ["eslint", "typescript"]
+    ```
+  </Accordion>
+
+  <Accordion title="go and cargo">
+    Go modules and Rust cargo packages. Both accept an object mapping the package name to a version command. Use `null` to auto-detect the version:
+
+    ```json theme={null}
+    "cargo": {
+      "rustfmt": null,
+      "clippy": "rustc --version"
+    },
+    "go": {
+      "golang.org/x/tools/gopls": null
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="other">
+    Handles dependency types not covered by the other properties. Maps a dependency name to a `versionCommand`, `path`, and `downloadUrl`. Use `cgIgnore` to exclude from governance tracking and `markdownIgnore` to exclude from history markdown:
+
+    ```json theme={null}
+    "other": {
+      "kubectl": {
+        "versionCommand": "kubectl version --client --output=json | jq -r '.clientVersion.gitVersion'",
+        "path": "/usr/local/bin",
+        "downloadUrl": "https://github.com/kubernetes/kubectl"
+      }
+    }
+    ```
+
+    Many common tools have default settings in `build/config.json` under `otherDependencyDefaultSettings`. For those, you only need to specify the name and any overrides:
+
+    ```json theme={null}
+    "other": {
+      "kubectl": null,
+      "Helm": null,
+      "git": { "path": "/usr/local" }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="languages">
+    Elevates dependencies into the "Languages" section of history markdown files. Accepts a `versionCommand` that can return a newline-delimited list of versions when `cgIgnore` is `true`:
+
+    ```json theme={null}
+    "languages": {
+      "Python": {
+        "cgIgnore": true,
+        "path": "/opt/conda"
+      },
+      "Ruby": {
+        "cgIgnore": true,
+        "versionCommand": "ls /opt/ruby | grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+'",
+        "path": "/opt/ruby/<version>"
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+
+# Build system overview
+Source: https://www.mintlify.com/devcontainers/images/build/overview
+
+An overview of the build CLI, GitHub Actions workflows, and dev-tagged images used to build and publish devcontainer images to MCR.
+
+The `build/` directory contains the tools and configuration that build, tag, and push devcontainer images to the Microsoft Container Registry (MCR). This page describes the main components contributors interact with.
+
+<Info>
+  Only [@devcontainers/maintainers](https://github.com/orgs/devcontainers/teams/maintainers) can onboard new images to MCR because it requires access to the registry configuration. If you want to contribute a new image, see [Adding an image](/build/adding-an-image).
+</Info>
+
+## The vscdc CLI
+
+The `build/vscdc` CLI is a Node.js tool that automates image building, pushing, and metadata generation. It has three primary commands:
+
+<AccordionGroup>
+  <Accordion title="push — build and push images">
+    Builds one or more images and pushes them to a container registry. Pass `--no-push` to build locally without pushing.
+
+    ```bash theme={null}
+    build/vscdc push --help
+    ```
+
+    Common usage for local testing:
+
+    ```bash theme={null}
+    build/vscdc push --no-push --registry mcr.microsoft.com --registry-path devcontainers --release main <image-name>
+    ```
+  </Accordion>
+
+  <Accordion title="cg — generate cgmanifest.json">
+    Generates the component governance manifest (`cgmanifest.json`) by inspecting the installed packages defined in each image's `manifest.json`. This feeds into Microsoft's component governance tracking.
+
+    ```bash theme={null}
+    build/vscdc cg --registry mcr.microsoft.com --registry-path devcontainers --release main <image-name>
+    ```
+  </Accordion>
+
+  <Accordion title="info — generate history markdown">
+    Generates the version history markdown files for one or more images. These appear in each image's `history/` directory.
+
+    ```bash theme={null}
+    build/vscdc info --build --markdown --overwrite --registry mcr.microsoft.com --registry-path devcontainers --release main <image-name>
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## GitHub Actions workflows
+
+The repository uses several GitHub Actions workflows that call the `vscdc` CLI:
+
+| Workflow              | Trigger                  | Purpose                                                                                                                                                                               |
+| --------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `push-dev.yml`        | Weekly (Monday) + manual | Builds and pushes `dev`-tagged images for all images in the repository. Also fires a repository dispatch to trigger `cgmanifest.json` generation.                                     |
+| `push.yml`            | Release tag (`vX.Y.Z`)   | Builds and pushes release-versioned images. Updates source files with SHA hashes for script sources. Run `git fetch --tags --force` locally after it completes.                       |
+| `push-again.yml`      | Manual                   | Re-pushes an updated version of an image for an existing release. Use this only when a push partially failed (e.g. `linux/amd64` succeeded but `linux/arm64` had a connection error). |
+| `smoke-*.yaml`        | PR / push                | Builds images without pushing and runs `test-project/test.sh` inside the container to catch breaking changes. Uses the `smoke-test` action.                                           |
+| `version-history.yml` | `workflow_dispatch`      | Generates `cgmanifest.json` and history markdown files on demand.                                                                                                                     |
+
+## Dev-tagged images
+
+In addition to versioned release tags, the build system publishes **dev-tagged** image variants from the `main` branch. These give you early access to changes before they are officially released.
+
+### Purpose
+
+Dev images include:
+
+* Upstream OS package updates
+* New language runtime versions
+* Repository improvements not yet in a release
+
+### Tagging pattern
+
+Dev tags follow this pattern:
+
+```text theme={null}
+mcr.microsoft.com/devcontainers/<image>:dev
+mcr.microsoft.com/devcontainers/<image>:dev-<version>
+mcr.microsoft.com/devcontainers/<image>:dev-<distro>
+mcr.microsoft.com/devcontainers/<image>:dev-<version>-<distro>
+```
+
+### Update frequency
+
+The `push-dev.yml` workflow runs every Monday, keeping dev images current with the `main` branch.
+
+### When to use dev images
+
+<Tabs>
+  <Tab title="Good uses">
+    * Testing unreleased features before committing to them
+    * Validating that upcoming changes work with your project
+    * Development environments where you want the latest updates
+  </Tab>
+
+  <Tab title="Avoid for">
+    * Production workloads
+    * Reproducible CI/CD pipelines
+    * Stable team development environments
+  </Tab>
+</Tabs>
+
+**Example — switching from dev to stable:**
+
+```dockerfile theme={null}
+# Preview/testing
+FROM mcr.microsoft.com/devcontainers/python:dev-3.13
+
+# Stable/production
+FROM mcr.microsoft.com/devcontainers/python:3-3.13
+```
+
+## Related pages
+
+<CardGroup>
+  <Card title="manifest.json reference" icon="file-json" href="/build/manifest">
+    Full reference for every property in the `manifest.json` file.
+  </Card>
+
+  <Card title="Versioning" icon="tag" href="/build/versioning">
+    How image versions and tags are managed across releases.
+  </Card>
+
+  <Card title="Adding an image" icon="plus" href="/build/adding-an-image">
+    Step-by-step guide to contributing a new image.
+  </Card>
+
+  <Card title="Testing" icon="flask-conical" href="/build/testing">
+    How to build and test images locally before opening a PR.
+  </Card>
+</CardGroup>
+
+
+# Testing
+Source: https://www.mintlify.com/devcontainers/images/build/testing
+
+How to build and test devcontainer images locally using the vscdc CLI, Docker, and ARM64-specific build instructions.
+
+Before opening a pull request, test your image locally to confirm the build configuration is correct and the container works as expected. This page covers the full local test workflow.
+
+## Prerequisites
+
+* Docker installed and running on your machine
+* Node.js available (for the `vscdc` CLI)
+* The repository cloned locally
+
+## Building an image locally
+
+Use the `vscdc push` command with `--no-push` to build an image without pushing it to any registry:
+
+```bash theme={null}
+build/vscdc push --no-push \
+  --registry mcr.microsoft.com \
+  --registry-path devcontainers \
+  --release main \
+  <your-image-name>
+```
+
+Replace `<your-image-name>` with the name of the folder under `src/`. For example, to test the `python` image:
+
+```bash theme={null}
+build/vscdc push --no-push \
+  --registry mcr.microsoft.com \
+  --registry-path devcontainers \
+  --release main \
+  python
+```
+
+This builds all variants defined in the image's `manifest.json` and tags them locally using the `dev` tag pattern.
+
+## Verifying the built image
+
+After building, run the image with Docker to verify it has the expected contents:
+
+```bash theme={null}
+docker run -it --init --privileged --rm \
+  mcr.microsoft.com/devcontainers/<expected-repository>:dev-<expected-tag> \
+  bash
+```
+
+For example:
+
+```bash theme={null}
+docker run -it --init --privileged --rm \
+  mcr.microsoft.com/devcontainers/python:dev-3.12 \
+  bash
+```
+
+Inside the container, you can verify tools, check versions, and run any manual tests.
+
+## Running the test script
+
+If your image has a `test-project/test.sh` script, run it inside the container:
+
+```bash theme={null}
+docker run -it --init --privileged --rm \
+  -v "$(pwd)/src/<your-image-name>/test-project:/workspace" \
+  mcr.microsoft.com/devcontainers/<your-image-name>:dev \
+  bash /workspace/test.sh
+```
+
+The smoke test workflows run this script automatically on every PR.
+
+## Testing manifest generation
+
+Verify that the `cgmanifest.json` generation works correctly for your image:
+
+```bash theme={null}
+build/vscdc cg \
+  --registry mcr.microsoft.com \
+  --registry-path devcontainers \
+  --release main \
+  <your-image-name>
+```
+
+Review the output to confirm all dependencies are tracked as expected.
+
+## Testing history markdown generation
+
+Verify that the version history markdown generates without errors:
+
+```bash theme={null}
+build/vscdc info \
+  --build \
+  --markdown \
+  --overwrite \
+  --registry mcr.microsoft.com \
+  --registry-path devcontainers \
+  --release main \
+  <your-image-name>
+```
+
+Check the generated file in `src/<your-image-name>/history/` to confirm the dependency list looks correct.
+
+## Full local test workflow
+
+<Steps>
+  <Step title="Build the image locally">
+    ```bash theme={null}
+    build/vscdc push --no-push \
+      --registry mcr.microsoft.com \
+      --registry-path devcontainers \
+      --release main \
+      <your-image-name>
+    ```
+  </Step>
+
+  <Step title="Run the container and verify contents">
+    ```bash theme={null}
+    docker run -it --init --privileged --rm \
+      mcr.microsoft.com/devcontainers/<your-image-name>:dev \
+      bash
+    ```
+  </Step>
+
+  <Step title="Run the test script">
+    ```bash theme={null}
+    docker run -it --init --privileged --rm \
+      -v "$(pwd)/src/<your-image-name>/test-project:/workspace" \
+      mcr.microsoft.com/devcontainers/<your-image-name>:dev \
+      bash /workspace/test.sh
+    ```
+  </Step>
+
+  <Step title="Test manifest generation">
+    ```bash theme={null}
+    build/vscdc cg \
+      --registry mcr.microsoft.com \
+      --registry-path devcontainers \
+      --release main \
+      <your-image-name>
+    ```
+  </Step>
+
+  <Step title="Test history markdown generation">
+    ```bash theme={null}
+    build/vscdc info \
+      --build --markdown --overwrite \
+      --registry mcr.microsoft.com \
+      --registry-path devcontainers \
+      --release main \
+      <your-image-name>
+    ```
+  </Step>
+</Steps>
+
+## ARM64 builds and tests
+
+To build and test against ARM64 (`linux/arm64`) specifically, use the `devcontainer` CLI directly.
+
+### Building for ARM64
+
+Run the build command from inside the image's source directory, specifying the `--platform` flag:
+
+```bash theme={null}
+devcontainer build \
+  --workspace-folder src/<your-image-name> \
+  --platform linux/arm64 \
+  -t <your-image-name>-arm64
+```
+
+### Running the ARM64 container
+
+```bash theme={null}
+docker run \
+  --platform linux/arm64 \
+  -it <your-image-name>-arm64 \
+  bash
+```
+
+### Verifying the architecture
+
+Inside the running container, confirm it is ARM64:
+
+```bash theme={null}
+uname -m
+```
+
+On ARM64/Linux, this returns `aarch64`.
+
+### Running tests on ARM64
+
+Attach to the running container and run the test script:
+
+```bash theme={null}
+/workspace/test-project/test.sh
+```
+
+<Info>
+  See the [ARM documentation](https://developer.arm.com/documentation/102475/0100/Multi-architecture-images) for more on building multi-architecture images, and the [list of supported Linux ARM64 .NET SDK images](https://hub.docker.com/_/microsoft-dotnet-sdk) for .NET-specific guidance.
+</Info>
+
+
+# Versioning
+Source: https://www.mintlify.com/devcontainers/images/build/versioning
+
+How devcontainer images are versioned, how repository versions map to image tags, and the difference between dev and release tags.
+
+Understanding how images are versioned helps you choose the right tag for your project and know when your image will receive updates.
+
+## Repository version and image tags
+
+By default, every image in this repository inherits the repository's version number. When a release is cut by pushing a tag like `v1.3.0`, the build system applies a set of tags to each published image based on that version.
+
+For example, a release at version `0.40.0` produces the following tags for an image:
+
+```text theme={null}
+0.40.0-bullseye
+0.40-bullseye
+0-bullseye
+bullseye          ← equivalent of "latest" for bullseye specifically
+```
+
+If this image is also the one designated `latest`, it additionally receives:
+
+```text theme={null}
+latest
+```
+
+This scheme gives you three levels of version pinning:
+
+| Tag pattern           | Update behavior                                             |
+| --------------------- | ----------------------------------------------------------- |
+| `0.40.0-bullseye`     | Never updates automatically. Exact version only.            |
+| `0.40-bullseye`       | Receives patch-level fix releases within `0.40.x`.          |
+| `0-bullseye`          | Receives all non-breaking updates within major version `0`. |
+| `bullseye` / `latest` | Always points to the latest published release.              |
+
+<Tip>
+  Referencing the major version (e.g., `0-bullseye`) is a good balance: you get bug fixes and security patches without risking breaking changes from a major version bump.
+</Tip>
+
+## The `version` property for independent versioning
+
+In most cases it makes sense to version an image with the repository. However, some images — like `universal` — receive upstream changes that could introduce breaking changes independently of a repo release. For these images, the `manifest.json` file sets a `version` property:
+
+```json theme={null}
+"version": "1.3.13"
+```
+
+When this property is present, the build system uses it instead of the repository version when generating image tags. This lets an image have its own semver lifecycle separate from the rest of the repository.
+
+## Semver tagging explained
+
+The version number in image tags follows [Semantic Versioning](https://semver.org/):
+
+* **MAJOR** — incompatible changes to the image's default configuration or included tools
+* **MINOR** — new features, additional tools, or new variants added in a backwards-compatible way
+* **PATCH** — bug fixes, security patches, OS package updates
+
+When a release is tagged in the repository (e.g., `v1.3.0`), the pipeline generates all three tag levels automatically. You never need to set MAJOR, MINOR, or PATCH tags manually.
+
+## Dev vs release tags
+
+Every image has two tag families: **release** tags and **dev** tags.
+
+<Tabs>
+  <Tab title="Release tags">
+    Release tags are created when a `vX.Y.Z` git tag is pushed. They are stable, immutable references to a specific build.
+
+    ```text theme={null}
+    mcr.microsoft.com/devcontainers/python:3-3.12
+    mcr.microsoft.com/devcontainers/python:1.2-3.12
+    mcr.microsoft.com/devcontainers/python:1.2.3-3.12
+    ```
+
+    Use release tags for production workloads and reproducible CI/CD pipelines.
+  </Tab>
+
+  <Tab title="Dev tags">
+    Dev tags are generated weekly from the `main` branch by the `push-dev.yml` workflow. They are mutable and update every Monday.
+
+    ```text theme={null}
+    mcr.microsoft.com/devcontainers/python:dev
+    mcr.microsoft.com/devcontainers/python:dev-3.12
+    mcr.microsoft.com/devcontainers/python:dev-3.12-bookworm
+    ```
+
+    Use dev tags for testing unreleased changes or previewing upcoming features.
+  </Tab>
+</Tabs>
+
+## Updating source files after a release
+
+The `push.yml` workflow updates source files with SHA hashes for script sources as part of the release process. After it completes, run the following locally to pull the updated tags:
+
+```bash theme={null}
+git fetch --tags --force
+```
+
+Without `--force`, git may refuse to update existing tags that have moved.
+
+
+# Choosing an image
+Source: https://www.mintlify.com/devcontainers/images/choosing-an-image
+
+Compare base, language, and universal images to find the right one for your project.
+
+The images in this repository fall into three categories: base images, language images, and the universal image. This page explains the differences and helps you pick the right starting point.
+
+## Decision guide
+
+* **Starting a new project with a single primary language** → use the matching language image (e.g., `python`, `go`, `javascript-node`).
+* **Working in a repository with multiple languages** or **using GitHub Codespaces without a `devcontainer.json`** → use the `universal` image.
+* **Building a custom image from scratch** or **need a minimal footprint** → use a base image (`base-ubuntu`, `base-debian`, or `base-alpine`).
+* **Data science with Conda** → use `anaconda` or `miniconda`.
+* **Building a Jekyll static site** → use `jekyll`.
+
+## Base images
+
+Base images provide a minimal starting point: `git`, `zsh` with Oh My Zsh!, a non-root `vscode` user with `sudo` access, and common system dependencies. They do not include a language runtime. Use them as a `FROM` in your own Dockerfile or when you want to layer everything yourself using Dev Container Features.
+
+<Tabs>
+  <Tab title="Ubuntu">
+    | Property      | Value                                         |
+    | ------------- | --------------------------------------------- |
+    | MCR path      | `mcr.microsoft.com/devcontainers/base:ubuntu` |
+    | OS            | Ubuntu                                        |
+    | Architectures | x86-64, arm64                                 |
+
+    **Available tags:**
+
+    ```
+    mcr.microsoft.com/devcontainers/base:ubuntu          # latest LTS
+    mcr.microsoft.com/devcontainers/base:ubuntu24.04     # Ubuntu 24.04 (Noble)
+    mcr.microsoft.com/devcontainers/base:noble           # Ubuntu 24.04 alias
+    mcr.microsoft.com/devcontainers/base:ubuntu22.04     # Ubuntu 22.04 (Jammy)
+    mcr.microsoft.com/devcontainers/base:jammy           # Ubuntu 22.04 alias
+    ```
+
+    With semver pinning:
+
+    ```
+    mcr.microsoft.com/devcontainers/base:2-jammy
+    mcr.microsoft.com/devcontainers/base:2.1-jammy
+    mcr.microsoft.com/devcontainers/base:2.1.7-jammy
+    ```
+  </Tab>
+
+  <Tab title="Debian">
+    | Property      | Value                                         |
+    | ------------- | --------------------------------------------- |
+    | MCR path      | `mcr.microsoft.com/devcontainers/base:debian` |
+    | OS            | Debian                                        |
+    | Architectures | x86-64, arm64                                 |
+
+    **Available tags:**
+
+    ```
+    mcr.microsoft.com/devcontainers/base:debian          # latest
+    mcr.microsoft.com/devcontainers/base:trixie          # Debian 13
+    mcr.microsoft.com/devcontainers/base:bookworm        # Debian 12
+    mcr.microsoft.com/devcontainers/base:bullseye        # Debian 11
+    ```
+
+    With semver pinning:
+
+    ```
+    mcr.microsoft.com/devcontainers/base:2-trixie
+    mcr.microsoft.com/devcontainers/base:2.1-trixie
+    mcr.microsoft.com/devcontainers/base:2.1.7-trixie
+    ```
+  </Tab>
+
+  <Tab title="Alpine">
+    | Property      | Value                                         |
+    | ------------- | --------------------------------------------- |
+    | MCR path      | `mcr.microsoft.com/devcontainers/base:alpine` |
+    | OS            | Alpine Linux                                  |
+    | Architectures | x86-64, arm64                                 |
+
+    **Available tags:**
+
+    ```
+    mcr.microsoft.com/devcontainers/base:alpine          # latest
+    mcr.microsoft.com/devcontainers/base:alpine-3.23
+    mcr.microsoft.com/devcontainers/base:alpine-3.22
+    mcr.microsoft.com/devcontainers/base:alpine-3.21
+    mcr.microsoft.com/devcontainers/base:alpine-3.20
+    ```
+
+    With semver pinning:
+
+    ```
+    mcr.microsoft.com/devcontainers/base:3-alpine
+    mcr.microsoft.com/devcontainers/base:3.0-alpine
+    mcr.microsoft.com/devcontainers/base:3.0.3-alpine
+    ```
+
+    <Note>
+      Alpine images are smaller but use `musl libc` instead of `glibc`. Some language toolchains and native extensions behave differently or are unavailable on Alpine. Prefer Debian or Ubuntu unless you have a specific reason to use Alpine.
+    </Note>
+  </Tab>
+</Tabs>
+
+## Language images
+
+Language images extend the base images with a specific runtime, language tools, and commonly used utilities. Most also include `nvm` so you can install a different version of Node.js alongside the primary language.
+
+<AccordionGroup>
+  <Accordion title="Universal">
+    The universal image is the largest image in this set. It includes Python, Node.js, JavaScript, TypeScript, C++, Java, C#, F#, .NET Core, PHP, Go, Ruby, and Conda. Use it when your project uses more than one language, or when you want a general-purpose sandbox.
+
+    GitHub Codespaces uses this image by default when no `devcontainer.json` is present.
+
+    | Property      | Value                                             |
+    | ------------- | ------------------------------------------------- |
+    | MCR path      | `mcr.microsoft.com/devcontainers/universal:linux` |
+    | OS            | Ubuntu (Noble)                                    |
+    | Architectures | x86-64 only                                       |
+
+    ```
+    mcr.microsoft.com/devcontainers/universal:linux
+    mcr.microsoft.com/devcontainers/universal:noble
+    ```
+
+    With semver pinning:
+
+    ```
+    mcr.microsoft.com/devcontainers/universal:6-noble
+    mcr.microsoft.com/devcontainers/universal:6.0-noble
+    mcr.microsoft.com/devcontainers/universal:6.0.0-noble
+    ```
+
+    <Warning>
+      The universal image is only published for x86-64. If you develop on Apple Silicon (arm64), use a language-specific image instead.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="Python">
+    | Property      | Value                                    |
+    | ------------- | ---------------------------------------- |
+    | MCR path      | `mcr.microsoft.com/devcontainers/python` |
+    | OS            | Debian                                   |
+    | Architectures | x86-64, arm64 (`bookworm`, `bullseye`)   |
+    | Includes      | Python 3, pip, pipx, git, zsh, nvm       |
+
+    ```
+    mcr.microsoft.com/devcontainers/python:3          # latest Python 3
+    mcr.microsoft.com/devcontainers/python:3.13
+    mcr.microsoft.com/devcontainers/python:3.13-bookworm
+    mcr.microsoft.com/devcontainers/python:3.13-trixie
+    ```
+  </Accordion>
+
+  <Accordion title="Node.js / JavaScript">
+    | Property      | Value                                             |
+    | ------------- | ------------------------------------------------- |
+    | MCR path      | `mcr.microsoft.com/devcontainers/javascript-node` |
+    | OS            | Debian                                            |
+    | Architectures | x86-64, arm64 (`bookworm`, `bullseye`)            |
+    | Includes      | Node.js, nvm, eslint, yarn, git, zsh              |
+
+    ```
+    mcr.microsoft.com/devcontainers/javascript-node:24
+    mcr.microsoft.com/devcontainers/javascript-node:22
+    mcr.microsoft.com/devcontainers/javascript-node:20
+    mcr.microsoft.com/devcontainers/javascript-node:24-bookworm
+    mcr.microsoft.com/devcontainers/javascript-node:24-trixie
+    ```
+  </Accordion>
+
+  <Accordion title="TypeScript / Node.js">
+    | Property      | Value                                                                    |
+    | ------------- | ------------------------------------------------------------------------ |
+    | MCR path      | `mcr.microsoft.com/devcontainers/typescript-node`                        |
+    | OS            | Debian                                                                   |
+    | Architectures | x86-64, arm64 (`bookworm`, `bullseye`)                                   |
+    | Includes      | Node.js, TypeScript compiler, eslint, nvm, yarn, tslint-to-eslint-config |
+
+    ```
+    mcr.microsoft.com/devcontainers/typescript-node:24
+    mcr.microsoft.com/devcontainers/typescript-node:22
+    mcr.microsoft.com/devcontainers/typescript-node:20
+    mcr.microsoft.com/devcontainers/typescript-node:24-bookworm
+    mcr.microsoft.com/devcontainers/typescript-node:24-trixie
+    ```
+  </Accordion>
+
+  <Accordion title="Go">
+    | Property      | Value                                |
+    | ------------- | ------------------------------------ |
+    | MCR path      | `mcr.microsoft.com/devcontainers/go` |
+    | OS            | Debian                               |
+    | Architectures | x86-64, arm64 (`trixie`, `bookworm`) |
+    | Includes      | Go, git, zsh                         |
+
+    ```
+    mcr.microsoft.com/devcontainers/go:1
+    mcr.microsoft.com/devcontainers/go:1.26
+    mcr.microsoft.com/devcontainers/go:1.25
+    mcr.microsoft.com/devcontainers/go:1.26-trixie
+    mcr.microsoft.com/devcontainers/go:1.26-bookworm
+    ```
+  </Accordion>
+
+  <Accordion title="Java">
+    | Property      | Value                                  |
+    | ------------- | -------------------------------------- |
+    | MCR path      | `mcr.microsoft.com/devcontainers/java` |
+    | OS            | Debian                                 |
+    | Architectures | x86-64, arm64 (`bookworm`, `bullseye`) |
+    | Includes      | JDK, SDKMAN!, nvm, git, zsh            |
+
+    ```
+    mcr.microsoft.com/devcontainers/java:25
+    mcr.microsoft.com/devcontainers/java:21
+    mcr.microsoft.com/devcontainers/java:17
+    mcr.microsoft.com/devcontainers/java:11
+    mcr.microsoft.com/devcontainers/java:21-bookworm
+    mcr.microsoft.com/devcontainers/java:21-trixie
+    ```
+
+    Use the [Java Feature](https://github.com/devcontainers/features/tree/main/src/java) to add Maven or Gradle.
+  </Accordion>
+
+  <Accordion title=".NET (C# / F#)">
+    | Property      | Value                                                        |
+    | ------------- | ------------------------------------------------------------ |
+    | MCR path      | `mcr.microsoft.com/devcontainers/dotnet`                     |
+    | OS            | Ubuntu (`noble`, `jammy`) or Debian (`bookworm`, `bullseye`) |
+    | Architectures | x86-64, arm64                                                |
+    | Includes      | .NET SDK, git, zsh, nvm                                      |
+
+    ```
+    mcr.microsoft.com/devcontainers/dotnet:10.0
+    mcr.microsoft.com/devcontainers/dotnet:9.0
+    mcr.microsoft.com/devcontainers/dotnet:8.0
+    mcr.microsoft.com/devcontainers/dotnet:10.0-noble
+    mcr.microsoft.com/devcontainers/dotnet:9.0-bookworm
+    mcr.microsoft.com/devcontainers/dotnet:8.0-jammy
+    ```
+  </Accordion>
+
+  <Accordion title="C++">
+    | Property      | Value                                 |
+    | ------------- | ------------------------------------- |
+    | MCR path      | `mcr.microsoft.com/devcontainers/cpp` |
+    | OS            | Debian or Ubuntu                      |
+    | Architectures | x86-64, arm64                         |
+    | Includes      | GCC, Clang, CMake, Vcpkg, git, zsh    |
+
+    ```
+    mcr.microsoft.com/devcontainers/cpp:debian13
+    mcr.microsoft.com/devcontainers/cpp:debian12
+    mcr.microsoft.com/devcontainers/cpp:ubuntu24.04
+    mcr.microsoft.com/devcontainers/cpp:ubuntu22.04
+    ```
+  </Accordion>
+
+  <Accordion title="PHP">
+    | Property      | Value                                 |
+    | ------------- | ------------------------------------- |
+    | MCR path      | `mcr.microsoft.com/devcontainers/php` |
+    | OS            | Debian                                |
+    | Architectures | x86-64, arm64 (`trixie`, `bookworm`)  |
+    | Includes      | PHP, Apache, Composer, nvm, git, zsh  |
+
+    ```
+    mcr.microsoft.com/devcontainers/php:8
+    mcr.microsoft.com/devcontainers/php:8.5
+    mcr.microsoft.com/devcontainers/php:8.4
+    mcr.microsoft.com/devcontainers/php:8.3
+    mcr.microsoft.com/devcontainers/php:8.4-trixie
+    mcr.microsoft.com/devcontainers/php:8.4-bookworm
+    ```
+  </Accordion>
+
+  <Accordion title="Ruby">
+    | Property      | Value                                            |
+    | ------------- | ------------------------------------------------ |
+    | MCR path      | `mcr.microsoft.com/devcontainers/ruby`           |
+    | OS            | Debian                                           |
+    | Architectures | x86-64, arm64 (`trixie`, `bookworm`, `bullseye`) |
+    | Includes      | Ruby, rvm, rbenv, bundler, nvm, git, zsh         |
+
+    ```
+    mcr.microsoft.com/devcontainers/ruby:4
+    mcr.microsoft.com/devcontainers/ruby:3.4
+    mcr.microsoft.com/devcontainers/ruby:3.3
+    mcr.microsoft.com/devcontainers/ruby:3.2
+    mcr.microsoft.com/devcontainers/ruby:3.4-trixie
+    mcr.microsoft.com/devcontainers/ruby:3.4-bookworm
+    ```
+  </Accordion>
+
+  <Accordion title="Rust">
+    | Property      | Value                                            |
+    | ------------- | ------------------------------------------------ |
+    | MCR path      | `mcr.microsoft.com/devcontainers/rust`           |
+    | OS            | Debian                                           |
+    | Architectures | x86-64, arm64 (`bookworm`, `bullseye`, `trixie`) |
+    | Includes      | Rust toolchain, cargo, rustfmt, clippy, git, zsh |
+
+    ```
+    mcr.microsoft.com/devcontainers/rust:latest
+    mcr.microsoft.com/devcontainers/rust:1
+    mcr.microsoft.com/devcontainers/rust:1-trixie
+    mcr.microsoft.com/devcontainers/rust:1-bookworm
+    mcr.microsoft.com/devcontainers/rust:1-bullseye
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Specialized images
+
+<AccordionGroup>
+  <Accordion title="Anaconda">
+    | Property      | Value                                      |
+    | ------------- | ------------------------------------------ |
+    | MCR path      | `mcr.microsoft.com/devcontainers/anaconda` |
+    | OS            | Debian                                     |
+    | Architectures | x86-64, arm64                              |
+    | Includes      | Anaconda Python 3, conda, pipx, git, zsh   |
+
+    ```
+    mcr.microsoft.com/devcontainers/anaconda
+    mcr.microsoft.com/devcontainers/anaconda:3
+    ```
+
+    The image automatically installs dependencies from `environment.yml` in your project root at build time. Use it for data science and machine learning workflows that rely on Conda-managed packages.
+
+    <Note>
+      Access to the Anaconda repository is governed by the [Anaconda Terms of Service](https://aka.ms/vscode-remote/conda/terms). When used with GitHub Codespaces or GitHub Actions, all users are permitted to use the Anaconda Repository — including organizations that would otherwise require a commercial license.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Miniconda">
+    | Property      | Value                                       |
+    | ------------- | ------------------------------------------- |
+    | MCR path      | `mcr.microsoft.com/devcontainers/miniconda` |
+    | OS            | Debian                                      |
+    | Architectures | x86-64 only                                 |
+    | Includes      | Miniconda Python 3, conda, pipx, git, zsh   |
+
+    ```
+    mcr.microsoft.com/devcontainers/miniconda
+    mcr.microsoft.com/devcontainers/miniconda:3
+    ```
+
+    Miniconda is a minimal Conda installer. Unlike the Anaconda image, it does not include the full Anaconda package suite — you install only what you need. Use it when you want Conda environment management without the full Anaconda footprint.
+  </Accordion>
+
+  <Accordion title="Jekyll">
+    | Property      | Value                                    |
+    | ------------- | ---------------------------------------- |
+    | MCR path      | `mcr.microsoft.com/devcontainers/jekyll` |
+    | OS            | Debian                                   |
+    | Architectures | x86-64, arm64 (`bookworm`, `bullseye`)   |
+    | Includes      | Ruby, Bundler, Jekyll, nvm, git, zsh     |
+
+    ```
+    mcr.microsoft.com/devcontainers/jekyll
+    mcr.microsoft.com/devcontainers/jekyll:bookworm
+    mcr.microsoft.com/devcontainers/jekyll:bullseye
+    ```
+
+    If your project contains a `Gemfile`, the container installs all gems automatically at startup using `bundle install`. Without a `Gemfile`, it installs the latest version of Jekyll.
+  </Accordion>
+</AccordionGroup>
+
+## OS variant tags
+
+Most language images support pinning to a specific Debian or Ubuntu release. Append the release codename to any version tag:
+
+| Suffix      | OS           | Notes                  |
+| ----------- | ------------ | ---------------------- |
+| `-trixie`   | Debian 13    | Newest Debian release  |
+| `-bookworm` | Debian 12    | Current Debian stable  |
+| `-bullseye` | Debian 11    | Previous Debian stable |
+| `-noble`    | Ubuntu 24.04 | Current Ubuntu LTS     |
+| `-jammy`    | Ubuntu 22.04 | Previous Ubuntu LTS    |
+
+For example:
+
+```
+mcr.microsoft.com/devcontainers/python:3.13-bookworm
+mcr.microsoft.com/devcontainers/dotnet:9.0-noble
+mcr.microsoft.com/devcontainers/go:1.26-trixie
+```
+
+<Tip>
+  Pin to an OS variant when you need reproducible system package versions, or when a specific OS is required by your deployment target.
+</Tip>
+
+## Universal vs. language-specific
+
+|                    | Universal                                    | Language-specific        |
+| ------------------ | -------------------------------------------- | ------------------------ |
+| Languages included | Python, Node, Go, Java, .NET, PHP, Ruby, C++ | One primary language     |
+| Image size         | Large (\~10 GB compressed)                   | Smaller                  |
+| arm64 support      | No                                           | Yes (most images)        |
+| Best for           | Multi-language repos, Codespaces defaults    | Single-language projects |
+| Startup time       | Slower (larger image)                        | Faster                   |
+
+If your project is primarily one language but occasionally needs another, use the language-specific image and add the other language as a [Dev Container Feature](https://containers.dev/features) rather than using the universal image.
+
+
+# Anaconda (Python 3)
+Source: https://www.mintlify.com/devcontainers/images/images/anaconda
+
+A dev container image for developing Anaconda and Python 3 applications, with conda package management and Jupyter support.
+
+The Anaconda image gives you a full Anaconda 3 environment on Debian with the `conda` package manager, Python 3, Jupyter Notebook, and Jupyter Lab pre-installed. It installs dependencies from your `environment.yml` automatically at build time.
+
+## Image metadata
+
+| Property          | Value                                        |
+| ----------------- | -------------------------------------------- |
+| Published image   | `mcr.microsoft.com/devcontainers/anaconda:3` |
+| Architectures     | x86-64, aarch64/arm64                        |
+| Container OS      | Debian                                       |
+| Container host OS | Linux, macOS, Windows                        |
+
+## Using this image
+
+Reference the image in your `.devcontainer/devcontainer.json`:
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "Anaconda (Python 3)",
+  "image": "mcr.microsoft.com/devcontainers/anaconda"
+}
+```
+
+Or update the `FROM` statement in your own `Dockerfile`:
+
+```dockerfile theme={null}
+FROM mcr.microsoft.com/devcontainers/anaconda:3
+```
+
+### Pinning to a version
+
+Reference a [semantic version](https://semver.org/) to control how often you receive updates:
+
+```text theme={null}
+mcr.microsoft.com/devcontainers/anaconda:1-3
+mcr.microsoft.com/devcontainers/anaconda:1.3-3
+mcr.microsoft.com/devcontainers/anaconda:1.3.13-3
+```
+
+See the [full list of available tags](https://mcr.microsoft.com/v2/devcontainers/anaconda/tags/list).
+
+## Anaconda terms of service
+
+<Warning>
+  Access to the Anaconda repository is covered by the [Anaconda Terms of Service](https://aka.ms/vscode-remote/conda/terms), which may require some organizations to obtain a commercial license from Anaconda.
+
+  **However**, when this image is used with **GitHub Codespaces** or **GitHub Actions**, all users are permitted to use the Anaconda Repository through the service, including organizations normally required to obtain a paid commercial license. Third-party packages may be licensed by their publishers in ways that impact your intellectual property, and are used at your own risk.
+</Warning>
+
+## Using conda
+
+This image includes the [`conda` package manager](https://aka.ms/vscode-remote/conda/about). Additional packages you install with `conda` are downloaded from Anaconda or another repository you configure.
+
+### Common conda tasks
+
+<AccordionGroup>
+  <Accordion title="Install a package">
+    ```bash theme={null}
+    conda install <package_name>
+    ```
+  </Accordion>
+
+  <Accordion title="Install from a different channel">
+    Installing packages from mixed channels in the same environment can cause conflicts. Create a new environment when you need a package from a channel like `conda-forge`:
+
+    ```bash theme={null}
+    conda create --name <env_name> -c conda-forge --yes <package_name>
+    ```
+  </Accordion>
+
+  <Accordion title="Install a different Python version">
+    From a terminal:
+
+    ```bash theme={null}
+    conda install python=3.6
+    ```
+
+    Or in a Dockerfile:
+
+    ```dockerfile theme={null}
+    RUN conda install -y python=3.6
+    ```
+  </Accordion>
+
+  <Accordion title="Configure a different conda channel">
+    See the guide on [configuring conda channels](https://aka.ms/vscode-remote/conda/channel-setup) to reconfigure conda to use an alternative repository.
+  </Accordion>
+</AccordionGroup>
+
+### Loading environment.yml at build time
+
+The image automatically installs dependencies from an `environment.yml` file in your project root when the container is built. The relevant Dockerfile line is:
+
+```dockerfile theme={null}
+RUN if [ -f "/tmp/conda-tmp/environment.yml" ]; then /opt/conda/bin/conda env update -n base -f /tmp/conda-tmp/environment.yml; fi \
+    && rm -rf /tmp/conda-tmp
+```
+
+Remove or modify this line if you want to manage environment setup manually.
+
+## Forwarding ports
+
+By default, frameworks like Flask only listen to `localhost` inside the container. Use the `forwardPorts` property in `devcontainer.json` to make ports accessible from your host:
+
+```json theme={null}
+"forwardPorts": [5000]
+```
+
+<Tip>
+  Use `forwardPorts` rather than `appPort`. The `appPort` property publishes the port, which requires your application to listen on `*` or `0.0.0.0`. `forwardPorts` does not have this restriction.
+</Tip>
+
+## Running Jupyter notebooks
+
+<Steps>
+  <Step title="Forward the Jupyter port">
+    Add port `8888` to `forwardPorts` in `.devcontainer/devcontainer.json`:
+
+    ```json theme={null}
+    "forwardPorts": [8888]
+    ```
+  </Step>
+
+  <Step title="Start Jupyter on container creation">
+    Add a `postStartCommand` to launch Jupyter after the container starts. Using `nohup` prevents it from being killed when the command exits:
+
+    ```json theme={null}
+    "postStartCommand": "nohup bash -c 'jupyter notebook --ip=0.0.0.0 --port=8888 --allow-root &'"
+    ```
+  </Step>
+
+  <Step title="Open the notebook URL">
+    Check the terminal output for the access URL, which includes a token:
+
+    ```text theme={null}
+    http://127.0.0.1:8888/?token=1234567
+    ```
+
+    Open this URL in your browser to edit and run notebooks.
+  </Step>
+</Steps>
+
+## Installing Node.js
+
+If your project uses Node.js-based utilities alongside Python, add the Node.js feature to `devcontainer.json`:
+
+```json theme={null}
+{
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "latest"
+    }
+  }
+}
+```
+
+## Image contents
+
+| Component        | Details                        |
+| ---------------- | ------------------------------ |
+| Base image       | `continuumio/anaconda3:latest` |
+| OS               | Debian                         |
+| Python           | Included via Anaconda          |
+| conda            | `/opt/conda`                   |
+| Jupyter Notebook | Included                       |
+| Jupyter Lab      | Included                       |
+| Version          | `1.3.13`                       |
+
+
+# Alpine
+Source: https://www.mintlify.com/devcontainers/images/images/base-alpine
+
+A minimal Alpine Linux container with Git and other common utilities installed, optimized for small image sizes.
+
+## Summary
+
+The Alpine base image gives you a minimal Alpine Linux container pre-configured for development. It includes Git, Zsh, Oh My Zsh!, and a non-root `vscode` user with `sudo` access, while keeping the total image footprint as small as possible.
+
+Use this image when image size matters, or when you want a simple, minimal Linux environment as your starting point. Alpine's `musl` libc and `apk` package manager differ from Debian-based distributions, so verify that your dependencies are compatible before choosing this image.
+
+<Warning>
+  Alpine uses `musl` libc instead of `glibc`. Some pre-compiled binaries or language runtimes may not work correctly on Alpine without extra configuration.
+</Warning>
+
+<Info>
+  See the [image history](https://github.com/devcontainers/images/tree/main/src/base-alpine/history) for a full list of tools and versions included in each published release.
+</Info>
+
+## Metadata
+
+| Property                  | Value                                                      |
+| ------------------------- | ---------------------------------------------------------- |
+| Published image           | `mcr.microsoft.com/devcontainers/base:alpine`              |
+| Available variants        | `alpine-3.23`, `alpine-3.22`, `alpine-3.21`, `alpine-3.20` |
+| Architectures             | x86-64, aarch64/arm64                                      |
+| Container OS              | Alpine Linux                                               |
+| Container host OS support | Linux, macOS, Windows                                      |
+| Languages / platforms     | Any                                                        |
+
+## Using this image
+
+Reference the image directly in your `.devcontainer/devcontainer.json` using the `image` property:
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "Alpine",
+  "image": "mcr.microsoft.com/devcontainers/base:alpine"
+}
+```
+
+### Available tags
+
+Choose a tag that matches the Alpine version you need:
+
+* `mcr.microsoft.com/devcontainers/base:alpine` — latest
+* `mcr.microsoft.com/devcontainers/base:alpine-3.23`
+* `mcr.microsoft.com/devcontainers/base:alpine-3.22`
+* `mcr.microsoft.com/devcontainers/base:alpine-3.21`
+* `mcr.microsoft.com/devcontainers/base:alpine-3.20`
+
+## Extending the image
+
+Use the image as a base in your own `Dockerfile` to add language runtimes, tools, or project dependencies:
+
+```dockerfile Dockerfile theme={null}
+FROM mcr.microsoft.com/devcontainers/base:alpine-3.23
+
+# Install additional tools using apk
+RUN apk add --no-cache \
+    curl \
+    bash \
+    build-base
+```
+
+Then reference your `Dockerfile` from `devcontainer.json`:
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "Alpine (custom)",
+  "build": {
+    "dockerfile": "Dockerfile"
+  }
+}
+```
+
+<Tip>
+  Use `apk add --no-cache` to avoid leaving the package index in the image layer, keeping your final image as small as possible.
+</Tip>
+
+## Pre-installed tools
+
+Every Alpine base image variant includes the following tools out of the box:
+
+<CardGroup>
+  <Card title="Git" icon="code-branch">
+    Version control via the `git` CLI.
+  </Card>
+
+  <Card title="Zsh" icon="terminal">
+    Zsh shell set as the default login shell.
+  </Card>
+
+  <Card title="Oh My Zsh!" icon="sparkles">
+    Zsh framework pre-configured at `/home/vscode/.oh-my-zsh`.
+  </Card>
+
+  <Card title="vscode user" icon="user">
+    Non-root `vscode` user with passwordless `sudo` access.
+  </Card>
+</CardGroup>
+
+The image is built directly on top of the official [`alpine`](https://hub.docker.com/_/alpine) base image, keeping the dependency footprint minimal.
+
+## Versioning
+
+You can pin to a [semantic version](https://semver.org/) of each image to control how frequently you receive updates:
+
+<Tabs>
+  <Tab title="Major (least frequent)">
+    Receives updates for all minor and patch releases within the major version.
+
+    ```text theme={null}
+    mcr.microsoft.com/devcontainers/base:3-alpine
+    ```
+  </Tab>
+
+  <Tab title="Minor">
+    Receives patch updates only.
+
+    ```text theme={null}
+    mcr.microsoft.com/devcontainers/base:3.0-alpine
+    ```
+  </Tab>
+
+  <Tab title="Patch (most stable)">
+    Pinned to a specific release. No automatic updates.
+
+    ```text theme={null}
+    mcr.microsoft.com/devcontainers/base:3.0.3-alpine
+    ```
+  </Tab>
+</Tabs>
+
+See the [full list of available tags](https://mcr.microsoft.com/v2/devcontainers/base/tags/list) on the Microsoft Container Registry.
+
+## License
+
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Licensed under the [MIT License](https://github.com/devcontainers/images/blob/main/LICENSE).
+
+
+# Debian
+Source: https://www.mintlify.com/devcontainers/images/images/base-debian
+
+A simple Debian container with Git and other common utilities installed, suitable for general-purpose development environments.
+
+## Summary
+
+The Debian base image gives you a lightweight Debian container pre-configured for development. It includes Git, Zsh, Oh My Zsh!, and a non-root `vscode` user with `sudo` access, so you can start writing code without any additional setup.
+
+Use this image when you want a stable Debian environment with a curated set of development utilities already in place. The `trixie` variant tracks the current Debian testing release, while `bookworm` and `bullseye` provide stable, long-term-support options.
+
+<Info>
+  See the [image history](https://github.com/devcontainers/images/tree/main/src/base-debian/history) for a full list of tools and versions included in each published release.
+</Info>
+
+## Metadata
+
+| Property                  | Value                                         |
+| ------------------------- | --------------------------------------------- |
+| Published image           | `mcr.microsoft.com/devcontainers/base:debian` |
+| Available variants        | `trixie`, `bookworm`, `bullseye`              |
+| Architectures             | x86-64, aarch64/arm64                         |
+| Container OS              | Debian                                        |
+| Container host OS support | Linux, macOS, Windows                         |
+| Languages / platforms     | Any                                           |
+
+## Using this image
+
+Reference the image directly in your `.devcontainer/devcontainer.json` using the `image` property:
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "Debian",
+  "image": "mcr.microsoft.com/devcontainers/base:debian"
+}
+```
+
+### Available tags
+
+Choose a tag that matches the Debian release you need:
+
+* `mcr.microsoft.com/devcontainers/base:debian` — latest
+* `mcr.microsoft.com/devcontainers/base:trixie` (or `debian13`)
+* `mcr.microsoft.com/devcontainers/base:bookworm` (or `debian12`)
+* `mcr.microsoft.com/devcontainers/base:bullseye` (or `debian11`)
+
+## Extending the image
+
+Use the image as a base in your own `Dockerfile` to add language runtimes, tools, or project dependencies:
+
+```dockerfile Dockerfile theme={null}
+FROM mcr.microsoft.com/devcontainers/base:bookworm
+
+# Install additional tools
+RUN apt-get update && apt-get install -y \
+    curl \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+Then reference your `Dockerfile` from `devcontainer.json`:
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "Debian (custom)",
+  "build": {
+    "dockerfile": "Dockerfile"
+  }
+}
+```
+
+## Pre-installed tools
+
+Every Debian base image variant includes the following tools out of the box:
+
+<CardGroup>
+  <Card title="Git" icon="code-branch">
+    Version control via the `git` CLI.
+  </Card>
+
+  <Card title="Zsh" icon="terminal">
+    Zsh shell set as the default login shell.
+  </Card>
+
+  <Card title="Oh My Zsh!" icon="sparkles">
+    Zsh framework pre-configured at `/home/vscode/.oh-my-zsh`.
+  </Card>
+
+  <Card title="vscode user" icon="user">
+    Non-root `vscode` user with passwordless `sudo` access.
+  </Card>
+</CardGroup>
+
+The image also bundles a set of common development dependencies sourced from the upstream [`buildpack-deps`](https://hub.docker.com/_/buildpack-deps) image.
+
+## Versioning
+
+You can pin to a [semantic version](https://semver.org/) of each image to control how frequently you receive updates:
+
+<Tabs>
+  <Tab title="Major (least frequent)">
+    Receives updates for all minor and patch releases within the major version.
+
+    ```text theme={null}
+    mcr.microsoft.com/devcontainers/base:2-trixie
+    ```
+  </Tab>
+
+  <Tab title="Minor">
+    Receives patch updates only.
+
+    ```text theme={null}
+    mcr.microsoft.com/devcontainers/base:2.1-trixie
+    ```
+  </Tab>
+
+  <Tab title="Patch (most stable)">
+    Pinned to a specific release. No automatic updates.
+
+    ```text theme={null}
+    mcr.microsoft.com/devcontainers/base:2.1.7-trixie
+    ```
+  </Tab>
+</Tabs>
+
+See the [full list of available tags](https://mcr.microsoft.com/v2/devcontainers/base/tags/list) on the Microsoft Container Registry.
+
+## License
+
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Licensed under the [MIT License](https://github.com/devcontainers/images/blob/main/LICENSE).
+
+
+# Ubuntu
+Source: https://www.mintlify.com/devcontainers/images/images/base-ubuntu
+
+A simple Ubuntu container with Git and other common utilities installed, suitable for general-purpose development environments.
+
+## Summary
+
+The Ubuntu base image gives you a lightweight Ubuntu container pre-configured for development. It includes Git, Zsh, Oh My Zsh!, and a non-root `vscode` user with `sudo` access, so you can start writing code without any additional setup.
+
+Use this image when you want a familiar Ubuntu environment with a curated set of development utilities already in place.
+
+<Info>
+  See the [image history](https://github.com/devcontainers/images/tree/main/src/base-ubuntu/history) for a full list of tools and versions included in each published release.
+</Info>
+
+## Metadata
+
+| Property                  | Value                                            |
+| ------------------------- | ------------------------------------------------ |
+| Published image           | `mcr.microsoft.com/devcontainers/base:ubuntu`    |
+| Available variants        | `ubuntu24.04` / `noble`, `ubuntu22.04` / `jammy` |
+| Architectures             | x86-64, aarch64/arm64                            |
+| Container OS              | Ubuntu                                           |
+| Container host OS support | Linux, macOS, Windows                            |
+| Languages / platforms     | Any                                              |
+
+## Using this image
+
+Reference the image directly in your `.devcontainer/devcontainer.json` using the `image` property:
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "Ubuntu",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu"
+}
+```
+
+### Available tags
+
+Choose a tag that matches the Ubuntu version you need:
+
+* `mcr.microsoft.com/devcontainers/base:ubuntu` — latest LTS release
+* `mcr.microsoft.com/devcontainers/base:ubuntu24.04` (or `noble`)
+* `mcr.microsoft.com/devcontainers/base:ubuntu22.04` (or `jammy`)
+
+## Extending the image
+
+Use the image as a base in your own `Dockerfile` to add language runtimes, tools, or project dependencies:
+
+```dockerfile Dockerfile theme={null}
+FROM mcr.microsoft.com/devcontainers/base:ubuntu24.04
+
+# Install additional tools
+RUN apt-get update && apt-get install -y \
+    curl \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+Then reference your `Dockerfile` from `devcontainer.json`:
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "Ubuntu (custom)",
+  "build": {
+    "dockerfile": "Dockerfile"
+  }
+}
+```
+
+## Pre-installed tools
+
+Every Ubuntu base image variant includes the following tools out of the box:
+
+<CardGroup>
+  <Card title="Git" icon="code-branch">
+    Version control via the `git` CLI.
+  </Card>
+
+  <Card title="Zsh" icon="terminal">
+    Zsh shell set as the default login shell.
+  </Card>
+
+  <Card title="Oh My Zsh!" icon="sparkles">
+    Zsh framework pre-configured at `/home/vscode/.oh-my-zsh`.
+  </Card>
+
+  <Card title="vscode user" icon="user">
+    Non-root `vscode` user with passwordless `sudo` access.
+  </Card>
+</CardGroup>
+
+The image also bundles a set of common development dependencies sourced from the upstream [`buildpack-deps`](https://hub.docker.com/_/buildpack-deps) image.
+
+## Versioning
+
+You can pin to a [semantic version](https://semver.org/) of each image to control how frequently you receive updates:
+
+<Tabs>
+  <Tab title="Major (least frequent)">
+    Receives updates for all minor and patch releases within the major version.
+
+    ```text theme={null}
+    mcr.microsoft.com/devcontainers/base:2-jammy
+    ```
+  </Tab>
+
+  <Tab title="Minor">
+    Receives patch updates only.
+
+    ```text theme={null}
+    mcr.microsoft.com/devcontainers/base:2.1-jammy
+    ```
+  </Tab>
+
+  <Tab title="Patch (most stable)">
+    Pinned to a specific release. No automatic updates.
+
+    ```text theme={null}
+    mcr.microsoft.com/devcontainers/base:2.1.7-jammy
+    ```
+  </Tab>
+</Tabs>
+
+See the [full list of available tags](https://mcr.microsoft.com/v2/devcontainers/base/tags/list) on the Microsoft Container Registry.
+
+## License
+
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Licensed under the [MIT License](https://github.com/devcontainers/images/blob/main/LICENSE).
+
+
+# C++
+Source: https://www.mintlify.com/devcontainers/images/images/cpp
+
+Pre-built dev container image for C++ development on Linux, with GCC, Clang, CMake, cppcheck, valgrind, lldb, and Vcpkg.
+
+Use this image to develop C++ applications on Debian or Ubuntu. It includes both GCC and Clang compilers, the CMake and Ninja build systems, static analysis with `cppcheck`, memory debugging with `valgrind`, the `lldb` debugger, and [Vcpkg](https://github.com/microsoft/vcpkg) for cross-platform package management.
+
+## Image metadata
+
+| Property           | Value                                                                                    |
+| ------------------ | ---------------------------------------------------------------------------------------- |
+| Published image    | `mcr.microsoft.com/devcontainers/cpp`                                                    |
+| Available variants | `debian13` (trixie), `debian12` (bookworm), `ubuntu24.04` (noble), `ubuntu22.04` (jammy) |
+| Architectures      | x86-64, arm64/aarch64                                                                    |
+| Container OS       | Debian (trixie, bookworm), Ubuntu (noble, jammy)                                         |
+| Container host OS  | Linux, macOS, Windows                                                                    |
+
+## Using this image
+
+Reference the image directly in your `.devcontainer/devcontainer.json` using the `image` property.
+
+<Tabs>
+  <Tab title="Latest Debian">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "C++",
+      "image": "mcr.microsoft.com/devcontainers/cpp"
+    }
+    ```
+  </Tab>
+
+  <Tab title="Debian 13">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "C++ (Debian 13)",
+      "image": "mcr.microsoft.com/devcontainers/cpp:debian13"
+    }
+    ```
+  </Tab>
+
+  <Tab title="Debian 12">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "C++ (Debian 12)",
+      "image": "mcr.microsoft.com/devcontainers/cpp:debian12"
+    }
+    ```
+  </Tab>
+
+  <Tab title="Ubuntu 24.04">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "C++ (Ubuntu 24.04)",
+      "image": "mcr.microsoft.com/devcontainers/cpp:ubuntu24.04"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Available tags
+
+* `mcr.microsoft.com/devcontainers/cpp` — latest (Debian 13 / trixie)
+* `mcr.microsoft.com/devcontainers/cpp:debian` — latest Debian GA
+* `mcr.microsoft.com/devcontainers/cpp:debian13` (or `trixie`)
+* `mcr.microsoft.com/devcontainers/cpp:debian12` (or `bookworm`)
+* `mcr.microsoft.com/devcontainers/cpp:ubuntu` — latest Ubuntu LTS
+* `mcr.microsoft.com/devcontainers/cpp:ubuntu24.04` (or `noble`)
+* `mcr.microsoft.com/devcontainers/cpp:ubuntu22.04` (or `jammy`)
+
+## Included tools
+
+<CardGroup>
+  <Card title="GCC" icon="c">
+    GNU Compiler Collection — `gcc`, `g++`, and `make` via `build-essential`.
+  </Card>
+
+  <Card title="Clang / LLVM" icon="c">
+    Clang compiler, `lldb` debugger, and the full LLVM toolchain.
+  </Card>
+
+  <Card title="CMake" icon="hammer">
+    Cross-platform build system generator for configuring and building C++ projects.
+  </Card>
+
+  <Card title="Ninja" icon="bolt">
+    Fast, lightweight build system (`ninja-build`) commonly used with CMake.
+  </Card>
+
+  <Card title="cppcheck" icon="magnifying-glass">
+    Static analysis tool for detecting bugs and undefined behavior in C++ code.
+  </Card>
+
+  <Card title="valgrind" icon="bug">
+    Memory error detector and profiler for finding leaks and invalid memory access.
+  </Card>
+
+  <Card title="Vcpkg" icon="box">
+    Cross-platform C++ package manager with a bootstrapped clone at `$VCPKG_ROOT`.
+  </Card>
+
+  <Card title="gdb" icon="terminal">
+    GNU Debugger for stepping through and inspecting C++ programs.
+  </Card>
+</CardGroup>
+
+## Common tasks
+
+### Compile and run a program
+
+```bash theme={null}
+g++ -std=c++17 -o hello hello.cpp
+./hello
+```
+
+### Build with CMake
+
+```bash theme={null}
+mkdir build && cd build
+cmake ..
+cmake --build .
+```
+
+### Build with CMake and Ninja
+
+```bash theme={null}
+mkdir build && cd build
+cmake -G Ninja ..
+ninja
+```
+
+### Run static analysis with cppcheck
+
+```bash theme={null}
+cppcheck --enable=all --std=c++17 src/
+```
+
+### Check for memory leaks with valgrind
+
+```bash theme={null}
+valgrind --leak-check=full ./my_program
+```
+
+### Debug with lldb
+
+```bash theme={null}
+lldb ./my_program
+(lldb) run
+(lldb) bt
+```
+
+## Using Vcpkg
+
+The image includes a bootstrapped clone of Vcpkg at `$VCPKG_ROOT`. Use it to install C++ library dependencies.
+
+### Install a library
+
+```bash theme={null}
+cd "$VCPKG_ROOT"
+./vcpkg install fmt
+./vcpkg install nlohmann-json
+```
+
+### Update the package registry
+
+```bash theme={null}
+cd "$VCPKG_ROOT"
+git pull --ff-only
+```
+
+### Use Vcpkg manifest mode
+
+Create a `vcpkg.json` in your project root:
+
+```json vcpkg.json theme={null}
+{
+  "name": "my-project",
+  "version": "0.1.0",
+  "dependencies": [
+    "fmt",
+    "nlohmann-json"
+  ]
+}
+```
+
+<Note>
+  To use Vcpkg in manifest mode, install additional system packages. Add the following to your `Dockerfile`:
+
+  ```dockerfile theme={null}
+  RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+      && apt-get -y install autoconf automake libtool m4 autoconf-archive \
+      && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
+  ```
+</Note>
+
+## Extending with features
+
+Use [Dev Container Features](https://containers.dev/features) to add language runtimes or cloud tools alongside C++.
+
+### Add Python
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "C++",
+  "image": "mcr.microsoft.com/devcontainers/cpp:debian13",
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "latest"
+    }
+  }
+}
+```
+
+### Add Docker-in-Docker
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "C++",
+  "image": "mcr.microsoft.com/devcontainers/cpp:debian13",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  }
+}
+```
+
+## Versioning
+
+The image uses [semantic versioning](https://semver.org/). Pin to a major or minor version to control how frequently you receive updates.
+
+| Tag format       | Example            | Update behavior                   |
+| ---------------- | ------------------ | --------------------------------- |
+| OS variant only  | `cpp:trixie`       | Receives all non-breaking updates |
+| Major + OS       | `cpp:2-trixie`     | Locked to major version 2         |
+| Major.minor + OS | `cpp:2.1-trixie`   | Locked to minor version 2.1       |
+| Full semver + OS | `cpp:2.1.6-trixie` | Pinned to exact build             |
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/cpp:2-bookworm"
+}
+```
+
+<Tip>
+  Security patches are only applied to the latest non-breaking version (e.g., `2-trixie`). If you pin to a full semver like `2.1.6-trixie`, run `apt-get update && apt-get upgrade` in your Dockerfile to pick up OS-level security fixes.
+</Tip>
+
+
+# .NET
+Source: https://www.mintlify.com/devcontainers/images/images/dotnet
+
+Pre-built dev container image for C# and .NET development, based on the official .NET SDK with nvm and developer tooling included.
+
+Use this image to develop C# and .NET applications in a fully configured container. It builds directly on the official `mcr.microsoft.com/dotnet/sdk` image and adds `nvm`, `zsh` with Oh My Zsh!, and a non-root `vscode` user with `sudo` access.
+
+## Image metadata
+
+| Property           | Value                                                     |
+| ------------------ | --------------------------------------------------------- |
+| Published image    | `mcr.microsoft.com/devcontainers/dotnet`                  |
+| Available variants | `10.0`, `9.0`, `8.0` (noble, bookworm, jammy OS variants) |
+| Architectures      | x86-64, arm64/aarch64                                     |
+| Container OS       | Ubuntu (noble, jammy), Debian (bookworm)                  |
+| Container host OS  | Linux, macOS, Windows                                     |
+
+## Using this image
+
+Reference the image directly in your `.devcontainer/devcontainer.json` using the `image` property.
+
+<Tabs>
+  <Tab title="Latest">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": ".NET",
+      "image": "mcr.microsoft.com/devcontainers/dotnet"
+    }
+    ```
+  </Tab>
+
+  <Tab title=".NET 10.0">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": ".NET 10",
+      "image": "mcr.microsoft.com/devcontainers/dotnet:10.0"
+    }
+    ```
+  </Tab>
+
+  <Tab title=".NET 9.0">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": ".NET 9",
+      "image": "mcr.microsoft.com/devcontainers/dotnet:9.0"
+    }
+    ```
+  </Tab>
+
+  <Tab title=".NET 8.0">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": ".NET 8",
+      "image": "mcr.microsoft.com/devcontainers/dotnet:8.0"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Available tags
+
+Pin to a specific .NET version or OS variant:
+
+* `mcr.microsoft.com/devcontainers/dotnet` — latest (.NET 10.0, Ubuntu noble)
+* `mcr.microsoft.com/devcontainers/dotnet:10.0` — .NET 10.0 (or `10.0-noble`)
+* `mcr.microsoft.com/devcontainers/dotnet:9.0` — .NET 9.0 (or `9.0-bookworm`, `9.0-noble`)
+* `mcr.microsoft.com/devcontainers/dotnet:8.0` — .NET 8.0 (or `8.0-bookworm`, `8.0-noble`, `8.0-jammy`)
+
+## Included tools
+
+<CardGroup>
+  <Card title=".NET SDK" icon="microsoft">
+    The full .NET SDK — `dotnet build`, `dotnet run`, `dotnet test`, `dotnet publish`, and `dotnet new`.
+  </Card>
+
+  <Card title="nvm" icon="node-js">
+    Node Version Manager, pre-installed for ASP.NET projects with JavaScript front-end tooling.
+  </Card>
+
+  <Card title="yarn" icon="box">
+    JavaScript package manager, available for projects with front-end dependencies.
+  </Card>
+
+  <Card title="git" icon="git-alt">
+    Git version control, available at the system level.
+  </Card>
+
+  <Card title="Oh My Zsh!" icon="terminal">
+    Zsh shell with Oh My Zsh! for a productive terminal experience.
+  </Card>
+</CardGroup>
+
+## Common tasks
+
+### Create a new project
+
+```bash theme={null}
+dotnet new webapi -n MyApi
+dotnet new mvc -n MyWebApp
+dotnet new console -n MyApp
+```
+
+### Build and run
+
+```bash theme={null}
+dotnet build
+dotnet run
+```
+
+### Run tests
+
+```bash theme={null}
+dotnet test
+```
+
+### Publish for deployment
+
+```bash theme={null}
+dotnet publish -c Release -o ./publish
+```
+
+### Install a NuGet package
+
+```bash theme={null}
+dotnet add package Newtonsoft.Json
+dotnet restore
+```
+
+### Install Node.js with nvm
+
+```bash theme={null}
+nvm install --lts
+nvm use --lts
+```
+
+## HTTPS development certificates
+
+ASP.NET Core requires an HTTPS certificate for local development. Because dev containers are ephemeral, the certificate is lost on each rebuild. Use a named volume to persist it.
+
+### Persisting the certificate across rebuilds
+
+Add a named volume and a lifecycle command in `devcontainer.json`:
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": ".NET",
+  "image": "mcr.microsoft.com/devcontainers/dotnet:9.0",
+  "mounts": [
+    {
+      "type": "volume",
+      "source": "x509stores",
+      "target": "/home/vscode/.dotnet/corefx/cryptography/x509stores"
+    }
+  ],
+  "onCreateCommand": "bash .devcontainer/setup-dotnet-dev-cert.sh"
+}
+```
+
+Create `.devcontainer/setup-dotnet-dev-cert.sh`:
+
+```bash .devcontainer/setup-dotnet-dev-cert.sh theme={null}
+#!/usr/bin/env bash
+sudo chown -R vscode:vscode /home/vscode/.dotnet
+dotnet dev-certs https
+sudo -E dotnet dev-certs https --export-path /usr/local/share/ca-certificates/dotnet-dev-cert.crt --format pem
+sudo update-ca-certificates
+```
+
+### Mounting a local certificate
+
+For private projects, you can mount your local certificate into the container. Add the following to `devcontainer.json`:
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "remoteEnv": {
+    "ASPNETCORE_Kestrel__Certificates__Default__Password": "SecurePwdGoesHere",
+    "ASPNETCORE_Kestrel__Certificates__Default__Path": "/home/vscode/.aspnet/https/aspnetapp.pfx"
+  },
+  "mounts": [
+    "source=${env:HOME}${env:USERPROFILE}/.aspnet/https,target=/home/vscode/.aspnet/https,type=bind"
+  ]
+}
+```
+
+Export your local certificate first:
+
+<Tabs>
+  <Tab title="Windows PowerShell">
+    ```powershell theme={null}
+    dotnet dev-certs https --trust
+    dotnet dev-certs https -ep "$env:USERPROFILE/.aspnet/https/aspnetapp.pfx" -p "SecurePwdGoesHere"
+    ```
+  </Tab>
+
+  <Tab title="macOS / Linux">
+    ```bash theme={null}
+    dotnet dev-certs https --trust
+    dotnet dev-certs https -ep "${HOME}/.aspnet/https/aspnetapp.pfx" -p "SecurePwdGoesHere"
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+  Do not use the mounted certificate approach for team or open source projects — the certificate password is stored in `devcontainer.json` in plain text.
+</Warning>
+
+## Extending with features
+
+Use [Dev Container Features](https://containers.dev/features) to add Node.js, the Azure CLI, or other tools.
+
+### Add Node.js
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": ".NET",
+  "image": "mcr.microsoft.com/devcontainers/dotnet:9.0",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    }
+  }
+}
+```
+
+### Add the Azure CLI
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": ".NET with Azure",
+  "image": "mcr.microsoft.com/devcontainers/dotnet:9.0",
+  "features": {
+    "ghcr.io/devcontainers/features/azure-cli:1": {
+      "version": "latest"
+    }
+  }
+}
+```
+
+## Versioning
+
+The image uses [semantic versioning](https://semver.org/). Pin to a major or minor version to control how frequently you receive updates.
+
+| Tag format         | Example            | Update behavior                   |
+| ------------------ | ------------------ | --------------------------------- |
+| .NET version only  | `dotnet:9.0`       | Receives all non-breaking updates |
+| Major + .NET       | `dotnet:2-9.0`     | Locked to major version 2         |
+| Major.minor + .NET | `dotnet:2.0-9.0`   | Locked to minor version 2.0       |
+| Full semver + .NET | `dotnet:2.0.6-9.0` | Pinned to exact build             |
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/dotnet:2-9.0-bookworm"
+}
+```
+
+<Tip>
+  Security patches are only applied to the latest non-breaking version (e.g., `2-9.0`). If you pin to a full semver like `2.0.6-9.0`, run `apt-get update && apt-get upgrade` in your Dockerfile to pick up OS-level security fixes.
+</Tip>
+
+
+# Go
+Source: https://www.mintlify.com/devcontainers/images/images/go
+
+A dev container image for Go development, with gopls, delve, golangci-lint, and common Go tooling pre-installed.
+
+The Go image provides a Debian-based environment for Go development. It comes with `gopls` (the official Go language server), `delve` (the Go debugger), `golangci-lint`, and several other commonly used Go tools pre-installed so you can start writing and debugging Go code immediately.
+
+## Metadata
+
+| Property                | Value                                                                                                            |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Published image         | `mcr.microsoft.com/devcontainers/go`                                                                             |
+| Available variants      | `1` / `1-trixie`, `1.26` / `1.26-trixie`, `1.25` / `1.25-trixie`, `1.25-bookworm`, `1.26-bookworm`, `1-bookworm` |
+| Architectures           | x86-64, arm64/aarch64 (trixie and bookworm variants)                                                             |
+| Container OS            | Debian                                                                                                           |
+| Languages and platforms | Go                                                                                                               |
+
+## Using this image
+
+Reference the published image in your `.devcontainer/devcontainer.json`:
+
+```json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/go:1"
+}
+```
+
+### Available image tags
+
+Choose a Go version and optionally pin the Debian OS:
+
+* `mcr.microsoft.com/devcontainers/go` — latest
+* `mcr.microsoft.com/devcontainers/go:1` (or `1-trixie`, `1-bookworm`)
+* `mcr.microsoft.com/devcontainers/go:1.26` (or `1.26-trixie`, `1.26-bookworm`)
+* `mcr.microsoft.com/devcontainers/go:1.25` (or `1.25-trixie`, `1.25-bookworm`)
+
+See the [full list of available tags](https://mcr.microsoft.com/v2/devcontainers/go/tags/list).
+
+## Key included tools
+
+<AccordionGroup>
+  <Accordion title="Go tooling (pre-installed via go install)">
+    * **gopls** (`golang.org/x/tools/gopls`) — official Go language server
+    * **staticcheck** (`honnef.co/go/tools`) — advanced static analysis
+    * **golint** (`golang.org/x/lint`) — Go style linter
+    * **revive** (`github.com/mgechev/revive`) — fast, extensible linter
+    * **gopkgs** (`github.com/uudashr/gopkgs`) — lists available Go packages
+    * **go-outline** (`github.com/ramya-rao-a/go-outline`) — Go symbol extraction
+    * **delve** (`github.com/go-delve/delve`) — Go debugger
+    * **golangci-lint** (`github.com/golangci/golangci-lint`) — multi-linter runner
+  </Accordion>
+
+  <Accordion title="Build tools and other dependencies">
+    * `g++`, `gcc`, `libc6-dev`, `make`, `pkg-config` — C build toolchain (required by some Go packages with CGo)
+    * `git` — version control
+    * `nvm` — Node Version Manager (for front-end toolchains)
+    * `yarn` — JavaScript package manager
+    * `zsh` + Oh My Zsh! — enhanced shell
+    * Non-root `vscode` user with `sudo` access
+  </Accordion>
+</AccordionGroup>
+
+## Common tasks
+
+### Installing additional Go packages
+
+Use `go install` to add Go binaries to your environment:
+
+```bash theme={null}
+go install github.com/air-verse/air@latest       # live reload for Go apps
+go install github.com/swaggo/swag/cmd/swag@latest # Swagger docs generator
+```
+
+Installed binaries are placed in `$GOPATH/bin`, which is on `$PATH` by default.
+
+### Running and testing your application
+
+```bash theme={null}
+# Run directly
+go run ./cmd/server
+
+# Build a binary
+go build -o ./bin/server ./cmd/server
+
+# Run tests
+go test ./...
+
+# Run tests with coverage
+go test -cover ./...
+```
+
+### Debugging with Delve
+
+`delve` is pre-installed. Start a debug session from the command line:
+
+```bash theme={null}
+# Debug the main package
+dlv debug ./cmd/server
+
+# Attach to a running process
+dlv attach <pid>
+
+# Run tests with debugging
+dlv test ./...
+```
+
+### Linting with golangci-lint
+
+Run all configured linters at once:
+
+```bash theme={null}
+golangci-lint run ./...
+```
+
+Add a `.golangci.yml` to your project root to configure which linters to enable.
+
+### Installing Node.js for front-end toolchains
+
+If your Go back-end serves a JavaScript front-end, add the Node.js feature to `devcontainer.json`:
+
+```json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/go:1",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "latest"
+    }
+  }
+}
+```
+
+## Extending with features
+
+Use [Dev Container Features](https://containers.dev/features) to add tools on top of this image:
+
+```json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/go:1",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  }
+}
+```
+
+## Versioning
+
+Pin to a semantic version to control the update cadence:
+
+<CodeGroup>
+  ```text Major version (receives all non-breaking updates) theme={null}
+  mcr.microsoft.com/devcontainers/go:2-1.26
+  ```
+
+  ```text Minor version (receives patch updates only) theme={null}
+  mcr.microsoft.com/devcontainers/go:2.1-1.26
+  ```
+
+  ```text Patch version (fully pinned) theme={null}
+  mcr.microsoft.com/devcontainers/go:2.1.1-1.26
+  ```
+</CodeGroup>
+
+You can also combine with an OS pin:
+
+```text theme={null}
+mcr.microsoft.com/devcontainers/go:2.1.1-1.26-trixie
+mcr.microsoft.com/devcontainers/go:2.1.1-1.26-bookworm
+```
+
+<Note>
+  Security patches are applied only to the latest in-support versions (e.g., `2-1.26`). If you pin to a specific patch version, add `RUN apt-get update && apt-get upgrade` to your Dockerfile to pick up OS-level security fixes.
+</Note>
+
+
+# Java
+Source: https://www.mintlify.com/devcontainers/images/images/java
+
+Pre-built dev container image for Java development, with SDKMAN!, nvm, and support for JDK 11 through 25 on Debian.
+
+Use this image to develop Java applications in a fully configured container. It includes SDKMAN! for Java version management, `nvm` for optional Node.js installation, `zsh` with Oh My Zsh!, and a non-root `vscode` user with `sudo` access.
+
+## Image metadata
+
+| Property           | Value                                                    |
+| ------------------ | -------------------------------------------------------- |
+| Published image    | `mcr.microsoft.com/devcontainers/java`                   |
+| Available variants | `11`, `17`, `21`, `25` (trixie and bookworm OS variants) |
+| Architectures      | x86-64, arm64/aarch64                                    |
+| Container OS       | Debian (trixie, bookworm)                                |
+| Container host OS  | Linux, macOS, Windows                                    |
+
+## Using this image
+
+Reference the image directly in your `.devcontainer/devcontainer.json` using the `image` property.
+
+<Tabs>
+  <Tab title="Latest">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "Java",
+      "image": "mcr.microsoft.com/devcontainers/java"
+    }
+    ```
+  </Tab>
+
+  <Tab title="JDK 21">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "Java 21",
+      "image": "mcr.microsoft.com/devcontainers/java:21"
+    }
+    ```
+  </Tab>
+
+  <Tab title="JDK 17">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "Java 17",
+      "image": "mcr.microsoft.com/devcontainers/java:17"
+    }
+    ```
+  </Tab>
+
+  <Tab title="JDK 11">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "Java 11",
+      "image": "mcr.microsoft.com/devcontainers/java:11"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Available tags
+
+Pin to a specific JDK version or OS variant using any of these tags:
+
+* `mcr.microsoft.com/devcontainers/java` — latest (JDK 25, Debian trixie)
+* `mcr.microsoft.com/devcontainers/java:25` — JDK 25 (or `25-trixie`, `25-bookworm`)
+* `mcr.microsoft.com/devcontainers/java:21` — JDK 21 (or `21-trixie`, `21-bookworm`)
+* `mcr.microsoft.com/devcontainers/java:17` — JDK 17 (or `17-trixie`, `17-bookworm`)
+* `mcr.microsoft.com/devcontainers/java:11` — JDK 11 (or `11-trixie`, `11-bookworm`)
+* `mcr.microsoft.com/devcontainers/java:8` — JDK 8 (or `8-trixie`, `8-bookworm`)
+
+<Note>
+  The Java 8 image (`mcr.microsoft.com/devcontainers/java:8`) is maintained as a separate image variant for legacy projects. For newer JDKs, use the tags above.
+</Note>
+
+## Included tools
+
+<CardGroup>
+  <Card title="SDKMAN!" icon="layer-group">
+    Manages Java SDK versions. Switch between JDKs without leaving the container.
+  </Card>
+
+  <Card title="JDK" icon="java">
+    The full Java Development Kit — `javac`, `java`, `jar`, and all standard tools.
+  </Card>
+
+  <Card title="nvm" icon="node-js">
+    Node Version Manager, pre-installed so you can add a Node.js runtime for front-end tooling.
+  </Card>
+
+  <Card title="yarn" icon="box">
+    JavaScript package manager, available for projects with front-end dependencies.
+  </Card>
+
+  <Card title="git" icon="git-alt">
+    Git version control, available at the system level.
+  </Card>
+
+  <Card title="Oh My Zsh!" icon="terminal">
+    Zsh shell with Oh My Zsh! for a productive terminal experience.
+  </Card>
+</CardGroup>
+
+## Common tasks
+
+### Run a Java program
+
+```bash theme={null}
+javac HelloWorld.java
+java HelloWorld
+```
+
+### Check the installed JDK version
+
+```bash theme={null}
+java -version
+javac -version
+```
+
+### Install a different JDK with SDKMAN!
+
+```bash theme={null}
+sdk list java
+sdk install java 21.0.3-tem
+sdk use java 21.0.3-tem
+```
+
+### Install Node.js with nvm
+
+```bash theme={null}
+nvm install --lts
+nvm use --lts
+node --version
+```
+
+### Build with Maven (after installing via feature)
+
+```bash theme={null}
+mvn clean install
+mvn test
+```
+
+### Build with Gradle (after installing via feature)
+
+```bash theme={null}
+gradle build
+gradle test
+```
+
+## Extending with features
+
+Use [Dev Container Features](https://containers.dev/features) to add Maven, Gradle, Node.js, or other tools without modifying the base image.
+
+### Add Maven and Gradle
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "Java",
+  "image": "mcr.microsoft.com/devcontainers/java:21",
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "none",
+      "installGradle": "true",
+      "installMaven": "true"
+    }
+  }
+}
+```
+
+### Add Node.js
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "Java",
+  "image": "mcr.microsoft.com/devcontainers/java:21",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    }
+  }
+}
+```
+
+### Add multiple features
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "Java Full Stack",
+  "image": "mcr.microsoft.com/devcontainers/java:21",
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "none",
+      "installMaven": "true",
+      "installGradle": "true"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    }
+  }
+}
+```
+
+## Versioning
+
+The image uses [semantic versioning](https://semver.org/). Pin to a major or minor version to control how frequently you receive updates.
+
+| Tag format        | Example         | Update behavior                   |
+| ----------------- | --------------- | --------------------------------- |
+| JDK version only  | `java:21`       | Receives all non-breaking updates |
+| Major + JDK       | `java:3-21`     | Locked to major version 3         |
+| Major.minor + JDK | `java:3.0-21`   | Locked to minor version 3.0       |
+| Full semver + JDK | `java:3.0.6-21` | Pinned to exact build             |
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/java:3-21-bookworm"
+}
+```
+
+<Tip>
+  Security patches are only applied to the latest non-breaking version (e.g., `3-21`). If you pin to a full semver like `3.0.6-21`, run `apt-get update && apt-get upgrade` in your Dockerfile to pick up OS-level security fixes.
+</Tip>
+
+
+# Node.js & JavaScript
+Source: https://www.mintlify.com/devcontainers/images/images/javascript-node
+
+A dev container image for Node.js and JavaScript development, with ESLint, nvm, and yarn pre-installed.
+
+The Node.js & JavaScript image gives you a Debian-based environment tailored for Node.js development. It includes ESLint for linting, `nvm` for managing multiple Node.js versions, and `yarn` as an alternative package manager.
+
+## Metadata
+
+| Property                | Value                                                                                                                                                |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Published image         | `mcr.microsoft.com/devcontainers/javascript-node`                                                                                                    |
+| Available variants      | `24` / `24-trixie`, `22` / `22-trixie`, `20` / `20-trixie`, `24-bookworm`, `22-bookworm`, `20-bookworm`, `24-bullseye`, `22-bullseye`, `20-bullseye` |
+| Architectures           | x86-64, arm64/aarch64 (bookworm and bullseye variants)                                                                                               |
+| Container OS            | Debian                                                                                                                                               |
+| Languages and platforms | Node.js, JavaScript                                                                                                                                  |
+
+## Using this image
+
+Reference the published image in your `.devcontainer/devcontainer.json`:
+
+```json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22"
+}
+```
+
+### Available image tags
+
+Choose a Node.js version and optionally pin the Debian OS:
+
+* `mcr.microsoft.com/devcontainers/javascript-node` — latest
+* `mcr.microsoft.com/devcontainers/javascript-node:24` (or `24-trixie`, `24-bookworm`, `24-bullseye`)
+* `mcr.microsoft.com/devcontainers/javascript-node:22` (or `22-trixie`, `22-bookworm`, `22-bullseye`)
+* `mcr.microsoft.com/devcontainers/javascript-node:20` (or `20-trixie`, `20-bookworm`, `20-bullseye`)
+
+See the [full list of available tags](https://mcr.microsoft.com/v2/devcontainers/javascript-node/tags/list).
+
+## Key included tools
+
+<AccordionGroup>
+  <Accordion title="Node.js tooling">
+    * **Node.js** — JavaScript runtime (version selected by image tag)
+    * **npm** — Node.js package manager (bundled with Node.js)
+    * **eslint** — JavaScript linter, installed globally via npm
+    * **yarn** — alternative package manager
+    * **nvm** — Node Version Manager for switching Node.js versions
+  </Accordion>
+
+  <Accordion title="Other tools">
+    * `git` — version control
+    * `zsh` + Oh My Zsh! — enhanced shell
+    * Non-root `node` user with `sudo` access
+  </Accordion>
+</AccordionGroup>
+
+## Common tasks
+
+### Switching Node.js versions with nvm
+
+The image includes `nvm` so you can install and switch between Node.js versions without rebuilding the container:
+
+```bash theme={null}
+# List available versions
+nvm ls-remote --lts
+
+# Install a specific version
+nvm install 18
+
+# Switch to an installed version
+nvm use 18
+
+# Make a version the default for new shells
+nvm alias default 18
+```
+
+### Installing global packages
+
+Install CLI tools globally using npm:
+
+```bash theme={null}
+npm install -g typescript ts-node
+```
+
+Or using yarn:
+
+```bash theme={null}
+yarn global add typescript ts-node
+```
+
+### Running a development server
+
+Forward ports from the container to your host machine by adding `forwardPorts` to `devcontainer.json`:
+
+```json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "forwardPorts": [3000]
+}
+```
+
+### Installing project dependencies on container start
+
+Use `postCreateCommand` to install your project's dependencies automatically after the container is created:
+
+```json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "postCreateCommand": "npm install"
+}
+```
+
+## Extending with features
+
+Use [Dev Container Features](https://containers.dev/features) to add tools on top of this image:
+
+```json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.13"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  }
+}
+```
+
+## Versioning
+
+Pin to a semantic version to control the update cadence:
+
+<CodeGroup>
+  ```text Major version (receives all non-breaking updates) theme={null}
+  mcr.microsoft.com/devcontainers/javascript-node:4-24
+  ```
+
+  ```text Minor version (receives patch updates only) theme={null}
+  mcr.microsoft.com/devcontainers/javascript-node:4.0-24
+  ```
+
+  ```text Patch version (fully pinned) theme={null}
+  mcr.microsoft.com/devcontainers/javascript-node:4.0.9-24
+  ```
+</CodeGroup>
+
+You can also combine with an OS pin:
+
+```text theme={null}
+mcr.microsoft.com/devcontainers/javascript-node:4.0.9-24-trixie
+mcr.microsoft.com/devcontainers/javascript-node:4.0.9-24-bookworm
+mcr.microsoft.com/devcontainers/javascript-node:4.0.9-24-bullseye
+```
+
+<Note>
+  Security patches are applied only to the latest in-support versions (e.g., `4-24`). If you pin to a specific patch version, add `RUN apt-get update && apt-get upgrade` to your Dockerfile to pick up OS-level security fixes.
+</Note>
+
+
+# Jekyll
+Source: https://www.mintlify.com/devcontainers/images/images/jekyll
+
+A dev container image for developing static sites with Jekyll, including Ruby, Bundler, and GitHub Pages support.
+
+`mcr.microsoft.com/devcontainers/jekyll`
+
+The Jekyll image provides everything you need to develop static sites with Jekyll on Debian. It includes Ruby, Bundler, the `jekyll` and `github-pages` gems, and automatically installs your project's gem dependencies at container startup.
+
+<Info>
+  **Published image architecture(s):** x86-64, arm64/aarch64 (bookworm and bullseye variants)
+  **Container OS:** Debian
+</Info>
+
+## How gem installation works at startup
+
+The container installs Jekyll dependencies automatically based on your project:
+
+* **With a `Gemfile`:** The container runs `bundle install` at startup, installing the exact Jekyll version and plugins specified in your `Gemfile`. This is the [recommended approach](https://jekyllrb.com/docs/step-by-step/10-deployment/#gemfile).
+* **Without a `Gemfile`:** The container installs the latest version of Jekyll automatically. You may need to install additional plugins manually.
+
+## Referencing this image
+
+Use the `image` property in `.devcontainer/devcontainer.json`:
+
+<Tabs>
+  <Tab title="Latest">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "Jekyll",
+      "image": "mcr.microsoft.com/devcontainers/jekyll"
+    }
+    ```
+  </Tab>
+
+  <Tab title="Debian bookworm">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "Jekyll (bookworm)",
+      "image": "mcr.microsoft.com/devcontainers/jekyll:bookworm"
+    }
+    ```
+  </Tab>
+
+  <Tab title="Debian bullseye">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "Jekyll (bullseye)",
+      "image": "mcr.microsoft.com/devcontainers/jekyll:bullseye"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Available variants
+
+| Variant    | Architectures            | Notes              |
+| ---------- | ------------------------ | ------------------ |
+| `bookworm` | linux/amd64, linux/arm64 | Debian 12 (latest) |
+| `bullseye` | linux/amd64, linux/arm64 | Debian 11          |
+| `buster`   | linux/amd64              | Debian 10 (older)  |
+
+### Pinning to a version
+
+Reference a [semantic version](https://semver.org/) to control update frequency:
+
+```text theme={null}
+mcr.microsoft.com/devcontainers/jekyll:2
+mcr.microsoft.com/devcontainers/jekyll:2-bookworm
+mcr.microsoft.com/devcontainers/jekyll:2.2
+mcr.microsoft.com/devcontainers/jekyll:2.2-bullseye
+mcr.microsoft.com/devcontainers/jekyll:2.2.7
+mcr.microsoft.com/devcontainers/jekyll:2.2.7-bookworm
+```
+
+<Warning>
+  Security patching only applies to the latest non-breaking, in-support versions of images. If you lock to a specific version, run `apt-get update && apt-get upgrade` in your Dockerfile to pick up OS security updates.
+</Warning>
+
+See the [full list of available tags](https://mcr.microsoft.com/v2/devcontainers/jekyll/tags/list).
+
+## Serving a Jekyll site
+
+<Steps>
+  <Step title="Forward port 4000">
+    Add port `4000` to `forwardPorts` in `.devcontainer/devcontainer.json`:
+
+    ```json theme={null}
+    "forwardPorts": [4000]
+    ```
+  </Step>
+
+  <Step title="Build and serve">
+    Open a terminal in the container and run:
+
+    ```bash theme={null}
+    bundle exec jekyll serve
+    ```
+
+    Jekyll serves your site at `http://localhost:4000` and watches for file changes.
+  </Step>
+
+  <Step title="Open in browser">
+    Navigate to `http://localhost:4000` in your browser. The page reloads automatically when you save changes to your source files.
+  </Step>
+</Steps>
+
+## Installing Node.js
+
+If your Jekyll site uses Node.js-based utilities for asset building, the container includes `nvm`. You can also add Node.js as a dev container feature:
+
+```json theme={null}
+{
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "latest"
+    }
+  }
+}
+```
+
+## Image contents
+
+| Component                    | Details                                           |
+| ---------------------------- | ------------------------------------------------- |
+| Base image                   | `mcr.microsoft.com/devcontainers/ruby:${VARIANT}` |
+| OS                           | Debian (bookworm or bullseye)                     |
+| Ruby                         | Included (version depends on variant)             |
+| Bundler                      | Included (`gem`)                                  |
+| Jekyll                       | Included (`gem`)                                  |
+| GitHub Pages                 | Included (`github-pages` gem)                     |
+| rake, ruby-debug-ide, debase | Included                                          |
+| nvm                          | `/usr/local/share/nvm`                            |
+| rbenv, ruby-build            | Included                                          |
+| Version                      | `2.2.7`                                           |
+
+
+# PHP
+Source: https://www.mintlify.com/devcontainers/images/images/php
+
+Pre-built dev container image for PHP development, with Apache, Xdebug, Composer, and nvm included.
+
+Use this image to develop PHP applications in a fully configured container. It builds on the official PHP Apache image and adds Xdebug for debugging, Composer for dependency management, `nvm` for optional Node.js installation, and a non-root `vscode` user with `sudo` access.
+
+## Image metadata
+
+| Property           | Value                                                        |
+| ------------------ | ------------------------------------------------------------ |
+| Published image    | `mcr.microsoft.com/devcontainers/php`                        |
+| Available variants | `8.5`, `8.4`, `8.3`, `8.2` (trixie and bookworm OS variants) |
+| Architectures      | x86-64, arm64/aarch64                                        |
+| Container OS       | Debian (trixie, bookworm)                                    |
+| Container host OS  | Linux, macOS, Windows                                        |
+
+## Using this image
+
+Reference the image directly in your `.devcontainer/devcontainer.json` using the `image` property.
+
+<Tabs>
+  <Tab title="Latest">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "PHP",
+      "image": "mcr.microsoft.com/devcontainers/php"
+    }
+    ```
+  </Tab>
+
+  <Tab title="PHP 8.5">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "PHP 8.5",
+      "image": "mcr.microsoft.com/devcontainers/php:8.5"
+    }
+    ```
+  </Tab>
+
+  <Tab title="PHP 8.4">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "PHP 8.4",
+      "image": "mcr.microsoft.com/devcontainers/php:8.4"
+    }
+    ```
+  </Tab>
+
+  <Tab title="PHP 8.3">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "PHP 8.3",
+      "image": "mcr.microsoft.com/devcontainers/php:8.3"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Available tags
+
+* `mcr.microsoft.com/devcontainers/php` — latest (PHP 8.5, Debian trixie)
+* `mcr.microsoft.com/devcontainers/php:8` (or `8-trixie`, `8-bookworm`)
+* `mcr.microsoft.com/devcontainers/php:8.5` (or `8.5-trixie`, `8.5-bookworm`)
+* `mcr.microsoft.com/devcontainers/php:8.4` (or `8.4-trixie`, `8.4-bookworm`)
+* `mcr.microsoft.com/devcontainers/php:8.3` (or `8.3-trixie`, `8.3-bookworm`)
+* `mcr.microsoft.com/devcontainers/php:8.2` (or `8.2-trixie`, `8.2-bookworm`)
+
+## Included tools
+
+<CardGroup>
+  <Card title="PHP" icon="php">
+    PHP runtime with the Apache SAPI, plus the PHP CLI for running scripts directly.
+  </Card>
+
+  <Card title="Apache" icon="server">
+    Apache HTTP server pre-configured and available on port 8080.
+  </Card>
+
+  <Card title="Xdebug" icon="bug">
+    PHP debugging extension installed at `/usr/local/lib/php/extensions`, ready to connect to your IDE.
+  </Card>
+
+  <Card title="Composer" icon="box">
+    PHP dependency manager installed at `/usr/local`, for managing packages via `composer.json`.
+  </Card>
+
+  <Card title="nvm" icon="node-js">
+    Node Version Manager, pre-installed for front-end tooling in full-stack PHP projects.
+  </Card>
+
+  <Card title="yarn" icon="box">
+    JavaScript package manager, available for projects with front-end dependencies.
+  </Card>
+
+  <Card title="git" icon="git-alt">
+    Git version control, available at the system level.
+  </Card>
+
+  <Card title="Oh My Zsh!" icon="terminal">
+    Zsh shell with Oh My Zsh! for a productive terminal experience.
+  </Card>
+</CardGroup>
+
+## Common tasks
+
+### Run the PHP built-in server
+
+```bash theme={null}
+php -S 0.0.0.0:8080
+```
+
+### Start Apache
+
+```bash theme={null}
+apache2ctl start
+```
+
+Apache serves on port `8080` by default.
+
+### Link your project to Apache's web root
+
+Add the following `postCreateCommand` in `devcontainer.json` to symlink your project directory into Apache's `www` folder:
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "postCreateCommand": "sudo chmod a+x \"$(pwd)\" && sudo rm -rf /var/www/html && sudo ln -s \"$(pwd)\" /var/www/html"
+}
+```
+
+Or run it manually in the terminal:
+
+```bash theme={null}
+sudo chmod a+x "$(pwd)" && sudo rm -rf /var/www/html && sudo ln -s "$(pwd)" /var/www/html
+```
+
+### Install dependencies with Composer
+
+```bash theme={null}
+composer install
+composer require vendor/package
+```
+
+### Run PHP unit tests
+
+```bash theme={null}
+./vendor/bin/phpunit tests/
+```
+
+### Install Node.js with nvm
+
+```bash theme={null}
+nvm install --lts
+nvm use --lts
+npm install
+```
+
+## Extending with features
+
+Use [Dev Container Features](https://containers.dev/features) to add Node.js, databases, or other tools without modifying the base image.
+
+### Add Node.js
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "PHP",
+  "image": "mcr.microsoft.com/devcontainers/php:8.4",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    }
+  }
+}
+```
+
+### Add a MySQL client
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "PHP",
+  "image": "mcr.microsoft.com/devcontainers/php:8.4",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    },
+    "ghcr.io/devcontainers/features/mysql:1": {}
+  }
+}
+```
+
+## Versioning
+
+The image uses [semantic versioning](https://semver.org/). Pin to a major or minor version to control how frequently you receive updates.
+
+| Tag format        | Example       | Update behavior                   |
+| ----------------- | ------------- | --------------------------------- |
+| PHP version only  | `php:8.4`     | Receives all non-breaking updates |
+| Major + PHP       | `php:3-8`     | Locked to major version 3         |
+| Major.minor + PHP | `php:3.0-8`   | Locked to minor version 3.0       |
+| Full semver + PHP | `php:3.0.4-8` | Pinned to exact build             |
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/php:3-8.4-bookworm"
+}
+```
+
+<Tip>
+  Security patches are only applied to the latest non-breaking version (e.g., `3-8`). If you pin to a full semver like `3.0.4-8`, run `apt-get update && apt-get upgrade` in your Dockerfile to pick up OS-level security fixes.
+</Tip>
+
+
+# Python 3
+Source: https://www.mintlify.com/devcontainers/images/images/python
+
+A dev container image for Python 3 development, with linting tools, formatters, and type checkers pre-installed.
+
+The Python image gives you a ready-to-use Python 3 development environment on Debian. It ships with a curated set of linting, formatting, and static analysis tools installed via `pipx`, so they stay isolated from your project's Python environment.
+
+## Metadata
+
+| Property                | Value                                                                                                                                                                                                                                                             |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Published image         | `mcr.microsoft.com/devcontainers/python`                                                                                                                                                                                                                          |
+| Available variants      | `3` / `3-trixie`, `3.9` / `3.9-trixie`, `3.10` / `3.10-trixie`, `3.11` / `3.11-trixie`, `3.12` / `3.12-trixie`, `3.13` / `3.13-trixie`, `3.14` / `3.14-trixie`, `3-bookworm`, `3.10-bookworm`, `3.11-bookworm`, `3.12-bookworm`, `3.13-bookworm`, `3.14-bookworm` |
+| Architectures           | x86-64, arm64/aarch64 (bookworm and bullseye variants)                                                                                                                                                                                                            |
+| Container OS            | Debian                                                                                                                                                                                                                                                            |
+| Languages and platforms | Python                                                                                                                                                                                                                                                            |
+
+## Using this image
+
+Reference the published image in your `.devcontainer/devcontainer.json`:
+
+```json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/python:3"
+}
+```
+
+### Available image tags
+
+Choose a Python version and optionally pin the Debian OS:
+
+* `mcr.microsoft.com/devcontainers/python:3` — latest Python 3
+* `mcr.microsoft.com/devcontainers/python:3.14` (or `3.14-trixie`, `3.14-bookworm`)
+* `mcr.microsoft.com/devcontainers/python:3.13` (or `3.13-trixie`, `3.13-bookworm`)
+* `mcr.microsoft.com/devcontainers/python:3.12` (or `3.12-trixie`, `3.12-bookworm`)
+* `mcr.microsoft.com/devcontainers/python:3.11` (or `3.11-trixie`, `3.11-bookworm`)
+* `mcr.microsoft.com/devcontainers/python:3.10` (or `3.10-trixie`, `3.10-bookworm`)
+
+See the [full list of available tags](https://mcr.microsoft.com/v2/devcontainers/python/tags/list).
+
+## Key included tools
+
+<AccordionGroup>
+  <Accordion title="Python linting and formatting (via pipx)">
+    Each tool is installed in its own isolated environment using `pipx`:
+
+    * **pylint** — general-purpose linter
+    * **flake8** — style guide enforcement
+    * **autopep8** — auto-formatter (PEP 8)
+    * **black** — opinionated code formatter
+    * **yapf** — configurable formatter by Google
+    * **mypy** — static type checker
+    * **pydocstyle** — docstring style checker
+    * **pycodestyle** — PEP 8 style checker
+    * **bandit** — security-focused linter
+    * **virtualenv** — virtual environment manager
+    * **pipx** — tool for installing CLI Python apps
+  </Accordion>
+
+  <Accordion title="Other tools">
+    * `git` — version control
+    * `nvm` — Node Version Manager (for front-end toolchains)
+    * `yarn` — JavaScript package manager
+    * `zsh` + Oh My Zsh! — enhanced shell
+    * `setuptools` — Python packaging utility
+    * Non-root `vscode` user with `sudo` access
+  </Accordion>
+</AccordionGroup>
+
+## Common tasks
+
+### Installing packages with pip
+
+Install packages into your project's virtual environment:
+
+```bash theme={null}
+pip install requests flask
+```
+
+To install globally without `sudo`, use user-level installs:
+
+```bash theme={null}
+pip install --user <package>
+```
+
+Or use `sudo` for a global install:
+
+```bash theme={null}
+sudo pip install <package>
+```
+
+### Installing development tools with pipx
+
+Install additional Python CLI tools in isolated environments using `pipx`:
+
+```bash theme={null}
+pipx install prospector
+```
+
+This keeps the tool's dependencies from conflicting with your project's packages. See the [pipx documentation](https://pipxproject.github.io/pipx/docs/) for details.
+
+### Forwarding ports for Flask
+
+Flask listens on `localhost` inside the container by default, so you need to forward the port to access it from your host machine. Add `forwardPorts` to your `devcontainer.json`:
+
+```json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/python:3",
+  "forwardPorts": [5000]
+}
+```
+
+<Tip>
+  Use `forwardPorts` rather than `appPort`. The `appPort` property publishes the port, which requires your app to listen on `0.0.0.0` — conflicting with Flask's default. `forwardPorts` does not have this restriction.
+</Tip>
+
+Rebuild the container after adding `forwardPorts` using **Remote-Containers: Rebuild Container** from the Command Palette.
+
+### Baking requirements into the image
+
+If your dependencies rarely change, install them directly into your image to avoid running `pip install` on every container start. Add this to your `Dockerfile`:
+
+```dockerfile theme={null}
+COPY requirements.txt /tmp/pip-tmp/
+RUN pip3 --disable-pip-version-check --no-cache-dir install -r /tmp/pip-tmp/requirements.txt \
+    && rm -rf /tmp/pip-tmp
+```
+
+Include `"context": ".."` in `devcontainer.json` so the Dockerfile can access files in your project directory.
+
+### Running multiple Python versions in one container
+
+Use a custom `Dockerfile` to install multiple Python versions from the `deadsnakes` PPA:
+
+```dockerfile theme={null}
+FROM ubuntu:jammy
+ARG PYTHON_PACKAGES="python3.13 python3.12 python3 python3-pip python3-venv"
+RUN apt-get update && apt-get install --no-install-recommends -yq software-properties-common \
+     && add-apt-repository ppa:deadsnakes/ppa && apt-get update \
+     && apt-get install -yq --no-install-recommends ${PYTHON_PACKAGES} \
+     && pip3 install --no-cache-dir --upgrade pip setuptools wheel
+```
+
+### Installing Node.js for front-end toolchains
+
+The image includes `nvm` for on-demand Node.js installs. Alternatively, add the Node.js feature to `devcontainer.json`:
+
+```json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/python:3",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "latest"
+    }
+  }
+}
+```
+
+## Extending with features
+
+Use [Dev Container Features](https://containers.dev/features) to add tools on top of the Python image:
+
+```json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/python:3",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  }
+}
+```
+
+## Versioning
+
+Pin to a semantic version to control the update cadence:
+
+<CodeGroup>
+  ```text Major version (receives all non-breaking updates) theme={null}
+  mcr.microsoft.com/devcontainers/python:3-3.13
+  ```
+
+  ```text Minor version (receives patch updates only) theme={null}
+  mcr.microsoft.com/devcontainers/python:3.0-3.13
+  ```
+
+  ```text Patch version (fully pinned) theme={null}
+  mcr.microsoft.com/devcontainers/python:3.0.6-3.13
+  ```
+</CodeGroup>
+
+You can also pin both the image version and the OS variant:
+
+```text theme={null}
+mcr.microsoft.com/devcontainers/python:3.0.6-3.14-trixie
+mcr.microsoft.com/devcontainers/python:3.0.6-3.14-bookworm
+```
+
+<Note>
+  Security patches are applied only to the latest in-support versions. If you pin to a specific patch version, add `RUN apt-get update && apt-get upgrade` to your Dockerfile to pick up OS-level security fixes.
+</Note>
+
+
+# Ruby
+Source: https://www.mintlify.com/devcontainers/images/images/ruby
+
+Pre-built dev container image for Ruby development, with rvm, rbenv, ruby-build, bundler, and debugging tools included.
+
+Use this image to develop Ruby applications in a fully configured container. It builds on the official Ruby image and adds `rvm` and `rbenv` for version management, `ruby-build` for compiling Ruby versions, debugging gems (`ruby-debug-ide`, `debase`), `nvm` for optional Node.js, and a non-root `vscode` user with `sudo` access.
+
+## Image metadata
+
+| Property           | Value                                                             |
+| ------------------ | ----------------------------------------------------------------- |
+| Published image    | `mcr.microsoft.com/devcontainers/ruby`                            |
+| Available variants | `4`, `3.4`, `3.3`, `3.2` (trixie, bookworm, bullseye OS variants) |
+| Architectures      | x86-64, arm64/aarch64                                             |
+| Container OS       | Debian (trixie, bookworm, bullseye)                               |
+| Container host OS  | Linux, macOS, Windows                                             |
+
+## Using this image
+
+Reference the image directly in your `.devcontainer/devcontainer.json` using the `image` property.
+
+<Tabs>
+  <Tab title="Latest">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "Ruby",
+      "image": "mcr.microsoft.com/devcontainers/ruby"
+    }
+    ```
+  </Tab>
+
+  <Tab title="Ruby 4">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "Ruby 4",
+      "image": "mcr.microsoft.com/devcontainers/ruby:4"
+    }
+    ```
+  </Tab>
+
+  <Tab title="Ruby 3.4">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "Ruby 3.4",
+      "image": "mcr.microsoft.com/devcontainers/ruby:3.4"
+    }
+    ```
+  </Tab>
+
+  <Tab title="Ruby 3.3">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "Ruby 3.3",
+      "image": "mcr.microsoft.com/devcontainers/ruby:3.3"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Available tags
+
+* `mcr.microsoft.com/devcontainers/ruby` — latest (Ruby 4, Debian trixie)
+* `mcr.microsoft.com/devcontainers/ruby:4` (or `4-trixie`, `4-bookworm`)
+* `mcr.microsoft.com/devcontainers/ruby:3.4` (or `3.4-trixie`, `3.4-bookworm`, `3.4-bullseye`)
+* `mcr.microsoft.com/devcontainers/ruby:3.3` (or `3.3-trixie`, `3.3-bookworm`, `3.3-bullseye`)
+* `mcr.microsoft.com/devcontainers/ruby:3.2` (or `3.2-trixie`, `3.2-bookworm`, `3.2-bullseye`)
+
+## Included tools
+
+<CardGroup>
+  <Card title="Ruby" icon="gem">
+    The Ruby interpreter, installed at `/usr/local`, matching the variant version.
+  </Card>
+
+  <Card title="rvm" icon="layer-group">
+    Ruby Version Manager for switching between Ruby versions within the container.
+  </Card>
+
+  <Card title="rbenv + ruby-build" icon="layer-group">
+    Alternative Ruby version management toolchain, installed at `/usr/local/share/rbenv` and `/usr/local/share/ruby-build`.
+  </Card>
+
+  <Card title="rake" icon="hammer">
+    Ruby build tool and task runner, pre-installed as a gem.
+  </Card>
+
+  <Card title="ruby-debug-ide + debase" icon="bug">
+    Debugging gems for integration with IDE debuggers.
+  </Card>
+
+  <Card title="nvm" icon="node-js">
+    Node Version Manager, pre-installed for front-end tooling in Rails or full-stack Ruby projects.
+  </Card>
+
+  <Card title="yarn + build-essential" icon="box">
+    JavaScript package manager and C build tools for compiling native Ruby gems.
+  </Card>
+
+  <Card title="Oh My Zsh!" icon="terminal">
+    Zsh shell with Oh My Zsh! for a productive terminal experience.
+  </Card>
+</CardGroup>
+
+## Common tasks
+
+### Check the Ruby version
+
+```bash theme={null}
+ruby --version
+gem --version
+```
+
+### Install gems with Bundler
+
+```bash theme={null}
+bundle install
+bundle exec rake
+```
+
+### Create a new Rails app
+
+```bash theme={null}
+gem install rails
+rails new my_app
+cd my_app
+bin/rails server
+```
+
+### Run tests with RSpec
+
+```bash theme={null}
+bundle exec rspec
+bundle exec rspec spec/models/
+```
+
+### Manage Ruby versions with rbenv
+
+```bash theme={null}
+rbenv install 3.4.0
+rbenv local 3.4.0
+ruby --version
+```
+
+### Install Node.js with nvm
+
+```bash theme={null}
+nvm install --lts
+nvm use --lts
+```
+
+## Extending with features
+
+Use [Dev Container Features](https://containers.dev/features) to add Node.js, databases, or other tools without modifying the base image.
+
+### Add Node.js
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "Ruby",
+  "image": "mcr.microsoft.com/devcontainers/ruby:3.4",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    }
+  }
+}
+```
+
+### Add PostgreSQL client
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "Ruby on Rails",
+  "image": "mcr.microsoft.com/devcontainers/ruby:3.4",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    },
+    "ghcr.io/devcontainers/features/postgres:1": {}
+  }
+}
+```
+
+## Versioning
+
+The image uses [semantic versioning](https://semver.org/). Pin to a major or minor version to control how frequently you receive updates.
+
+| Tag format         | Example        | Update behavior                   |
+| ------------------ | -------------- | --------------------------------- |
+| Ruby version only  | `ruby:3.4`     | Receives all non-breaking updates |
+| Major + Ruby       | `ruby:3-4`     | Locked to major version 3         |
+| Major.minor + Ruby | `ruby:3.0-4`   | Locked to minor version 3.0       |
+| Full semver + Ruby | `ruby:3.0.3-4` | Pinned to exact build             |
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/ruby:3-3.4-bookworm"
+}
+```
+
+<Tip>
+  Security patches are only applied to the latest non-breaking version (e.g., `3-4`). If you pin to a full semver like `3.0.3-4`, run `apt-get update && apt-get upgrade` in your Dockerfile to pick up OS-level security fixes.
+</Tip>
+
+
+# Rust
+Source: https://www.mintlify.com/devcontainers/images/images/rust
+
+Pre-built dev container image for Rust development, with cargo, rustfmt, clippy, rust-analyzer support, and lldb for debugging.
+
+Use this image to develop Rust applications in a fully configured container. It builds on the official Rust image and adds `rustfmt`, `clippy`, `rust-src`, `rust-analysis`, `lldb` for debugging, and a non-root `vscode` user with `sudo` access.
+
+## Image metadata
+
+| Property           | Value                                  |
+| ------------------ | -------------------------------------- |
+| Published image    | `mcr.microsoft.com/devcontainers/rust` |
+| Available variants | `trixie`, `bookworm`, `bullseye`       |
+| Architectures      | x86-64, arm64/aarch64                  |
+| Container OS       | Debian (trixie, bookworm, bullseye)    |
+| Container host OS  | Linux, macOS, Windows                  |
+
+## Using this image
+
+Reference the image directly in your `.devcontainer/devcontainer.json` using the `image` property.
+
+<Tabs>
+  <Tab title="Latest">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "Rust",
+      "image": "mcr.microsoft.com/devcontainers/rust:latest"
+    }
+    ```
+  </Tab>
+
+  <Tab title="Debian trixie">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "Rust (Debian trixie)",
+      "image": "mcr.microsoft.com/devcontainers/rust:trixie"
+    }
+    ```
+  </Tab>
+
+  <Tab title="Debian bookworm">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "Rust (Debian bookworm)",
+      "image": "mcr.microsoft.com/devcontainers/rust:bookworm"
+    }
+    ```
+  </Tab>
+
+  <Tab title="Debian bullseye">
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "Rust (Debian bullseye)",
+      "image": "mcr.microsoft.com/devcontainers/rust:bullseye"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Available tags
+
+* `mcr.microsoft.com/devcontainers/rust:latest` (or `trixie`)
+* `mcr.microsoft.com/devcontainers/rust:1` (or `1-trixie`, `1-bookworm`, `1-bullseye`)
+* `mcr.microsoft.com/devcontainers/rust:bookworm`
+* `mcr.microsoft.com/devcontainers/rust:bullseye`
+
+## Included tools
+
+<CardGroup>
+  <Card title="Rust + cargo" icon="rust">
+    The Rust toolchain managed by `rustup`, with `cargo` for building, testing, and managing dependencies.
+  </Card>
+
+  <Card title="rustfmt" icon="align-left">
+    The official Rust code formatter. Run `cargo fmt` to automatically format your code.
+  </Card>
+
+  <Card title="clippy" icon="scissors">
+    The Rust linter. Run `cargo clippy` to catch common mistakes and improve your code.
+  </Card>
+
+  <Card title="rust-src + rust-analysis" icon="magnifying-glass">
+    Rust standard library source code and analysis data, required by `rust-analyzer` for IDE features like go-to-definition.
+  </Card>
+
+  <Card title="lldb" icon="bug">
+    LLVM debugger for stepping through Rust programs with IDE debugger integrations.
+  </Card>
+
+  <Card title="gcc + libc6-dev" icon="c">
+    C linker and system libraries required for compiling Rust crates that link to native code.
+  </Card>
+
+  <Card title="python3-minimal" icon="python">
+    Minimal Python 3 runtime, used by some `lldb` scripts and debugging integrations.
+  </Card>
+
+  <Card title="Oh My Zsh!" icon="terminal">
+    Zsh shell with Oh My Zsh! for a productive terminal experience.
+  </Card>
+</CardGroup>
+
+## Common tasks
+
+### Create a new project
+
+```bash theme={null}
+cargo new my_project
+cargo new --lib my_library
+```
+
+### Build and run
+
+```bash theme={null}
+cargo build
+cargo run
+```
+
+### Build for release
+
+```bash theme={null}
+cargo build --release
+./target/release/my_project
+```
+
+### Run tests
+
+```bash theme={null}
+cargo test
+cargo test -- --nocapture
+```
+
+### Lint with Clippy
+
+```bash theme={null}
+cargo clippy
+cargo clippy -- -D warnings
+```
+
+### Format code with rustfmt
+
+```bash theme={null}
+cargo fmt
+cargo fmt --check
+```
+
+### Check without building
+
+```bash theme={null}
+cargo check
+```
+
+### Add a dependency
+
+```bash theme={null}
+cargo add serde --features derive
+cargo add tokio --features full
+```
+
+### Update dependencies
+
+```bash theme={null}
+cargo update
+```
+
+### Debug with lldb
+
+```bash theme={null}
+cargo build
+lldb ./target/debug/my_project
+(lldb) run
+(lldb) bt
+```
+
+## Extending with features
+
+Use [Dev Container Features](https://containers.dev/features) to add tools alongside Rust.
+
+### Add a Rust cross-compilation target
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "Rust",
+  "image": "mcr.microsoft.com/devcontainers/rust:bookworm",
+  "postCreateCommand": "rustup target add aarch64-unknown-linux-gnu"
+}
+```
+
+### Add Node.js (for WASM tooling)
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "Rust + WASM",
+  "image": "mcr.microsoft.com/devcontainers/rust:bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    }
+  },
+  "postCreateCommand": "cargo install wasm-pack"
+}
+```
+
+### Add Docker-in-Docker
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "Rust",
+  "image": "mcr.microsoft.com/devcontainers/rust:bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  }
+}
+```
+
+## Versioning
+
+The image uses [semantic versioning](https://semver.org/). Pin to a major or minor version to control how frequently you receive updates.
+
+| Tag format            | Example        | Update behavior                   |
+| --------------------- | -------------- | --------------------------------- |
+| Rust channel + OS     | `rust:1`       | Receives all non-breaking updates |
+| Major + channel + OS  | `rust:2-1`     | Locked to major version 2         |
+| Major.minor + channel | `rust:2.0-1`   | Locked to minor version 2.0       |
+| Full semver + channel | `rust:2.0.9-1` | Pinned to exact build             |
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/rust:2-1-bookworm"
+}
+```
+
+<Tip>
+  Security patches are only applied to the latest non-breaking version (e.g., `2-1`). If you pin to a full semver like `2.0.9-1`, run `apt-get update && apt-get upgrade` in your Dockerfile to pick up OS-level security fixes.
+</Tip>
+
+
+# Node.js & TypeScript
+Source: https://www.mintlify.com/devcontainers/images/images/typescript-node
+
+A dev container image for TypeScript development on Node.js, with the TypeScript compiler, ESLint, nvm, and yarn pre-installed.
+
+The TypeScript image extends the Node.js & JavaScript image with the TypeScript compiler (`tsc`) and `tslint-to-eslint-config` installed globally. It gives you a Debian-based environment ready for typed Node.js development out of the box.
+
+## Metadata
+
+| Property                | Value                                                                                                                                                |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Published image         | `mcr.microsoft.com/devcontainers/typescript-node`                                                                                                    |
+| Available variants      | `24` / `24-trixie`, `22` / `22-trixie`, `20` / `20-trixie`, `24-bookworm`, `22-bookworm`, `20-bookworm`, `24-bullseye`, `22-bullseye`, `20-bullseye` |
+| Architectures           | x86-64, arm64/aarch64 (bookworm and bullseye variants)                                                                                               |
+| Container OS            | Debian                                                                                                                                               |
+| Languages and platforms | Node.js, TypeScript                                                                                                                                  |
+
+## Using this image
+
+Reference the published image in your `.devcontainer/devcontainer.json`:
+
+```json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:22"
+}
+```
+
+### Available image tags
+
+Choose a Node.js version and optionally pin the Debian OS:
+
+* `mcr.microsoft.com/devcontainers/typescript-node` — latest
+* `mcr.microsoft.com/devcontainers/typescript-node:24` (or `24-trixie`, `24-bookworm`, `24-bullseye`)
+* `mcr.microsoft.com/devcontainers/typescript-node:22` (or `22-trixie`, `22-bookworm`, `22-bullseye`)
+* `mcr.microsoft.com/devcontainers/typescript-node:20` (or `20-trixie`, `20-bookworm`, `20-bullseye`)
+
+See the [full list of available tags](https://mcr.microsoft.com/v2/devcontainers/typescript-node/tags/list).
+
+## Key included tools
+
+<AccordionGroup>
+  <Accordion title="TypeScript and Node.js tooling">
+    All npm packages listed below are installed globally:
+
+    * **TypeScript** (`typescript`) — the TypeScript compiler (`tsc`)
+    * **eslint** — JavaScript and TypeScript linter
+    * **tslint-to-eslint-config** — migration tool from the deprecated `tslint` to `eslint`
+    * **Node.js** — JavaScript runtime (version selected by image tag)
+    * **npm** — Node.js package manager (bundled with Node.js)
+    * **yarn** — alternative package manager
+    * **nvm** — Node Version Manager
+  </Accordion>
+
+  <Accordion title="Other tools">
+    * `git` — version control
+    * `zsh` + Oh My Zsh! — enhanced shell
+    * Non-root `node` user with `sudo` access
+  </Accordion>
+</AccordionGroup>
+
+## Common tasks
+
+### Compiling TypeScript
+
+Run the TypeScript compiler directly:
+
+```bash theme={null}
+tsc --init          # generate a tsconfig.json
+tsc                 # compile using tsconfig.json
+tsc --watch         # watch mode
+```
+
+### Linting TypeScript with ESLint
+
+`eslint` is installed globally, but you need to install TypeScript-specific ESLint plugins locally in your project to lint `.ts` files. As of ESLint 6, plugins must be local:
+
+```bash theme={null}
+npm install --save-dev \
+  @typescript-eslint/eslint-plugin \
+  @typescript-eslint/parser \
+  eslint \
+  typescript
+```
+
+Then configure `.eslintrc.json`:
+
+```json theme={null}
+{
+  "parser": "@typescript-eslint/parser",
+  "plugins": ["@typescript-eslint"],
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended"
+  ]
+}
+```
+
+### Migrating from tslint to ESLint
+
+`tslint` is fully deprecated. The image includes `tslint-to-eslint-config` to help you migrate existing projects:
+
+```bash theme={null}
+npx tslint-to-eslint-config
+```
+
+This generates an `.eslintrc.js` based on your existing `tslint.json`.
+
+### Switching Node.js versions with nvm
+
+Use `nvm` to install and switch between Node.js versions without rebuilding the container:
+
+```bash theme={null}
+# Install a specific version
+nvm install 20
+
+# Switch to it
+nvm use 20
+
+# Set as default for new shells
+nvm alias default 20
+```
+
+### Running a TypeScript project in development
+
+Use `ts-node` for running TypeScript files directly, or `nodemon` + `ts-node` for watch mode:
+
+```bash theme={null}
+# Install ts-node locally
+npm install --save-dev ts-node nodemon
+
+# Run a file directly
+npx ts-node src/index.ts
+
+# Watch mode
+npx nodemon --exec ts-node src/index.ts
+```
+
+## Extending with features
+
+Use [Dev Container Features](https://containers.dev/features) to add tools on top of this image:
+
+```json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:22",
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.13"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  }
+}
+```
+
+## Versioning
+
+Pin to a semantic version to control the update cadence:
+
+<CodeGroup>
+  ```text Major version (receives all non-breaking updates) theme={null}
+  mcr.microsoft.com/devcontainers/typescript-node:4-24
+  ```
+
+  ```text Minor version (receives patch updates only) theme={null}
+  mcr.microsoft.com/devcontainers/typescript-node:4.0-24
+  ```
+
+  ```text Patch version (fully pinned) theme={null}
+  mcr.microsoft.com/devcontainers/typescript-node:4.0.7-24
+  ```
+</CodeGroup>
+
+You can also combine with an OS pin:
+
+```text theme={null}
+mcr.microsoft.com/devcontainers/typescript-node:4.0.7-24-trixie
+mcr.microsoft.com/devcontainers/typescript-node:4.0.7-24-bookworm
+mcr.microsoft.com/devcontainers/typescript-node:4.0.7-24-bullseye
+```
+
+<Note>
+  Security patches are applied only to the latest in-support versions (e.g., `3-24`). If you pin to a specific patch version, add `RUN apt-get update && apt-get upgrade` to your Dockerfile to pick up OS-level security fixes.
+</Note>
+
+
+# Universal
+Source: https://www.mintlify.com/devcontainers/images/images/universal
+
+A large, multi-language image with popular runtimes pre-installed — the default image used by GitHub Codespaces.
+
+The Universal image is a large, Ubuntu-based dev container image that bundles many popular language runtimes, SDKs, and tools into one container. It is the image GitHub Codespaces uses by default when no custom image or Dockerfile is specified.
+
+## Metadata
+
+| Property                | Value                                                                                                 |
+| ----------------------- | ----------------------------------------------------------------------------------------------------- |
+| Published image         | `mcr.microsoft.com/devcontainers/universal:linux` / `mcr.microsoft.com/devcontainers/universal:noble` |
+| Available variants      | `noble`, `linux`                                                                                      |
+| Architectures           | x86-64                                                                                                |
+| Container OS            | Ubuntu (Noble)                                                                                        |
+| Languages and platforms | Python, Node.js, JavaScript, TypeScript, C++, Java, C#, F#, .NET Core, PHP, Go, Ruby, Conda           |
+
+## Using this image
+
+Reference the published image in your `.devcontainer/devcontainer.json`:
+
+```json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/universal:linux"
+}
+```
+
+### Available image tags
+
+Pin to a specific OS variant:
+
+* `mcr.microsoft.com/devcontainers/universal:linux`
+* `mcr.microsoft.com/devcontainers/universal:noble`
+
+## Key included tools
+
+The Universal image includes runtimes and tooling for multiple languages in a single container.
+
+<AccordionGroup>
+  <Accordion title="Language runtimes">
+    Multiple versions of these runtimes are installed and managed by their respective version managers:
+
+    * **Python** — managed under `/usr/local/python`
+    * **Node.js** — managed by `nvm` at `/usr/local/share/nvm/versions/node`
+    * **Java** — managed by SDKMAN! at `/usr/local/sdkman/candidates/java`
+    * **.NET** — available via `dotnet`
+    * **Ruby** — managed by `rvm` at `/usr/local/rvm/rubies`
+    * **PHP** — available at `/usr/local/php`
+    * **Go** — available system-wide
+    * **GCC / Clang** — C and C++ compilers
+  </Accordion>
+
+  <Accordion title="Python tools (via pipx)">
+    `pylint`, `flake8`, `autopep8`, `black`, `yapf`, `mypy`, `pydocstyle`, `pycodestyle`, `bandit`, `virtualenv`, `pipx`
+  </Accordion>
+
+  <Accordion title="Python data science packages (via pip)">
+    `numpy`, `pandas`, `scipy`, `matplotlib`, `seaborn`, `scikit-learn`, `torch`, `requests`, `plotly`, `jupyterlab_git`, `certifi`, `setuptools`, `wheel`
+  </Accordion>
+
+  <Accordion title="Go tools">
+    `gopls`, `staticcheck` (honnef.co/go/tools), `golint`, `revive`, `gopkgs`, `go-outline`, `delve`, `golangci-lint`
+  </Accordion>
+
+  <Accordion title="Ruby gems">
+    `rake`, `ruby-debug-ide`, `debase`, `jekyll`
+  </Accordion>
+
+  <Accordion title="Other tools">
+    `git`, `git-lfs`, `Docker CLI`, `Docker Engine`, `Docker Compose`, `kubectl`, `Helm`, `GitHub CLI`, `yarn`, `Maven`, `Gradle`, `conda`, `SDKMAN!`, `rvm`, `nvm`, `nvs`, `rbenv`, `Oh My Zsh!`, `zsh`, `fish`, `cmake`, `build-essential`, `valgrind`, `lldb`, `llvm`, `gdb`, `clang`, `openssh-server`, `JupyterLab`
+  </Accordion>
+</AccordionGroup>
+
+## Common tasks
+
+### Disabling automatic Codespaces setup
+
+When you use the Universal image in GitHub Codespaces without a `postCreateCommand`, Codespaces runs automatic setup steps. You can disable this behavior:
+
+```json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/universal:linux",
+  "customizations": {
+    "codespaces": {
+      "disableAutomaticConfiguration": true
+    }
+  }
+}
+```
+
+### Using Conda
+
+The image includes the `conda` package manager. You can install packages directly:
+
+```bash theme={null}
+conda install numpy scipy
+```
+
+<Note>
+  Access to the Anaconda repository is covered by the [Anaconda Terms of Service](https://aka.ms/vscode-remote/conda/terms). When used with GitHub Codespaces or GitHub Actions, all users — including those in organizations that normally require a commercial license — are permitted to use the Anaconda repository through the service.
+</Note>
+
+To use an alternative Conda channel, see [configuring Conda channels](https://aka.ms/vscode-remote/conda/channel-setup).
+
+### Switching Node.js versions with nvm
+
+`nvm` is pre-installed. Use it to install and switch between Node.js versions:
+
+```bash theme={null}
+# Install a specific version
+nvm install 20
+
+# Switch to an installed version
+nvm use 20
+
+# Set a default version
+nvm alias default 20
+```
+
+### Switching Ruby versions with rvm
+
+```bash theme={null}
+# Install a specific Ruby version
+rvm install 3.2
+
+# Use it in the current shell
+rvm use 3.2
+```
+
+### Accessing the container via SSH
+
+The Universal image runs an SSH server. To enable SSH access, use the [SSHD Feature](https://github.com/devcontainers/features/tree/main/src/sshd):
+
+```json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/universal:linux",
+  "features": {
+    "ghcr.io/devcontainers/features/sshd:1": {}
+  }
+}
+```
+
+## Extending with features
+
+Use [Dev Container Features](https://containers.dev/features) to add tools without modifying the image:
+
+```json theme={null}
+{
+  "image": "mcr.microsoft.com/devcontainers/universal:linux",
+  "features": {
+    "ghcr.io/devcontainers/features/aws-cli:1": {},
+    "ghcr.io/devcontainers/features/terraform:1": {}
+  }
+}
+```
+
+## Versioning
+
+Pin to a semantic version to control how often you receive updates:
+
+<CodeGroup>
+  ```text Major version (receives all non-breaking updates) theme={null}
+  mcr.microsoft.com/devcontainers/universal:6-noble
+  ```
+
+  ```text Minor version (receives patch updates only) theme={null}
+  mcr.microsoft.com/devcontainers/universal:6.0-noble
+  ```
+
+  ```text Patch version (fully pinned) theme={null}
+  mcr.microsoft.com/devcontainers/universal:6.0.0-noble
+  ```
+</CodeGroup>
+
+<Note>
+  Security patches are applied only to the latest in-support versions. If you pin to a specific patch version, run `apt-get update && apt-get upgrade` in your Dockerfile to pick up OS-level security fixes.
+</Note>
+
+See the [full list of available tags](https://mcr.microsoft.com/v2/devcontainers/universal/tags/list).
+
+
+# Introduction
+Source: https://www.mintlify.com/devcontainers/images/introduction
+
+Learn what dev container images are, how they relate to the Dev Containers spec, and how versioning works.
+
+Dev container images are pre-built Docker images that give you a fully configured development environment the moment you open a project. Instead of installing runtimes, language toolchains, and development tools manually on each machine, you reference an image in a `devcontainer.json` file and your editor or CI system handles the rest.
+
+This repository publishes images to the Microsoft Container Registry (MCR) under `mcr.microsoft.com/devcontainers/`. Every image includes the target language runtime, common development tools, `zsh` with Oh My Zsh!, a non-root `vscode` user with `sudo` access, and `git`.
+
+## The problem they solve
+
+Setting up a development environment is repetitive and error-prone. Differences in OS versions, installed packages, and environment variables cause "works on my machine" problems that slow teams down. Dev container images solve this by codifying the environment as a versioned, reproducible artifact that everyone on a team shares.
+
+<CardGroup>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get a dev container running in minutes using the Python image as an example.
+  </Card>
+
+  <Card title="Choosing an image" icon="images" href="/choosing-an-image">
+    Compare base, language, and universal images to find the right fit for your project.
+  </Card>
+
+  <Card title="Base images" icon="box" href="/images/base-ubuntu">
+    Minimal Ubuntu, Debian, and Alpine images as a foundation for custom containers.
+  </Card>
+
+  <Card title="Language images" icon="code" href="/images/universal">
+    Purpose-built images for Python, Node.js, Go, Java, .NET, Rust, and more.
+  </Card>
+</CardGroup>
+
+## How devcontainer.json works
+
+A `devcontainer.json` file tells your editor how to build or pull a container and how to configure it for development. It plays a similar role to `launch.json` for debugging — it defines the environment, not the code.
+
+At its simplest, a `devcontainer.json` references an image:
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "Python 3",
+  "image": "mcr.microsoft.com/devcontainers/python:3"
+}
+```
+
+You can extend this with [Dev Container Features](https://containers.dev/features), port forwarding, lifecycle scripts, and editor-specific settings. The full configuration reference is defined by the [Dev Containers specification](https://containers.dev/).
+
+## Relationship to the Dev Containers spec
+
+The [Dev Containers specification](https://github.com/devcontainers/spec) defines the format for `devcontainer.json` and the contract that tools (VS Code, GitHub Codespaces, DevPod, and others) must follow to implement dev containers. This image repository is separate from the spec — it provides ready-made images that conform to the spec's expectations, such as the non-root user convention and the expected shell environment.
+
+<Note>
+  You can use any Docker image with a `devcontainer.json` file. The images in this repository are pre-configured to work well out of the box with dev container tooling, but they are not required by the spec.
+</Note>
+
+## VS Code Dev Containers and GitHub Codespaces
+
+**VS Code Dev Containers** uses the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) to pull the image, start the container, and attach VS Code directly to it. Your editor runs locally but all files, terminals, and language servers run inside the container.
+
+**GitHub Codespaces** runs the entire development environment in the cloud. When you open a repository in Codespaces without a `devcontainer.json`, GitHub uses `mcr.microsoft.com/devcontainers/universal:linux` by default — the same universal image published here. If your repository includes a `devcontainer.json`, Codespaces builds or pulls the image you specify.
+
+<Tip>
+  Because both tools follow the same spec, a `devcontainer.json` that works in VS Code will also work in GitHub Codespaces without modification.
+</Tip>
+
+## Image versioning
+
+Each image uses a two-part version tag combining the image's own [semantic version](https://semver.org/) with the language runtime version. For example, the Python image tags look like this:
+
+| Tag                                                 | Meaning                                       |
+| --------------------------------------------------- | --------------------------------------------- |
+| `mcr.microsoft.com/devcontainers/python:3`          | Latest Python 3.x image, latest image version |
+| `mcr.microsoft.com/devcontainers/python:3.13`       | Python 3.13, latest image version             |
+| `mcr.microsoft.com/devcontainers/python:3-3.13`     | Python 3.13, latest major image version       |
+| `mcr.microsoft.com/devcontainers/python:3.0-3.13`   | Python 3.13, latest minor image version       |
+| `mcr.microsoft.com/devcontainers/python:3.0.6-3.13` | Python 3.13, exact image version              |
+
+Using a less specific tag (like `:3`) means you receive non-breaking updates automatically. Using a fully pinned tag (like `:3.0.6-3.13`) locks the image completely.
+
+<Warning>
+  Security patches are applied only to the latest in-support image version (for example, `3-3.13`). If you pin to a specific patch version, run `apt-get update && apt-get upgrade` in your Dockerfile to pick up OS-level security updates.
+</Warning>
+
+### OS variant tags
+
+Many images also support pinning to a specific OS release using a suffix. For example:
+
+* `mcr.microsoft.com/devcontainers/python:3.13` — defaults to the current OS
+* `mcr.microsoft.com/devcontainers/python:3.13-bookworm` — Debian 12 (Bookworm)
+* `mcr.microsoft.com/devcontainers/python:3.13-trixie` — Debian 13 (Trixie)
+
+OS variant suffixes include `bookworm`, `trixie`, `bullseye` (Debian versions), and `noble`, `jammy` (Ubuntu versions). See [Choosing an image](/choosing-an-image) for a full breakdown.
+
+
+# Quickstart
+Source: https://www.mintlify.com/devcontainers/images/quickstart
+
+Go from zero to a running dev container in minutes using the Python image.
+
+This guide walks you through creating a `devcontainer.json` file, opening it in VS Code or GitHub Codespaces, extending the environment with a Dev Container Feature, and forwarding a port for a local web server.
+
+<Info>
+  **Prerequisites**: Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and the [VS Code Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) if you plan to use VS Code. For GitHub Codespaces, no local tools are required.
+</Info>
+
+## Create a devcontainer.json
+
+<Steps>
+  <Step title="Create the configuration directory">
+    In the root of your project, create a `.devcontainer` directory with a `devcontainer.json` file inside it.
+
+    ```
+    your-project/
+    └── .devcontainer/
+        └── devcontainer.json
+    ```
+  </Step>
+
+  <Step title="Reference the Python image">
+    Add the following to `.devcontainer/devcontainer.json`:
+
+    ```json .devcontainer/devcontainer.json theme={null}
+    {
+      "name": "Python 3",
+      "image": "mcr.microsoft.com/devcontainers/python:3"
+    }
+    ```
+
+    This pulls the latest Python 3 image from MCR. The image includes Python 3, `pip`, `pipx`, `git`, `zsh` with Oh My Zsh!, and a non-root `vscode` user with `sudo` access.
+  </Step>
+
+  <Step title="Open in a dev container">
+    <Tabs>
+      <Tab title="VS Code">
+        1. Open your project folder in VS Code.
+        2. When prompted, click **Reopen in Container** — or open the Command Palette (`F1`) and run **Dev Containers: Reopen in Container**.
+        3. VS Code pulls the image, starts the container, and attaches your editor to it. This takes a minute or two on the first run while Docker downloads the image.
+
+        <Tip>
+          After the first pull, subsequent opens are fast because Docker caches the image locally.
+        </Tip>
+      </Tab>
+
+      <Tab title="GitHub Codespaces">
+        1. Push your project (including the `.devcontainer` directory) to a GitHub repository.
+        2. On the repository page, click **Code** → **Codespaces** → **Create codespace on main**.
+        3. GitHub builds the container using your `devcontainer.json` and opens a browser-based VS Code connected to it.
+      </Tab>
+    </Tabs>
+  </Step>
+</Steps>
+
+## Add a Dev Container Feature
+
+[Dev Container Features](https://containers.dev/features) let you install additional tools without modifying the base image. To add Node.js to your Python container, update your `devcontainer.json`:
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "Python 3",
+  "image": "mcr.microsoft.com/devcontainers/python:3",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "latest"
+    }
+  }
+}
+```
+
+After saving this file, rebuild the container:
+
+* **VS Code**: Run **Dev Containers: Rebuild Container** from the Command Palette (`F1`).
+* **Codespaces**: Click the Codespaces icon in the status bar and select **Full Rebuild Container**.
+
+Node.js will be installed alongside the Python toolchain when the container starts.
+
+## Forward a port
+
+Frameworks like Flask listen only on `localhost` inside the container. Use `forwardPorts` to make the port accessible from your host machine.
+
+```json .devcontainer/devcontainer.json theme={null}
+{
+  "name": "Python 3",
+  "image": "mcr.microsoft.com/devcontainers/python:3",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "latest"
+    }
+  },
+  "forwardPorts": [5000]
+}
+```
+
+With this in place, a Flask app running inside the container on port `5000` is accessible at `http://localhost:5000` on your host.
+
+<Note>
+  Use `forwardPorts` rather than `appPort`. The `appPort` property *publishes* the port, which requires the application to listen on `0.0.0.0` — conflicting with Flask's default of `127.0.0.1`. `forwardPorts` tunnels the port through the dev container connection and does not have this limitation.
+</Note>
+
+Start a Flask app inside the container:
+
+```bash theme={null}
+pip install flask
+flask --app app.py run
+```
+
+Then open `http://localhost:5000` in your browser on the host.
+
+## Next steps
+
+<CardGroup>
+  <Card title="Choosing an image" icon="images" href="/choosing-an-image">
+    Browse all available images and find the right one for your language or framework.
+  </Card>
+
+  <Card title="Python image reference" icon="python" href="/images/python">
+    Full reference for the Python image, including available tags and configuration options.
+  </Card>
+
+  <Card title="Universal image" icon="globe" href="/images/universal">
+    A single multi-language image with Python, Node, Go, Java, .NET, PHP, Ruby, and C++.
+  </Card>
+
+  <Card title="Dev Container Features" icon="puzzle" href="https://containers.dev/features">
+    Browse hundreds of community-published features to extend any image.
+  </Card>
+</CardGroup>
+
+
+# Dockerfile tips
+Source: https://www.mintlify.com/devcontainers/images/tips
+
+Best practices for writing efficient Dockerfiles, including layer caching, cleanup, and package installation flags.
+
+## Why RUN statements use `&&` chaining
+
+Each `RUN` statement creates a Docker image layer. If one `RUN` statement adds temporary files, those files remain in that layer even if a later `RUN` statement deletes them. The image ends up larger than necessary, and pulling it from a registry takes longer.
+
+The solution is to clean up in the **same** `RUN` statement that installs or configures something. You have two options:
+
+<Tabs>
+  <Tab title="Inline cleanup with &&">
+    Chain commands with `&&` so cleanup happens in the same layer:
+
+    ```dockerfile theme={null}
+    RUN apt-get update \
+        && apt-get -y install --no-install-recommends git \
+        && apt-get autoremove -y \
+        && apt-get clean -y \
+        && rm -rf /var/lib/apt/lists/*
+    ```
+  </Tab>
+
+  <Tab title="Script with cleanup">
+    Copy a script into the container temporarily, run it, then delete it in the same `RUN`:
+
+    ```dockerfile theme={null}
+    COPY ./my-script.sh /tmp/my-script.sh
+    RUN bash /tmp/my-script.sh \
+        && rm -f /tmp/my-script.sh
+    ```
+  </Tab>
+</Tabs>
+
+## Clean up package lists
+
+Package lists downloaded by `apt-get update` [can be surprisingly large](https://askubuntu.com/questions/179955/var-lib-apt-lists-is-huge). Remove them after installation to keep image size down:
+
+```dockerfile theme={null}
+RUN apt-get update \
+    && apt-get -y install --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+The only downside is that you must run `apt-get update` before installing any package. In practice, adding packages to a `Dockerfile` is almost always the right approach anyway — it survives image rebuilds and keeps your environment reproducible.
+
+## Avoid installing recommended packages
+
+By default, `apt-get install` pulls in packages that are commonly used alongside the one you specified. In most cases these extra packages are unnecessary. Use `--no-install-recommends` to skip them:
+
+```dockerfile theme={null}
+RUN apt-get update \
+    && apt-get -y install --no-install-recommends <your-package-list> \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+## Use `--no-cache` on Alpine
+
+On Alpine Linux, use `apk --no-cache` instead of the separate update-and-clean pattern. The `--no-cache` flag skips writing the package index to disk entirely:
+
+```dockerfile theme={null}
+RUN apk --no-cache add git curl bash
+```
+
+This is simpler and produces smaller layers than running `apk update` and then `apk cache clean` separately.
+
+## Summary
+
+| Practice                        | Why it matters                                           |
+| ------------------------------- | -------------------------------------------------------- |
+| Chain cleanup in the same `RUN` | Prevents temporary files from inflating layer size       |
+| `rm -rf /var/lib/apt/lists/*`   | Removes downloaded package index files                   |
+| `--no-install-recommends`       | Skips unnecessary packages pulled in by default          |
+| `apk --no-cache`                | Prevents Alpine package index from being written to disk |
+
+

@@ -1,0 +1,1066 @@
+# Cache key templates
+Source: https://www.mintlify.com/jdx/mise-action/caching/cache-key-templates
+
+Customize the cache key using template variables and conditional logic.
+
+The `cache_key` input accepts a Handlebars template string. You can use it to build a cache key from any combination of built-in variables, environment variables, and conditional logic — giving you precise control over when caches are invalidated.
+
+## Default cache key
+
+When `cache_key` is not set, the action uses this template:
+
+```text theme={null}
+{{cache_key_prefix}}-{{platform}}{{#if version}}-{{version}}{{/if}}{{#if mise_env}}-{{mise_env}}{{/if}}{{#if install_args_hash}}-{{install_args_hash}}{{/if}}-{{#if file_hash}}{{file_hash}}{{else}}no-config{{/if}}
+```
+
+A typical resolved key looks like:
+
+```text theme={null}
+mise-v1-linux-x64-2026.3.10-a3f8c2d1e4b5...
+```
+
+If no mise config files are found in the repository, the key ends with `-no-config` instead of a hash.
+
+## Available template variables
+
+| Variable                | Description                                                       |
+| ----------------------- | ----------------------------------------------------------------- |
+| `{{cache_key_prefix}}`  | The value of `cache_key_prefix` (default: `mise-v1`)              |
+| `{{platform}}`          | Target platform, e.g. `linux-x64`, `macos-arm64`, `windows-x64`   |
+| `{{version}}`           | The mise version from the `version` input                         |
+| `{{file_hash}}`         | Hash of all mise configuration files found in the repository      |
+| `{{mise_env}}`          | Value of the `MISE_ENV` environment variable                      |
+| `{{install_args_hash}}` | SHA256 hash of the sorted tool names from `install_args`          |
+| `{{default}}`           | The fully resolved default cache key (useful as a base to extend) |
+| `{{env.VAR_NAME}}`      | Any environment variable, e.g. `{{env.NODE_ENV}}`                 |
+
+## Conditional logic
+
+Use Handlebars `{{#if}}` blocks to include segments only when a variable is non-empty:
+
+```text theme={null}
+{{cache_key_prefix}}-{{platform}}{{#if version}}-{{version}}{{/if}}
+```
+
+The `-{{version}}` segment is omitted entirely when no `version` input is provided.
+
+## Examples
+
+### Include only the platform and file hash
+
+Use this when you always want a minimal key without the mise version:
+
+```yaml theme={null}
+- uses: jdx/mise-action@v4
+  with:
+    cache_key: "mise-v1-{{platform}}-{{file_hash}}"
+```
+
+### Key on specific tools from `install_args`
+
+When you pass specific tools via `install_args`, the `install_args_hash` encodes them as a SHA256 of the sorted tool list:
+
+```yaml theme={null}
+- uses: jdx/mise-action@v4
+  with:
+    cache_key: "mise-v1-{{platform}}-{{install_args_hash}}-{{file_hash}}"
+    install_args: "node@24 python@3.14"
+```
+
+### Extend the default key
+
+Use `{{default}}` to start from the standard key and append extra segments. This preserves all the default invalidation logic while adding your own:
+
+```yaml theme={null}
+- uses: jdx/mise-action@v4
+  with:
+    cache_key: "{{default}}-custom-suffix"
+    install_args: "node@24 python@3.14"
+```
+
+### Use an environment variable
+
+Scope the cache to a specific environment using any variable from the runner environment:
+
+```yaml theme={null}
+- uses: jdx/mise-action@v4
+  with:
+    cache_key: "{{default}}-{{env.NODE_ENV}}"
+```
+
+<Tip>
+  `{{env.VAR_NAME}}` reads directly from the runner's environment at the time the cache key is computed. You can reference any variable set in a previous step or in your workflow's `env` block.
+</Tip>
+
+## Simple prefix-only customization
+
+If you only want to change the prefix to force cache invalidation, use `cache_key_prefix` instead of writing a full template:
+
+```yaml theme={null}
+- uses: jdx/mise-action@v4
+  with:
+    cache_key_prefix: "mise-v2"
+```
+
+This is equivalent to overriding the `{{cache_key_prefix}}` variable across the entire default template without having to copy the template yourself.
+
+<Warning>
+  Setting `cache_key` overrides the complete cache key and ignores `cache_key_prefix` and all other automatic key components. Use `{{default}}` inside your template if you want to retain the default logic.
+</Warning>
+
+
+# Caching overview
+Source: https://www.mintlify.com/jdx/mise-action/caching/overview
+
+How mise-action caches the mise binary and installed tools to speed up your workflows.
+
+Caching is enabled by default. On a cache hit, the action skips downloading and installing everything and restores the entire mise data directory directly from GitHub's cache — so your workflow starts executing tool commands almost immediately.
+
+<Note>
+  The cache covers the entire mise data directory, including the mise binary itself and all installed tools. Cache hits are very fast because nothing needs to be downloaded or compiled.
+</Note>
+
+## What gets cached
+
+The action caches the mise data directory (defaults to `~/.local/share/mise`). This includes:
+
+* The mise binary
+* All tools installed by `mise install`
+
+## Cache key
+
+The cache key is content-addressable. By default it is computed from:
+
+* **Platform** — the OS and architecture (e.g., `linux-x64`, `macos-arm64`)
+* **mise version** — when a specific version is pinned
+* **`MISE_ENV`** — the value of the `MISE_ENV` environment variable, if set
+* **Install args hash** — a SHA256 hash of the tools passed to `install_args`, sorted
+* **Config file hash** — a hash of all mise configuration files found in the repository
+
+The following file patterns are included in the config file hash:
+
+```text theme={null}
+**/.config/mise/config.toml
+**/.config/mise/config.lock
+**/.config/mise/config.*.toml
+**/.config/mise/config.*.lock
+**/.config/mise.toml
+**/.config/mise.lock
+**/.config/mise.*.toml
+**/.config/mise.*.lock
+**/.mise/config.toml
+**/.mise/config.lock
+**/.mise/config.*.toml
+**/.mise/config.*.lock
+**/mise/config.toml
+**/mise/config.lock
+**/mise/config.*.toml
+**/mise/config.*.lock
+**/.mise.toml
+**/.mise.lock
+**/.mise.*.toml
+**/.mise.*.lock
+**/mise.toml
+**/mise.lock
+**/mise.*.toml
+**/mise.*.lock
+**/.tool-versions
+```
+
+Any change to one of these files produces a new cache key, so stale tools are never restored from cache.
+
+## `cache-hit` output
+
+The action exposes a `cache-hit` boolean output you can use in later steps:
+
+```yaml theme={null}
+- uses: jdx/mise-action@v4
+  id: mise
+
+- run: echo "Cache hit: ${{ steps.mise.outputs.cache-hit }}"
+```
+
+## Disable caching
+
+Set `cache: false` to skip both reading from and writing to the cache entirely:
+
+```yaml theme={null}
+- uses: jdx/mise-action@v4
+  with:
+    cache: false
+```
+
+## Read-only cache
+
+Set `cache_save: false` to restore from the cache but never write back to it. This is useful for pull requests, where you want fast reads but want to avoid polluting the cache with short-lived branches:
+
+```yaml theme={null}
+- uses: jdx/mise-action@v4
+  with:
+    cache_save: ${{ github.ref_name == 'main' }}
+```
+
+With this configuration, only runs on `main` save a new cache entry. All other runs still benefit from cache hits.
+
+## Change the cache key prefix
+
+If you need to force-invalidate all existing caches without changing your config files, update `cache_key_prefix`:
+
+```yaml theme={null}
+- uses: jdx/mise-action@v4
+  with:
+    cache_key_prefix: "mise-v2"
+```
+
+The default prefix is `mise-v1`. Changing it produces a brand new set of cache keys, so all runners start with a cold cache.
+
+
+# Inputs
+Source: https://www.mintlify.com/jdx/mise-action/configuration/inputs
+
+All available inputs for the jdx/mise-action GitHub Action.
+
+Use these inputs in the `with:` block of your workflow step to configure how the action installs and runs mise.
+
+```yaml theme={null}
+- uses: jdx/mise-action@v4
+  with:
+    version: 2026.3.10
+    install: true
+    install_args: "node python"
+    cache: true
+    cache_key_prefix: "mise-v1"
+    experimental: false
+    log_level: info
+    working_directory: app
+    reshim: false
+    add_shims_to_path: true
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+    fetch_from_github: true
+    env: true
+```
+
+## Installation
+
+<ParamField type="string">
+  The version of mise to install. If not specified, the action uses the latest release. Accepts version strings such as `2026.3.10`. A `v` prefix (e.g. `v2026.3.10`) is automatically stripped.
+
+  <Note>
+    Versions from 2024 are downloaded as a bare binary rather than a compressed archive. Versions from 2025 onward use `.tar.zst` (if zstd is available) or `.tar.gz`.
+  </Note>
+</ParamField>
+
+<ParamField type="string">
+  The expected SHA256 checksum of the downloaded mise binary. When provided, the action verifies the download matches this value and fails if there is a mismatch.
+</ParamField>
+
+<ParamField type="string">
+  The directory that mise will be installed to. Defaults to `$HOME/.local/share/mise`, or `$XDG_DATA_HOME/mise` if `$XDG_DATA_HOME` is set, or `$MISE_DATA_DIR` if `$MISE_DATA_DIR` is set.
+</ParamField>
+
+<ParamField type="string">
+  When `true` (the default), the action downloads the mise binary from GitHub releases. When `false` and using the latest version, it fetches from `mise.jdx.dev` instead.
+</ParamField>
+
+<ParamField type="string">
+  GitHub token for API authentication. Used to avoid rate limits when installing GitHub-hosted tools. Defaults to the automatic GitHub token provided by the runner. Set this explicitly if you encounter rate limit errors.
+</ParamField>
+
+<ParamField type="string">
+  Deprecated. Use `working_directory` instead.
+</ParamField>
+
+## Tool configuration
+
+<ParamField type="string">
+  When present, this value is written to `.tool-versions` before mise runs. Use this to define tool versions inline in your workflow without committing a `.tool-versions` file to your repository. See [tool versions](/configuration/tool-versions) for format details.
+</ParamField>
+
+<ParamField type="string">
+  When present, this value is written to `mise.toml` before mise runs. Use this to define tool versions and environment variables inline in your workflow without committing a `mise.toml` file to your repository. See [tool versions](/configuration/tool-versions) for format details.
+</ParamField>
+
+<ParamField type="string">
+  When `true`, the action runs `mise install` after setting up mise. Set to `false` to skip tool installation, for example when you only need mise itself available on `PATH`.
+</ParamField>
+
+<ParamField type="string">
+  Additional arguments passed to `mise install`. For example, set `install_args: "bun"` to install only the `bun` tool instead of everything defined in your config file.
+</ParamField>
+
+## Caching
+
+<ParamField type="string">
+  When `true`, the action reads from and writes to the GitHub Actions cache for the mise data directory. Set to `false` to disable all caching.
+</ParamField>
+
+<ParamField type="string">
+  When `true`, the action saves the mise data directory to the cache after a successful install. Set to `false` to read from the cache but never write to it.
+</ParamField>
+
+<ParamField type="string">
+  The prefix used when constructing the default cache key. Change this value to force a full cache invalidation without altering any other configuration.
+</ParamField>
+
+<ParamField type="string">
+  Overrides the entire cache key, ignoring all other cache key inputs. Supports Handlebars template variables:
+
+  | Variable                | Description                                                  |
+  | ----------------------- | ------------------------------------------------------------ |
+  | `{{version}}`           | The mise version from the `version` input                    |
+  | `{{cache_key_prefix}}`  | The value of `cache_key_prefix`                              |
+  | `{{platform}}`          | The target platform, e.g. `linux-x64` or `macos-arm64`       |
+  | `{{file_hash}}`         | Hash of all mise configuration files in the repository       |
+  | `{{mise_env}}`          | The value of the `MISE_ENV` environment variable             |
+  | `{{install_args_hash}}` | SHA256 hash of the sorted tools from `install_args`          |
+  | `{{default}}`           | The processed default cache key (useful for adding a suffix) |
+  | `{{env.VAR_NAME}}`      | Any environment variable by name                             |
+
+  Conditional logic is supported using Handlebars syntax, for example `{{#if version}}...{{/if}}`.
+
+  ```yaml theme={null}
+  cache_key: "mise-{{platform}}-{{version}}-{{file_hash}}"
+  ```
+</ParamField>
+
+## Runtime behavior
+
+<ParamField type="string">
+  When `true`, sets the `MISE_EXPERIMENTAL` environment variable to enable experimental mise features.
+</ParamField>
+
+<ParamField type="string">
+  The log level passed to mise via the `MISE_LOG_LEVEL` environment variable. Accepted values are `error`, `warn`, `info`, `debug`, and `trace`.
+</ParamField>
+
+<ParamField type="string">
+  The directory that mise runs in. Defaults to the current working directory of the runner.
+</ParamField>
+
+<ParamField type="string">
+  When `true`, runs `mise reshim -f` after setting up mise. Use this if downstream steps rely on shims being regenerated.
+</ParamField>
+
+<ParamField type="string">
+  When `true`, adds the mise shims directory to `PATH` so shim-based tool invocation (e.g., calling `node` directly) works in subsequent steps. The mise binary directory is always added to `PATH` regardless of this setting. Set to `false` if you want to call tools only via `mise exec --` or manage shims manually.
+</ParamField>
+
+<ParamField type="string">
+  When `true`, automatically loads mise environment variables (from the `[env]` section of `mise.toml`) into `GITHUB_ENV` so they are available in subsequent steps. Note that `PATH` modifications are not included.
+</ParamField>
+
+
+# Outputs
+Source: https://www.mintlify.com/jdx/mise-action/configuration/outputs
+
+Outputs produced by the jdx/mise-action GitHub Action.
+
+The action exposes one output you can reference in subsequent steps using the `steps.<id>.outputs` context.
+
+## Available outputs
+
+<ResponseField name="cache-hit" type="boolean">
+  Indicates whether a cache entry was found for the current cache key. The value is `true` when the mise data directory was restored from cache and `false` when the action performed a fresh install.
+</ResponseField>
+
+## Using the output
+
+Give the action step an `id` and then reference `steps.<id>.outputs.cache-hit` in any subsequent step:
+
+```yaml theme={null}
+- uses: jdx/mise-action@v4
+  id: mise
+
+- run: echo "Cache hit: ${{ steps.mise.outputs.cache-hit }}"
+```
+
+You can also use the output in a conditional to skip work that is only needed on a cache miss:
+
+```yaml theme={null}
+- uses: jdx/mise-action@v4
+  id: mise
+  with:
+    cache_save: false
+
+- name: Warm the cache
+  if: steps.mise.outputs.cache-hit != 'true'
+  run: echo "No cache found, tools were freshly installed."
+```
+
+<Note>
+  The `cache-hit` output is always set. When you disable caching with `cache: false`, the output is set to `false`.
+</Note>
+
+
+# Tool versions
+Source: https://www.mintlify.com/jdx/mise-action/configuration/tool-versions
+
+Configure which tools mise installs using .tool-versions or mise.toml.
+
+mise reads tool versions from configuration files in your repository. You can either commit these files alongside your code or write them inline in your workflow using the `tool_versions` and `mise_toml` action inputs.
+
+## Configuration file formats
+
+<Tabs>
+  <Tab title="mise.toml (recommended)">
+    `mise.toml` is the recommended format. It supports richer configuration including pinned versions, version ranges, environment variables, and per-directory settings.
+
+    ```toml theme={null}
+    [tools]
+    node = "22"
+    python = "3.13"
+    bun = "1.2"
+    shellcheck = "0.11.0"
+    ```
+
+    Place `mise.toml` in the root of your repository or in any directory that mise should read.
+  </Tab>
+
+  <Tab title=".tool-versions (legacy)">
+    `.tool-versions` is the asdf-compatible format. Each line contains a tool name followed by one or more versions separated by spaces.
+
+    ```text theme={null}
+    node 22.0.0
+    python 3.13.0
+    bun 1.2.0
+    shellcheck 0.11.0
+    ```
+
+    Place `.tool-versions` in the root of your repository. mise reads this file automatically and treats it as equivalent to `mise.toml`.
+  </Tab>
+</Tabs>
+
+## Environment variables in mise.toml
+
+`mise.toml` supports an `[env]` section for defining environment variables that mise exports into the shell environment. When the `env` input is `true` (the default), the action reads these variables using `mise env` and writes them to `GITHUB_ENV` so they are available in all subsequent steps.
+
+```toml theme={null}
+[tools]
+node = "22"
+python = "3.13"
+
+[env]
+NODE_ENV = "test"
+DATABASE_URL = "postgres://localhost/myapp_test"
+```
+
+<Note>
+  `PATH` modifications from `mise env` are not exported to `GITHUB_ENV`. The action handles `PATH` separately by adding the mise bin and shims directories directly.
+</Note>
+
+<Tip>
+  On mise versions 2025.8.17 and later, the action uses `mise env --redacted` to detect sensitive values and automatically masks them in GitHub Actions logs via `core.setSecret`. On older versions it falls back to `mise env --dotenv` without masking.
+</Tip>
+
+## Inline configuration with action inputs
+
+Instead of committing configuration files to your repository, you can write them inline in your workflow using the `tool_versions` or `mise_toml` inputs. The action writes the value to the appropriate file before running `mise install`.
+
+Use `tool_versions` to write a `.tool-versions` file:
+
+```yaml theme={null}
+- uses: jdx/mise-action@v4
+  with:
+    tool_versions: |
+      node 22.0.0
+      python 3.13.0
+      shellcheck 0.11.0
+```
+
+Use `mise_toml` to write a `mise.toml` file:
+
+```yaml theme={null}
+- uses: jdx/mise-action@v4
+  with:
+    mise_toml: |
+      [tools]
+      node = "22"
+      python = "3.13"
+      shellcheck = "0.11.0"
+
+      [env]
+      NODE_ENV = "test"
+```
+
+<Warning>
+  When you use `tool_versions` or `mise_toml`, the action overwrites any existing `.tool-versions` or `mise.toml` file in the working directory. If your repository already contains these files, use the committed versions instead of the inline inputs to avoid conflicts.
+</Warning>
+
+## Which files does mise read?
+
+The action caches the mise data directory using a hash derived from all mise configuration files it finds in the repository. The following patterns are searched:
+
+* `mise.toml`, `.mise.toml`, `mise.*.toml`
+* `mise.lock`, `.mise.lock`, `mise.*.lock`
+* `.config/mise/config.toml`, `.config/mise/config.*.toml`
+* `.mise/config.toml`, `.mise/config.*.toml`
+* `.tool-versions`
+
+If any of these files change, the cache key changes and mise performs a fresh install on the next run.
+
+
+# GitHub API rate limits
+Source: https://www.mintlify.com/jdx/mise-action/guides/github-rate-limits
+
+Understand why the action uses MISE_GITHUB_TOKEN and how to avoid hitting rate limits when installing GitHub-hosted tools.
+
+When mise installs tools hosted on GitHub — such as `node`, `bun`, `gh`, and others — it calls the GitHub Releases API to resolve versions and download binaries. Unauthenticated requests to that API are limited to **60 requests per hour** per IP address. In a busy CI environment, this limit can be reached quickly, causing tool installations to fail.
+
+## How the action handles authentication
+
+The action accepts a `github_token` input and exports it as the `MISE_GITHUB_TOKEN` environment variable so mise can authenticate its API calls.
+
+```yaml theme={null}
+- uses: jdx/mise-action@v4
+  with:
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+<Note>
+  The `github_token` input defaults to `${{ github.token }}`, which is the automatically generated token GitHub provides to every workflow run. In most cases you don't need to set it explicitly — authentication is already in place.
+</Note>
+
+## Why `MISE_GITHUB_TOKEN` instead of `GITHUB_TOKEN`
+
+The action deliberately sets `MISE_GITHUB_TOKEN` rather than `GITHUB_TOKEN`. This avoids interfering with downstream tools and steps that inspect `GITHUB_TOKEN` for their own purposes. Keeping the two variables separate prevents unexpected side effects in the rest of your workflow.
+
+## What to do if you hit rate limits
+
+If you see errors like `403` or `rate limit exceeded` during tool installation, check the following:
+
+1. **Confirm the token is being passed.** The default `${{ github.token }}` is injected automatically, but some configurations (such as reusable workflows or restricted permissions) may prevent it from reaching the action. Pass it explicitly:
+
+   ```yaml theme={null}
+   - uses: jdx/mise-action@v4
+     with:
+       github_token: ${{ secrets.GITHUB_TOKEN }}
+   ```
+
+2. **Check workflow permissions.** The token must have at least read access to public repositories. For private repositories, ensure `contents: read` is granted in your workflow's `permissions` block.
+
+3. **Use caching.** Enabling the cache (on by default) means tools only need to be downloaded once. Subsequent runs restore from cache and make no API calls.
+
+<Tip>
+  If you are running many parallel jobs, each job makes its own API calls. Make sure caching is enabled so that a warm cache eliminates most GitHub API requests across the board.
+</Tip>
+
+
+# Monorepos
+Source: https://www.mintlify.com/jdx/mise-action/guides/monorepos
+
+Configure mise-action for monorepos where each subdirectory has its own tool configuration.
+
+In a monorepo, different packages or applications may require different tool versions. The action supports this through the `working_directory` input, which tells mise to look for configuration files (`.mise.toml`, `.tool-versions`, etc.) in a specific subdirectory instead of the repository root.
+
+## Pointing mise at a subdirectory
+
+Set `working_directory` to the path of the subdirectory you want mise to use as its working context:
+
+```yaml theme={null}
+- uses: actions/checkout@v4
+- uses: jdx/mise-action@v4
+  with:
+    working_directory: apps/api
+```
+
+Mise will read the configuration from `apps/api/.mise.toml` (or `apps/api/.tool-versions`) and install the tools defined there.
+
+## Running against multiple subdirectories with a matrix
+
+Use a matrix strategy to run the action against several subdirectories in parallel. Each matrix entry gets its own separate cache based on the configuration files found in that directory.
+
+```yaml theme={null}
+strategy:
+  matrix:
+    dir: [apps/frontend, apps/api, apps/worker]
+steps:
+  - uses: actions/checkout@v4
+  - uses: jdx/mise-action@v4
+    with:
+      working_directory: ${{ matrix.dir }}
+```
+
+<Tip>
+  Cache keys are derived from a hash of all mise configuration files found in the workspace. Because each subdirectory has a different `.mise.toml` or `.tool-versions`, each matrix entry naturally produces a different cache key and gets its own isolated cache.
+</Tip>
+
+## Differentiating cache keys explicitly
+
+If you need even finer-grained cache control — for example, when the same configuration files exist at multiple levels of the tree — you can use the `cache_key` input with template variables to make each entry's cache key unique.
+
+The `{{env.VAR_NAME}}` template syntax lets you reference any environment variable in the cache key:
+
+```yaml theme={null}
+strategy:
+  matrix:
+    dir: [apps/frontend, apps/api, apps/worker]
+steps:
+  - uses: actions/checkout@v4
+  - uses: jdx/mise-action@v4
+    with:
+      working_directory: ${{ matrix.dir }}
+      cache_key: "mise-v1-{{platform}}-${{ matrix.dir }}-{{file_hash}}"
+```
+
+This produces a distinct cache key per directory, per platform, and per configuration file hash — giving you full control over cache invalidation.
+
+<Note>
+  If you are using `mise_toml` or `tool_versions` inputs to write configuration inline (rather than reading from committed files), the `file_hash` portion of the default cache key will be empty. In that case, use `cache_key` with a custom template that incorporates something that changes when your inline config changes, such as a hash of the workflow file itself.
+</Note>
+
+
+# Platform support
+Source: https://www.mintlify.com/jdx/mise-action/guides/platforms
+
+Run mise-action on Linux, macOS, and Windows runners, including Alpine containers.
+
+The action works across all major GitHub Actions runner platforms. Platform detection is automatic — you don't need to configure anything different per OS in most cases.
+
+## Supported platforms
+
+| Platform              | Architecture                       | Binary format                               |
+| --------------------- | ---------------------------------- | ------------------------------------------- |
+| Linux (glibc)         | x64, arm64, armv7                  | `.tar.zst` (if zstd available) or `.tar.gz` |
+| Linux (musl / Alpine) | x64, arm64, armv7                  | `.tar.zst` (if zstd available) or `.tar.gz` |
+| macOS                 | x64 (Intel), arm64 (Apple Silicon) | `.tar.zst` (if zstd available) or `.tar.gz` |
+| Windows               | x64                                | `.zip`                                      |
+
+The action detects the correct binary target automatically using Node's `process.platform` and `process.arch`. On Linux, it also detects musl by inspecting the output of `ldd --version` — if that output contains the string `musl`, a musl-linked binary is downloaded instead of a glibc one.
+
+<Note>
+  Windows uses a `.zip` archive. On Linux and macOS, `.tar.zst` is preferred when `zstd` is available on the runner, falling back to `.tar.gz` otherwise.
+</Note>
+
+## Running on Ubuntu and macOS
+
+No extra configuration is needed for standard GitHub-hosted runners.
+
+```yaml theme={null}
+strategy:
+  matrix:
+    include:
+      - name: ubuntu
+        runs-on: ubuntu-latest
+      - name: macos
+        runs-on: macos-latest
+      - name: windows
+        runs-on: windows-latest
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v4
+```
+
+## Running in Alpine containers
+
+Alpine Linux uses musl libc instead of glibc. The action detects this automatically and downloads the musl binary. However, Alpine images are minimal and ship without `curl` or `bash`, both of which the action requires. You must install them before the action runs.
+
+```yaml theme={null}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: alpine:latest
+    steps:
+      - name: Install requirements
+        run: apk add --no-cache curl bash
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v4
+```
+
+<Warning>
+  If you skip the `apk add` step, the action will fail because `curl` is unavailable to download the mise binary.
+</Warning>
+
+## Windows notes
+
+The action works correctly in PowerShell and cmd on Windows runners. However, mise shims may not function as expected inside MINGW environments such as Git Bash for Windows.
+
+<Note>
+  If you run steps with `shell: bash` on Windows (which uses MINGW), avoid relying on shims. Use `mise exec --` to run tools directly instead:
+
+  ```yaml theme={null}
+  - run: mise exec -- node --version
+    shell: bash
+  ```
+</Note>
+
+The shims directory is still added to `PATH` by default (`add_shims_to_path: true`), but resolving executables through those shims may not work in MINGW. Standard PowerShell and cmd shells are unaffected.
+
+
+# Troubleshooting
+Source: https://www.mintlify.com/jdx/mise-action/guides/troubleshooting
+
+Solutions for common issues with mise-action, including cache misses, rate limits, checksum failures, and platform-specific problems.
+
+<AccordionGroup>
+  <Accordion title="Cache not being hit">
+    The cache key is built from a hash of your mise configuration files (`.mise.toml`, `.tool-versions`, and related files). If the cache is never restored, check the following:
+
+    * **Configuration files are committed.** The cache key hash is computed from files on disk in your repository. If your config exists only as an inline `mise_toml` or `tool_versions` input, the file hash component will be empty and the key will differ from what you expect.
+
+    * **`cache_key_prefix` has not changed.** The default prefix is `mise-v1`. If you or a team member changed it, all existing caches are invalidated. Check your workflow history for changes to this input.
+
+    * **Set `cache_key` explicitly** to pin the cache to a known key and rule out template variable issues:
+
+      ```yaml theme={null}
+      - uses: jdx/mise-action@v4
+        with:
+          cache_key: "mise-v1-debug-${{ runner.os }}"
+      ```
+
+    * **Check the Actions cache tab** in your repository's GitHub UI to confirm whether a matching cache entry exists.
+  </Accordion>
+
+  <Accordion title="GitHub API rate limits">
+    When installing tools hosted on GitHub (such as `node`, `bun`, or `gh`), mise calls the GitHub Releases API. Without authentication, this is limited to 60 requests per hour.
+
+    Ensure `github_token` is being passed to the action:
+
+    ```yaml theme={null}
+    - uses: jdx/mise-action@v4
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+    ```
+
+    The default value is `${{ github.token }}`, so authentication is active in most workflows. If you are using a reusable workflow or a restricted permissions setup, the token may not be available automatically — pass it explicitly in that case.
+
+    See the [GitHub API rate limits guide](/guides/github-rate-limits) for more detail.
+  </Accordion>
+
+  <Accordion title="SHA256 mismatch">
+    If you provide the `sha256` input and the action fails with a message like `SHA256 mismatch: expected X, got Y`, the checksum you supplied does not match the downloaded binary.
+
+    The `sha256` input must exactly match the SHA256 hash of the mise binary for the specific version and platform you are targeting. Get the correct hash from the [mise GitHub releases page](https://github.com/jdx/mise/releases) — each release publishes a checksums file alongside the binaries.
+
+    <Warning>
+      The hash is platform-specific. A hash for `linux-x64` will not match on `macos-arm64`. If you use `sha256` in a matrix workflow, you need a separate hash per platform or you must remove the `sha256` input from cross-platform jobs.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="Tools not found after the action runs">
+    If subsequent steps cannot find tools that mise installed, check the following:
+
+    * **`add_shims_to_path` is true (the default).** If you set it to `false`, the mise shims directory is not added to `PATH`. The mise binary directory is always on `PATH` regardless, but shim-based tool invocation (e.g., calling `node` directly) will not work. Set it back to `true` or call tools via `mise exec --`.
+    * **`install` is true (the default).** If `install: false` is set, mise is configured but `mise install` is not run, so no tools are downloaded.
+    * **`install_args` is scoped correctly.** If you pass `install_args: "node"`, only `node` is installed. Other tools defined in your config file are skipped. Remove `install_args` to install everything, or extend it to include all required tools.
+    * **Check the action's log output.** The action runs `mise ls` after installation. Expand that step in the Actions log to see which tools were installed and whether any failed.
+  </Accordion>
+
+  <Accordion title="Alpine or musl container failing">
+    Alpine Linux does not include `curl` or `bash` by default. The action uses both to download the mise binary. You must install them before the action runs:
+
+    ```yaml theme={null}
+    jobs:
+      test:
+        runs-on: ubuntu-latest
+        container: alpine:latest
+        steps:
+          - name: Install requirements
+            run: apk add --no-cache curl bash
+          - uses: actions/checkout@v4
+          - uses: jdx/mise-action@v4
+    ```
+
+    The action automatically detects musl via `ldd --version` and downloads the correct musl-linked mise binary, so no additional configuration is needed beyond installing the prerequisites.
+  </Accordion>
+
+  <Accordion title="Windows shim issues">
+    Mise shims may not resolve correctly when running steps with `shell: bash` on Windows, which uses a MINGW environment (Git Bash). This is a known limitation of how MINGW resolves executables.
+
+    Use `mise exec --` to run tools directly instead of relying on shims:
+
+    ```yaml theme={null}
+    - run: mise exec -- node --version
+      shell: bash
+    ```
+
+    Steps using PowerShell or cmd on Windows are unaffected — shims work correctly in those shells.
+  </Accordion>
+
+  <Accordion title="Environment variables not propagating">
+    Variables defined in the `[env]` section of your `mise.toml` are exported to `GITHUB_ENV` by the action, making them available to all subsequent steps.
+
+    This behaviour is controlled by the `env` input, which defaults to `true`. If environment variables are missing in later steps, confirm that `env` has not been set to `false` in your workflow.
+
+    ```yaml theme={null}
+    - uses: jdx/mise-action@v4
+      with:
+        env: true  # default — exports [env] vars to GITHUB_ENV
+    ```
+
+    <Note>
+      `PATH` modifications made by mise are handled separately via `core.addPath` and are not part of the `GITHUB_ENV` export. The mise bin directory is always added to `PATH`. The shims directory is added to `PATH` only when `add_shims_to_path` is `true` (the default).
+    </Note>
+  </Accordion>
+
+  <Accordion title="Enabling debug logging">
+    To see detailed output from the action, set `log_level` to `debug`:
+
+    ```yaml theme={null}
+    - uses: jdx/mise-action@v4
+      with:
+        log_level: debug
+    ```
+
+    This sets `MISE_LOG_LEVEL=debug`, which causes mise to emit verbose output for every command it runs.
+
+    You can also enable GitHub Actions' built-in debug mode by setting the `ACTIONS_STEP_DEBUG` secret to `true` in your repository. When GitHub's debug mode is active, the action automatically runs mise commands at debug log level as well.
+  </Accordion>
+</AccordionGroup>
+
+
+# Introduction
+Source: https://www.mintlify.com/jdx/mise-action/introduction
+
+A GitHub Action that installs and configures mise, the polyglot runtime manager, with intelligent caching and cross-platform support.
+
+## What is mise-action?
+
+`mise-action` is a GitHub Action that sets up [mise](https://mise.jdx.dev) in your CI/CD workflows. mise is a polyglot runtime manager that lets you pin and install tools like Node.js, Python, Go, Bun, and hundreds more — all from a single `.mise.toml` or `.tool-versions` file.
+
+With `mise-action`, you get:
+
+* **Zero-config tool installation** — mise reads your existing config files automatically
+* **Smart caching** — tools are cached between runs using GitHub Actions cache
+* **Cross-platform support** — works on Linux (glibc and musl), macOS, and Windows
+* **Environment variable export** — variables from `mise.toml` are exported to your workflow
+* **Version pinning** — pin mise itself to a specific version with optional SHA256 verification
+
+<CardGroup>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get mise running in your workflow in under 5 minutes
+  </Card>
+
+  <Card title="All Inputs" icon="sliders" href="/configuration/inputs">
+    Full reference for every action input parameter
+  </Card>
+
+  <Card title="Caching" icon="database" href="/caching/overview">
+    Understand how caching works and how to customize it
+  </Card>
+
+  <Card title="Troubleshooting" icon="wrench" href="/guides/troubleshooting">
+    Solutions to common problems
+  </Card>
+</CardGroup>
+
+## How it works
+
+When `mise-action` runs in your workflow, it:
+
+1. Writes any inline `tool_versions` or `mise_toml` content to config files
+2. Restores mise and installed tools from the GitHub Actions cache (if available)
+3. Downloads the mise binary (if not already cached or installed)
+4. Configures environment variables (`MISE_YES`, `MISE_TRUSTED_CONFIG_PATHS`, `MISE_GITHUB_TOKEN`, etc.)
+5. Runs `mise install` to install all tools defined in your config
+6. Saves the updated cache (if `cache_save` is true and cache was not already hit)
+7. Runs `mise ls` to log installed tools
+8. Exports environment variables from `mise.toml` `[env]` section to `GITHUB_ENV`
+
+## Basic example
+
+```yaml theme={null}
+name: CI
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v4
+      - run: node --version  # uses version from .mise.toml or .tool-versions
+```
+
+This is all you need if you have a `.mise.toml` or `.tool-versions` file in your repository. mise-action reads it automatically and installs the declared tools.
+
+## Supported platforms
+
+| Platform      | Architecture      | Notes                   |
+| ------------- | ----------------- | ----------------------- |
+| Linux (glibc) | x64, arm64, armv7 | Default on most runners |
+| Linux (musl)  | x64, arm64, armv7 | Alpine containers       |
+| macOS         | x64, arm64        | Intel and Apple Silicon |
+| Windows       | x64               | PowerShell compatible   |
+
+
+# Quickstart
+Source: https://www.mintlify.com/jdx/mise-action/quickstart
+
+Get mise running in your GitHub Actions workflow in minutes
+
+Add `jdx/mise-action` to your workflow to install and configure [mise](https://mise.jdx.dev) with caching enabled by default.
+
+<Steps>
+  <Step title="Add a tool config file to your repo">
+    mise reads your pinned tools from a `.mise.toml` or `.tool-versions` file at the root of your repository. Create one before adding the action.
+
+    <Tabs>
+      <Tab title=".mise.toml">
+        ```toml .mise.toml theme={null}
+        [tools]
+        node = "22"
+        bun = "1"
+        ```
+      </Tab>
+
+      <Tab title=".tool-versions">
+        ```text .tool-versions theme={null}
+        node 22.0.0
+        bun 1.0.0
+        ```
+      </Tab>
+    </Tabs>
+
+    <Tip>
+      Both formats are supported. `.mise.toml` also lets you declare environment variables and other mise settings.
+    </Tip>
+  </Step>
+
+  <Step title="Add the action to your workflow">
+    In most cases, a single step is all you need. The action reads your config file automatically, installs the declared tools, and caches everything for future runs.
+
+    ```yaml .github/workflows/ci.yml theme={null}
+    name: CI
+    on: [push, pull_request]
+
+    jobs:
+      test:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - uses: jdx/mise-action@v4
+          - run: node --version
+          - run: bun --version
+    ```
+
+    <Note>
+      Caching is enabled by default. Installed tools are restored from the GitHub Actions cache on subsequent runs, making repeat builds significantly faster.
+    </Note>
+  </Step>
+
+  <Step title="(Optional) Pass config inline">
+    If you don't want to commit a config file to your repository, you can write it inline using the `mise_toml` or `tool_versions` input. The action writes the value to the appropriate file before installing tools.
+
+    <Tabs>
+      <Tab title="mise_toml input">
+        ```yaml .github/workflows/ci.yml theme={null}
+        - uses: jdx/mise-action@v4
+          with:
+            mise_toml: |
+              [tools]
+              shellcheck = "0.11.0"
+        ```
+      </Tab>
+
+      <Tab title="tool_versions input">
+        ```yaml .github/workflows/ci.yml theme={null}
+        - uses: jdx/mise-action@v4
+          with:
+            tool_versions: |
+              shellcheck 0.11.0
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Run your workflow">
+    Push your changes. The action will install mise, restore the cache if available, install your tools, and export environment variables from your `mise.toml` to the rest of the workflow.
+
+    On the first run the cache is cold and tools are downloaded. Subsequent runs restore from cache and complete much faster.
+  </Step>
+</Steps>
+
+## Complete example: lint and test
+
+This is a realistic two-job workflow using `jdx/mise-action@v4`. It mirrors the pattern used in the action's own test suite.
+
+```yaml .github/workflows/ci.yml theme={null}
+name: CI
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v4
+        with:
+          mise_toml: |
+            [tools]
+            shellcheck = "0.11.0"
+      - run: shellcheck scripts/*.sh
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v4
+      # Tools are read from .mise.toml or .tool-versions in the repo root
+      - run: node ./my_app.js
+```
+
+## Common inputs
+
+The most frequently used inputs are shown below. For the complete list, see [All inputs](/configuration/inputs).
+
+<CodeGroup>
+  ```yaml Pin a specific mise version theme={null}
+  - uses: jdx/mise-action@v4
+    with:
+      version: 2026.3.10
+  ```
+
+  ```yaml Install only specific tools theme={null}
+  - uses: jdx/mise-action@v4
+    with:
+      install_args: "bun"
+  ```
+
+  ```yaml Disable caching theme={null}
+  - uses: jdx/mise-action@v4
+    with:
+      cache: false
+  ```
+
+  ```yaml Custom cache key prefix theme={null}
+  - uses: jdx/mise-action@v4
+    with:
+      cache_key_prefix: "mise-v2"
+  ```
+</CodeGroup>
+
+<Note>
+  The action automatically passes `${{ github.token }}` to mise as `MISE_GITHUB_TOKEN` to avoid GitHub API rate limits when installing tools hosted on GitHub. You don't need to configure this explicitly unless you need a different token.
+</Note>
+
+## Next steps
+
+<CardGroup>
+  <Card title="All inputs" icon="sliders" href="/configuration/inputs">
+    Full reference for every input parameter, including version pinning, SHA256 verification, and reshim.
+  </Card>
+
+  <Card title="Caching" icon="database" href="/caching/overview">
+    Understand how the cache key is built and how to customize or invalidate it.
+  </Card>
+
+  <Card title="Cache key templates" icon="key" href="/caching/cache-key-templates">
+    Use Handlebars template variables to construct a fully custom cache key.
+  </Card>
+
+  <Card title="GitHub rate limits" icon="github" href="/guides/github-rate-limits">
+    Avoid installation failures caused by unauthenticated GitHub API requests.
+  </Card>
+</CardGroup>
+
+

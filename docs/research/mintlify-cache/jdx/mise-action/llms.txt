@@ -1,0 +1,22 @@
+# mise-action
+
+## Docs
+
+- [Cache key templates](https://www.mintlify.com/jdx/mise-action/caching/cache-key-templates.md): Customize the cache key using template variables and conditional logic.
+- [Caching overview](https://www.mintlify.com/jdx/mise-action/caching/overview.md): How mise-action caches the mise binary and installed tools to speed up your workflows.
+- [Inputs](https://www.mintlify.com/jdx/mise-action/configuration/inputs.md): All available inputs for the jdx/mise-action GitHub Action.
+- [Outputs](https://www.mintlify.com/jdx/mise-action/configuration/outputs.md): Outputs produced by the jdx/mise-action GitHub Action.
+- [Tool versions](https://www.mintlify.com/jdx/mise-action/configuration/tool-versions.md): Configure which tools mise installs using .tool-versions or mise.toml.
+- [GitHub API rate limits](https://www.mintlify.com/jdx/mise-action/guides/github-rate-limits.md): Understand why the action uses MISE_GITHUB_TOKEN and how to avoid hitting rate limits when installing GitHub-hosted tools.
+- [Monorepos](https://www.mintlify.com/jdx/mise-action/guides/monorepos.md): Configure mise-action for monorepos where each subdirectory has its own tool configuration.
+- [Platform support](https://www.mintlify.com/jdx/mise-action/guides/platforms.md): Run mise-action on Linux, macOS, and Windows runners, including Alpine containers.
+- [Troubleshooting](https://www.mintlify.com/jdx/mise-action/guides/troubleshooting.md): Solutions for common issues with mise-action, including cache misses, rate limits, checksum failures, and platform-specific problems.
+- [Introduction](https://www.mintlify.com/jdx/mise-action/introduction.md): A GitHub Action that installs and configures mise, the polyglot runtime manager, with intelligent caching and cross-platform support.
+- [Quickstart](https://www.mintlify.com/jdx/mise-action/quickstart.md): Get mise running in your GitHub Actions workflow in minutes
+
+## OpenAPI Specs
+
+- [openapi](https://www.mintlify.com/jdx/mise-action/api-reference/openapi.json)
+
+
+Built with [Mintlify](https://mintlify.com).

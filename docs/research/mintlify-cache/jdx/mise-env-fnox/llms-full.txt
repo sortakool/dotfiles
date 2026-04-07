@@ -1,0 +1,350 @@
+# Environment-specific configuration
+Source: https://www.mintlify.com/jdx/mise-env-fnox/configuration/environments
+
+Use mise environment blocks to load different fnox profiles in development, staging, and production.
+
+mise supports environment-specific config blocks via `[env.<name>]` sections in `mise.toml`. You can combine this with the fnox-env plugin to load a different fnox profile for each environment.
+
+## Example
+
+The following configuration loads the `dev` profile by default and switches to `production` or `staging` when the corresponding mise environment is active:
+
+```toml mise.toml theme={null}
+[plugins]
+fnox-env = "https://github.com/jdx/mise-env-fnox"
+
+[env]
+_.fnox-env = { tools = true, profile = "dev" }
+
+[env.production]
+_.fnox-env = { tools = true, profile = "production" }
+
+[env.staging]
+_.fnox-env = { tools = true, profile = "staging" }
+```
+
+## Activating an environment
+
+Set the `MISE_ENV` variable to select which environment block mise uses:
+
+```bash theme={null}
+# Development (default)
+mise env
+
+# Production
+MISE_ENV=production mise env
+
+# Staging
+MISE_ENV=staging mise env
+```
+
+<Tip>
+  Keep your fnox profile names consistent with your mise environment names. For example, if your mise environment is `staging`, name the corresponding fnox profile `staging` in `fnox.toml`. This makes the mapping obvious and reduces configuration errors.
+</Tip>
+
+
+# Configuration options
+Source: https://www.mintlify.com/jdx/mise-env-fnox/configuration/options
+
+Reference for all options available when configuring the mise-env-fnox plugin.
+
+All options are set inline in the `[env]` section of your `mise.toml` file, directly on the `_.fnox-env` directive. There is no separate configuration block.
+
+## Options
+
+<ParamField type="boolean">
+  Use mise-managed tool paths when invoking fnox. Set this to `true` if fnox is installed via mise; otherwise mise will not resolve the binary from its toolchain.
+</ParamField>
+
+<ParamField type="string">
+  The fnox profile to load secrets from. If not set, the `--profile` flag is omitted and fnox uses its own default profile.
+</ParamField>
+
+<ParamField type="string">
+  Path to the fnox binary. Useful when fnox is not on your `PATH` or you need to point to a specific installation.
+</ParamField>
+
+## Full example
+
+```toml mise.toml theme={null}
+[plugins]
+fnox-env = "https://github.com/jdx/mise-env-fnox"
+
+[env]
+_.fnox-env = { tools = true, profile = "production", fnox_bin = "/usr/local/bin/fnox" }
+```
+
+<Note>
+  Options are passed inline with the env directive, not in a separate config block. Any option you omit falls back to its default value.
+</Note>
+
+
+# Caching
+Source: https://www.mintlify.com/jdx/mise-env-fnox/guides/caching
+
+How mise-env-fnox uses mise's environment caching to avoid re-fetching secrets on every shell activation.
+
+The plugin returns `cacheable: true` on every response, which allows mise to cache your secrets to disk and skip calling `fnox export` on subsequent shell activations. This can significantly reduce startup time, especially when your secrets provider is slow or rate-limited.
+
+## Enabling caching
+
+Caching is opt-in. Set the `MISE_ENV_CACHE` environment variable before mise activates your environment:
+
+```bash theme={null}
+export MISE_ENV_CACHE=1
+```
+
+Add this to your shell's startup file (e.g. `~/.bashrc`, `~/.zshrc`) to enable it permanently.
+
+## What caching does
+
+When caching is active:
+
+* **Secrets are cached encrypted on disk.** mise stores the resolved environment variables locally so `fnox export` is not called on every new shell.
+* **Cache is automatically invalidated when `fnox.toml` changes.** The plugin registers your `fnox.toml` path as a watch file. mise detects modifications to that file and discards the cache, triggering a fresh fetch on the next activation.
+* **Cache is scoped to your shell session for security.** Cached secrets are not shared across unrelated sessions.
+
+## When the cache is not used
+
+If no `fnox.toml` is found in the current directory or any parent directory, the plugin returns an empty result immediately — there is nothing to cache, and `fnox export` is never called.
+
+## Tradeoff: upstream secret changes
+
+Cache invalidation is based on `fnox.toml` file changes, not on changes made to secrets in your upstream provider. If you rotate a secret or update a value directly in your secrets provider without modifying `fnox.toml`, the cached value will remain until you either:
+
+* Touch or edit `fnox.toml` to trigger invalidation, or
+* Disable caching (`unset MISE_ENV_CACHE`) and re-activate your environment.
+
+<Warning>
+  If you rotate a secret upstream, the old cached value will continue to be used until the cache is invalidated. Make sure to touch your `fnox.toml` or clear the cache after rotating credentials.
+</Warning>
+
+<Tip>
+  Caching is most useful in CI environments where shell activation happens frequently across many steps, and in projects that use slow secrets providers (such as cloud KMS or remote vaults). For local development with a fast provider, the performance difference is minimal.
+</Tip>
+
+
+# How it works
+Source: https://www.mintlify.com/jdx/mise-env-fnox/guides/how-it-works
+
+A step-by-step walkthrough of the secret resolution lifecycle when mise activates your project with mise-env-fnox.
+
+When mise activates your project, it calls the plugin's `MiseEnv` hook. The hook discovers your fnox configuration, fetches secrets from your configured providers, and exports them as environment variables in your shell — all before your prompt appears.
+
+<Steps>
+  <Step title="mise calls the MiseEnv hook">
+    mise invokes `PLUGIN:MiseEnv(ctx)` in the plugin. The hook receives the options you set in `mise.toml` (such as `profile` and `fnox_bin`) via the `ctx.options` table.
+  </Step>
+
+  <Step title="Plugin runs `fnox config-files` to locate fnox.toml">
+    The plugin executes `fnox config-files` to discover the path(s) to your `fnox.toml` file, searching the current directory and parent directories.
+
+    ```lua theme={null}
+    local function get_config_files(fnox_bin)
+        local ok, output = pcall(function()
+            return cmd.exec(fnox_bin .. " config-files")
+        end)
+        ...
+    end
+    ```
+  </Step>
+
+  <Step title="If no config files are found, the plugin exits silently">
+    If `fnox config-files` returns no paths, the plugin returns an empty result with no environment variables and no error. Your shell environment is unchanged.
+
+    ```lua theme={null}
+    if #config_files == 0 then
+        return {cacheable = true, watch_files = {}, env = {}}
+    end
+    ```
+  </Step>
+
+  <Step title="Plugin runs `fnox export --format json`">
+    The plugin constructs and runs the export command. If a `profile` option is configured, it appends the `--profile` flag.
+
+    ```lua theme={null}
+    local command = fnox_bin .. " export --format json"
+    if profile then
+        command = command .. " --profile " .. profile
+    end
+    ```
+  </Step>
+
+  <Step title="Plugin parses the JSON response">
+    The JSON output from `fnox export` is decoded and the `secrets` map is extracted. Each key-value pair in `secrets` becomes an environment variable.
+
+    ```lua theme={null}
+    local decode_ok, data = pcall(json.decode, output)
+    ...
+    local secrets = data.secrets or {}
+
+    local env_vars = {}
+    for key, value in pairs(secrets) do
+        table.insert(env_vars, {key = key, value = value})
+    end
+    ```
+
+    The expected JSON structure from `fnox export --format json` looks like:
+
+    ```json theme={null}
+    {
+      "secrets": {
+        "DATABASE_URL": "postgres://...",
+        "API_KEY": "sk-..."
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Secrets are exported as environment variables">
+    The plugin returns the collected environment variables to mise, which sets them in your shell session before your prompt appears. No manual `export` or `.env` sourcing is required.
+  </Step>
+
+  <Step title="fnox.toml is registered as a watch file">
+    The plugin returns `watch_files` containing the path(s) to your `fnox.toml`. mise monitors these files and invalidates the environment cache whenever they change, ensuring stale secrets are never served.
+  </Step>
+</Steps>
+
+## Secret redaction
+
+The plugin returns `redact: true`, which tells mise to hide secret values in its output. You will see the variable names in `mise env` output but not their values.
+
+## Error handling
+
+If `fnox config-files` or `fnox export` fails, the plugin prints a warning prefixed with `[fnox]` but does not abort the environment load. mise continues activating your environment, and the affected secrets are simply omitted.
+
+```lua theme={null}
+if not ok then
+    print("[fnox] warning: `" .. command .. "` failed: " .. tostring(output))
+    return {cacheable = true, watch_files = config_files, env = {}}
+end
+```
+
+<Note>
+  Warnings are printed to stdout during environment activation. If secrets are missing unexpectedly, check your terminal output for `[fnox] warning:` messages.
+</Note>
+
+
+# Installation
+Source: https://www.mintlify.com/jdx/mise-env-fnox/installation
+
+Add the mise-env-fnox plugin to your project's mise.toml to start loading fnox secrets as environment variables.
+
+mise-env-fnox is installed by declaring it as a plugin in your project's `mise.toml`. mise downloads and manages the plugin automatically.
+
+<Steps>
+  <Step title="Declare the plugin in mise.toml">
+    Add the plugin under `[plugins]` and activate it under `[env]`:
+
+    ```toml mise.toml theme={null}
+    [plugins]
+    fnox-env = "https://github.com/jdx/mise-env-fnox"
+
+    [env]
+    _.fnox-env = { tools = true }
+    ```
+
+    <Note>
+      `tools = true` is required when fnox is installed via mise. It tells the plugin to run fnox using mise-managed tool paths rather than relying on whatever is in your system `PATH`.
+    </Note>
+  </Step>
+
+  <Step title="Ensure fnox.toml exists">
+    The plugin searches for `fnox.toml` starting from the current directory and walking up to parent directories. If no config file is found, the plugin returns an empty environment and exits silently.
+
+    Make sure your project has a `fnox.toml` configured with at least one secret before proceeding.
+  </Step>
+
+  <Step title="Activate your environment">
+    Run any mise command. mise calls the plugin automatically and exports your secrets as environment variables:
+
+    ```bash theme={null}
+    mise env
+    ```
+
+    You do not need to run the plugin manually. mise handles invocation every time it activates your project environment.
+  </Step>
+</Steps>
+
+## Examples
+
+### Default profile
+
+Use the default fnox profile:
+
+```toml mise.toml theme={null}
+[plugins]
+fnox-env = "https://github.com/jdx/mise-env-fnox"
+
+[env]
+_.fnox-env = { tools = true }
+```
+
+### Custom profile
+
+Load secrets from a specific fnox profile by setting the `profile` option:
+
+```toml mise.toml theme={null}
+[plugins]
+fnox-env = "https://github.com/jdx/mise-env-fnox"
+
+[env]
+_.fnox-env = { tools = true, profile = "production" }
+```
+
+<Tip>
+  You can use mise's built-in environment system to switch profiles automatically. See [Configuration options](/configuration/options) for the full list of available options, and [Environment-specific profiles](/configuration/environments) to set different profiles for dev, staging, and production.
+</Tip>
+
+
+# Introduction
+Source: https://www.mintlify.com/jdx/mise-env-fnox/introduction
+
+mise-env-fnox is a mise env plugin that loads fnox secrets as environment variables into your development environment.
+
+mise-env-fnox is a [mise](https://mise.jdx.dev) env plugin that connects to [fnox](https://github.com/jdx/fnox) and automatically exports your secrets as environment variables whenever mise activates your project environment.
+
+<Warning>
+  The author of this plugin is uncertain whether it's a good idea. fnox was built as a separate CLI for a reason. Evaluate whether this integration fits your workflow before adopting it in production.
+</Warning>
+
+## What is mise?
+
+[mise](https://mise.jdx.dev) is a dev tools manager. It manages language runtimes, CLI tools, and environment variables on a per-project basis. When you enter a project directory, mise activates the environment defined in your `mise.toml`.
+
+## What is fnox?
+
+[fnox](https://github.com/jdx/fnox) is a secrets manager. It resolves secrets from configured providers and exposes them through a CLI. Projects configure fnox through a `fnox.toml` file.
+
+## What mise-env-fnox does
+
+When mise activates your environment, this plugin runs `fnox export` and injects the resulting secrets as environment variables into your shell. You don't write `export` commands and you don't store secrets in plaintext `.env` files.
+
+The plugin:
+
+* Searches for `fnox.toml` in the current directory and parent directories
+* Runs `fnox export --format json` (with an optional `--profile` flag)
+* Exports each secret as an environment variable
+* Watches `fnox.toml` for changes to invalidate the cache
+* Redacts secret values from mise output
+
+## Prerequisites
+
+Before installing the plugin, you need:
+
+* **mise** installed and configured, version **0.3.0 or later** (the plugin's minimum required runtime version). See the [mise docs](https://mise.jdx.dev) to get started.
+* **fnox** installed and configured with a `fnox.toml` in your project directory (or a parent directory). If fnox is installed via mise, set `tools = true` in the plugin config.
+
+## Next steps
+
+<CardGroup>
+  <Card title="Installation" icon="download" href="/installation">
+    Add the plugin to your mise.toml and start loading secrets.
+  </Card>
+
+  <Card title="Configuration options" icon="sliders" href="/configuration/options">
+    Customize the fnox binary path, profile, and tool resolution.
+  </Card>
+</CardGroup>
+
+

@@ -1,0 +1,38 @@
+# oh-my-claudecode
+
+## Docs
+
+- [Agent catalog](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/agents/catalog.md): All 29 OMC agents with their default model, lane, and role description.
+- [Agents overview](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/agents/overview.md): Specialized AI processes that handle distinct phases of development work. OMC provides 29 agents organized into 4 lanes, each running on the model tier best suited to its task.
+- [Environment variables](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/configuration/environment-variables.md): Environment variables for controlling OMC hooks, model routing, OpenClaw integration, and the omc ask command.
+- [Hooks](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/configuration/hooks.md): How OMC hooks extend Claude Code lifecycle events to inject context, enforce continuation, and manage state.
+- [Model routing](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/configuration/model-routing.md): How OMC assigns AI models to agents by task complexity, and how to override the defaults.
+- [Setup and configuration](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/configuration/setup.md): Configure oh-my-claudecode for a single project or across all Claude Code sessions.
+- [Installation](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/installation.md): Install oh-my-claudecode via the Claude Code plugin marketplace and configure it for your project or globally.
+- [Introduction](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/introduction.md): Multi-agent orchestration for Claude Code. Zero learning curve. Maximum power.
+- [Autopilot](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/modes/autopilot.md): Full autonomous 5-stage pipeline from idea to working, verified code. Triggered by 'autopilot', 'auto pilot', 'full auto', or 'fullsend'.
+- [CCG](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/modes/ccg.md): Claude-Codex-Gemini tri-model advisor synthesis. Routes via /ask codex and /ask gemini in parallel, then Claude synthesizes both outputs into one answer.
+- [Ralph](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/modes/ralph.md): PRD-driven persistence loop that keeps working until every acceptance criterion is verified complete. Triggered by the 'ralph' keyword.
+- [Team mode](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/modes/team.md): The canonical multi-agent surface in OMC. Coordinates N agents through a staged pipeline with built-in task tracking, inter-agent messaging, and dependency management.
+- [Ultrawork](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/modes/ultrawork.md): Maximum parallelism execution engine. Launches multiple agents simultaneously for independent tasks. Triggered by 'ultrawork' or 'ulw'.
+- [Quickstart](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/quickstart.md): Install oh-my-claudecode and run your first orchestrated task in under 5 minutes.
+- [Architecture](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/reference/architecture.md): How oh-my-claudecode orchestrates multi-agent workflows through four interlocking systems: Hooks, Skills, Agents, and State.
+- [CLI commands](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/reference/cli-commands.md): Complete reference for all omc CLI commands, flags, and usage examples.
+- [Magic keywords](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/reference/magic-keywords.md): Natural-language trigger phrases that activate OMC orchestration modes inline, without running a slash command.
+- [Migration](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/reference/migration.md): Upgrade guides for oh-my-claudecode, covering breaking changes, renamed commands, removed providers, and step-by-step migration paths across versions.
+- [Performance monitoring](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/reference/performance-monitoring.md): Monitor agent performance, token usage, costs, and bottlenecks in multi-agent workflows using the Agent Observatory, session replays, and HUD integration.
+- [Slash commands](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/reference/slash-commands.md): Complete reference for all /oh-my-claudecode: slash commands available after installing the OMC plugin.
+- [Troubleshooting](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/reference/troubleshooting.md): Solutions for common oh-my-claudecode issues including hook failures, team configuration, rate limits, platform compatibility, and context window management.
+- [Custom skills](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/skills/custom-skills.md): Create project-specific or personal skill files that auto-inject when relevant context is detected.
+- [Skills overview](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/skills/overview.md): Behavior injections that modify how the orchestrator operates. Skills add capabilities on top of existing agents without swapping the underlying model.
+- [HUD](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/utilities/hud.md): Real-time orchestration metrics in your Claude Code statusline.
+- [MCP tools](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/utilities/mcp-tools.md): Internal MCP tools used by oh-my-claudecode agents for state management, code intelligence, and coordination.
+- [Notifications](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/utilities/notifications.md): Send stop-callback notifications to Telegram, Discord, or Slack when a Claude Code session completes.
+- [OpenClaw](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/utilities/openclaw.md): Forward Claude Code session events to an OpenClaw gateway to trigger automated workflows.
+
+## OpenAPI Specs
+
+- [openapi](https://www.mintlify.com/yeachan-heo/oh-my-claudecode/api-reference/openapi.json)
+
+
+Built with [Mintlify](https://mintlify.com).

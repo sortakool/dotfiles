@@ -1,0 +1,2653 @@
+# Authentication
+Source: https://www.mintlify.com/knowsuchagency/mcp2cli/features/authentication
+
+Static headers, OAuth PKCE, and client credentials — all modes supported
+
+mcp2cli supports three authentication methods across all modes (`--mcp`, `--spec`, `--graphql`, `--mcp-stdio`). You can combine static headers with OAuth flags if your setup requires it.
+
+## Static headers
+
+Pass any HTTP header with `--auth-header KEY:VALUE`. The flag is repeatable, so you can send multiple headers in a single call.
+
+```bash theme={null}
+mcp2cli --mcp https://mcp.example.com/sse --auth-header "x-api-key:sk-..." --list
+mcp2cli --spec ./spec.json --auth-header "Authorization:Bearer tok_..." create-item --name "Test"
+```
+
+Header values support `env:` and `file:` prefixes to avoid exposing secrets in process listings:
+
+```bash theme={null}
+# Read from an environment variable
+mcp2cli --mcp https://mcp.example.com/sse \
+  --auth-header "Authorization:env:MY_API_TOKEN" \
+  --list
+
+# Read from a file
+mcp2cli --mcp https://mcp.example.com/sse \
+  --auth-header "Authorization:file:/run/secrets/api_token" \
+  --list
+```
+
+## OAuth
+
+mcp2cli handles token acquisition, caching, and refresh automatically for OAuth-protected APIs.
+
+<Tabs>
+  <Tab title="Authorization code + PKCE">
+    Add `--oauth` to trigger the browser-based authorization code flow with PKCE. mcp2cli opens your default browser, waits for the callback, and caches the resulting token in `~/.cache/mcp2cli/oauth/`.
+
+    ```bash theme={null}
+    # MCP server
+    mcp2cli --mcp https://mcp.example.com/sse --oauth --list
+
+    # OpenAPI spec
+    mcp2cli --spec https://api.example.com/openapi.json --oauth --list
+
+    # GraphQL endpoint
+    mcp2cli --graphql https://api.example.com/graphql --oauth --list
+
+    # With specific scopes
+    mcp2cli --graphql https://api.example.com/graphql --oauth --oauth-scope "read write" users
+    ```
+
+    <Note>
+      When using a local spec file, mcp2cli cannot infer the server URL for OAuth discovery. Pass `--base-url` to provide it:
+
+      ```bash theme={null}
+      mcp2cli --spec ./openapi.json --base-url https://api.example.com --oauth --list
+      ```
+    </Note>
+  </Tab>
+
+  <Tab title="Client credentials">
+    For machine-to-machine flows where no browser is available, pass `--oauth-client-id` and `--oauth-client-secret`. mcp2cli detects that both are present and uses the client credentials grant automatically.
+
+    ```bash theme={null}
+    mcp2cli --spec https://api.example.com/openapi.json \
+      --oauth-client-id "my-client-id" \
+      --oauth-client-secret "my-secret" \
+      list-pets
+    ```
+
+    Both values support `env:` and `file:` prefixes:
+
+    ```bash theme={null}
+    # Works with secret managers that inject env vars
+    fnox exec -- mcp2cli --mcp https://mcp.example.com/sse \
+      --oauth-client-id "env:OAUTH_CLIENT_ID" \
+      --oauth-client-secret "env:OAUTH_CLIENT_SECRET" \
+      --list
+    ```
+  </Tab>
+</Tabs>
+
+## OAuth options reference
+
+<AccordionGroup>
+  <Accordion title="--oauth-flow">
+    Force a specific OAuth grant type. Accepts `auto` (default), `authorization_code`, or `client_credentials`.
+
+    * **`auto`**: uses client credentials when both `--oauth-client-id` and `--oauth-client-secret` are present; otherwise uses authorization code + PKCE.
+    * **`authorization_code`**: always use the browser-based PKCE flow, even when a `--oauth-client-secret` is also provided. Required for confidential-client servers like Slack.
+    * **`client_credentials`**: always use client credentials. Requires both `--oauth-client-id` and `--oauth-client-secret`.
+
+    ```bash theme={null}
+    # Force authorization_code even with a client secret (e.g. Slack)
+    mcp2cli --spec https://api.example.com/openapi.json \
+      --oauth-client-id "my-id" \
+      --oauth-client-secret "my-secret" \
+      --oauth-flow authorization_code \
+      --list
+    ```
+  </Accordion>
+
+  <Accordion title="--oauth-scope">
+    Request specific OAuth scopes. Pass a space-separated string.
+
+    ```bash theme={null}
+    mcp2cli --graphql https://api.example.com/graphql --oauth --oauth-scope "read write" users
+    ```
+  </Accordion>
+
+  <Accordion title="--oauth-client-name">
+    Set the client name used during dynamic client registration. Defaults to `"mcp2cli"`.
+
+    ```bash theme={null}
+    mcp2cli --mcp https://mcp.example.com/sse --oauth --oauth-client-name "my-agent" --list
+    ```
+  </Accordion>
+
+  <Accordion title="--oauth-redirect-uri">
+    Override the default loopback callback URL. The URI must use `http://` and include an explicit port. The host must be a loopback address (`localhost`, `127.0.0.1`, or `::1`).
+
+    ```bash theme={null}
+    mcp2cli --mcp https://mcp.example.com/sse \
+      --oauth \
+      --oauth-redirect-uri "http://localhost:3334/oauth/callback" \
+      --list
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Token storage
+
+OAuth tokens are cached per server in `~/.cache/mcp2cli/oauth/`, keyed by a SHA-256 hash of the server URL. Subsequent calls reuse cached tokens and refresh them automatically when they expire. No manual token management is needed.
+
+<Tip>
+  Use the `env:` prefix for `--oauth-client-id` and `--oauth-client-secret` values to keep secrets out of shell history and process listings.
+</Tip>
+
+
+# Bake mode
+Source: https://www.mintlify.com/knowsuchagency/mcp2cli/features/bake-mode
+
+Save connection settings as named tools — no more repeated flags
+
+Bake mode lets you save a source (`--spec`, `--mcp`, or `--mcp-stdio`) along with auth flags, cache settings, and tool filters as a named configuration. You then invoke that configuration with a `@NAME` prefix instead of repeating all flags on every call.
+
+<Note>
+  GraphQL sources (`--graphql`) are not supported by bake mode. Use the other source types (`--spec`, `--mcp`, `--mcp-stdio`) to take advantage of baking.
+</Note>
+
+## Creating a baked tool
+
+```bash theme={null}
+mcp2cli bake create NAME [options]
+```
+
+Provide exactly one source flag and any options you want to persist:
+
+```bash theme={null}
+# OpenAPI spec with method and tool filters
+mcp2cli bake create petstore \
+  --spec https://api.example.com/spec.json \
+  --exclude "delete-*,update-*" \
+  --methods GET,POST \
+  --cache-ttl 7200
+
+# MCP stdio server with include/exclude filters
+mcp2cli bake create mygit \
+  --mcp-stdio "npx @mcp/github" \
+  --include "search-*,list-*" \
+  --exclude "delete-*"
+```
+
+<Note>
+  Names must match `[a-z][a-z0-9-]*`. Use `--force` to overwrite an existing baked tool.
+</Note>
+
+## Using a baked tool
+
+Prefix the name with `@` to run a baked tool. All saved flags are injected automatically:
+
+```bash theme={null}
+mcp2cli @petstore --list
+mcp2cli @petstore list-pets --limit 10
+mcp2cli @mygit search-repos --query "rust"
+```
+
+Every flag you can pass to a normal invocation still works — `--list`, `--sort`, `--top`, `--compact`, `--jq`, `--head`, and so on.
+
+## Managing baked tools
+
+<Steps>
+  <Step title="List all baked tools">
+    ```bash theme={null}
+    mcp2cli bake list
+    ```
+
+    Prints a table with each tool's name, source type, and source URL or command.
+  </Step>
+
+  <Step title="Show a tool's config">
+    ```bash theme={null}
+    mcp2cli bake show petstore
+    ```
+
+    Prints the stored JSON config. Literal auth header values are masked (first 4 characters shown, rest replaced with `****`); `env:` and `file:` references are shown as-is.
+  </Step>
+
+  <Step title="Update settings">
+    ```bash theme={null}
+    mcp2cli bake update petstore --cache-ttl 3600
+    ```
+
+    Only the flags you pass are updated. Supported fields: `--cache-ttl`, `--include`, `--exclude`, `--methods`, `--description`, `--base-url`, `--transport`.
+  </Step>
+
+  <Step title="Remove a baked tool">
+    ```bash theme={null}
+    mcp2cli bake remove petstore
+    ```
+
+    Deletes the config and also removes any installed wrapper script at `~/.local/bin/petstore`.
+  </Step>
+</Steps>
+
+## Installing a wrapper script
+
+`bake install` creates a standalone shell script so you can call the tool by name without the `mcp2cli @` prefix:
+
+```bash theme={null}
+# Install to ~/.local/bin/petstore
+mcp2cli bake install petstore
+
+# Install to a custom directory
+mcp2cli bake install petstore --dir ./scripts/
+```
+
+The generated wrapper contains:
+
+```sh theme={null}
+#!/bin/sh
+exec mcp2cli @petstore "$@"
+```
+
+<Tip>
+  Make sure `~/.local/bin` is in your `PATH`. mcp2cli prints a note if it isn't when you run `bake install` without `--dir`.
+</Tip>
+
+## Filtering tools
+
+Three flags let you control which operations are exposed when using a baked tool:
+
+| Flag        | Description                                 | Example              |
+| ----------- | ------------------------------------------- | -------------------- |
+| `--include` | Comma-separated glob whitelist              | `"list-*,get-*"`     |
+| `--exclude` | Comma-separated glob blacklist              | `"delete-*,admin-*"` |
+| `--methods` | Comma-separated HTTP methods (OpenAPI only) | `"GET,POST"`         |
+
+Filters are applied in order: methods → include → exclude. MCP commands are not affected by `--methods`.
+
+## Config file location
+
+Baked configs are stored at `~/.config/mcp2cli/baked.json`. Override the directory with the `MCP2CLI_CONFIG_DIR` environment variable:
+
+```bash theme={null}
+MCP2CLI_CONFIG_DIR=/etc/mcp2cli mcp2cli bake list
+```
+
+
+# Caching
+Source: https://www.mintlify.com/knowsuchagency/mcp2cli/features/caching
+
+Specs and tool lists are cached locally to speed up repeated calls
+
+mcp2cli caches fetched specs and MCP tool lists on disk so that repeated calls don't pay the network round-trip cost. The cache is stored at `~/.cache/mcp2cli/` by default.
+
+## Default behavior
+
+* Remote OpenAPI specs and GraphQL schemas are cached after the first fetch.
+* MCP HTTP/SSE tool lists are cached after the first connection.
+* The default TTL is **3600 seconds** (1 hour). Entries older than the TTL are treated as missing and re-fetched.
+* Local file specs (`--spec ./api.yaml`) are **never cached**.
+
+## Controlling the cache
+
+<AccordionGroup>
+  <Accordion title="--refresh — bypass the cache">
+    Force a fresh fetch regardless of TTL. The new result is written back to the cache.
+
+    ```bash theme={null}
+    mcp2cli --spec https://api.example.com/spec.json --refresh --list
+    ```
+  </Accordion>
+
+  <Accordion title="--cache-ttl SECONDS — custom TTL">
+    Override the default 1-hour TTL for this invocation. Useful for specs that change frequently or rarely.
+
+    ```bash theme={null}
+    # Cache for 24 hours
+    mcp2cli --spec https://api.example.com/spec.json --cache-ttl 86400 --list
+
+    # Cache for 10 minutes
+    mcp2cli --spec https://api.example.com/spec.json --cache-ttl 600 --list
+    ```
+
+    When baking a tool, `--cache-ttl` is persisted in the config and applied on every invocation of that baked tool.
+  </Accordion>
+
+  <Accordion title="--cache-key KEY — custom cache key">
+    Use a fixed string as the cache key instead of the auto-generated hash. Useful when you want to share a cache entry across multiple invocations that differ only in auth headers.
+
+    ```bash theme={null}
+    mcp2cli --spec https://api.example.com/spec.json --cache-key my-api --list
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Cache key generation
+
+When no `--cache-key` is provided, mcp2cli generates a key by hashing the source URL and auth headers with SHA-256 and taking the first 16 hex characters. This means two calls to the same URL with different auth headers get separate cache entries.
+
+## Cache directory
+
+Override the cache directory with the `MCP2CLI_CACHE_DIR` environment variable:
+
+```bash theme={null}
+MCP2CLI_CACHE_DIR=/tmp/my-cache mcp2cli --spec ./spec.json --list
+```
+
+Each cache entry is a JSON file named `<key>.json` inside the cache directory.
+
+## Cache file layout
+
+```
+~/.cache/mcp2cli/
+├── a3f1c9d2e4b7f012.json   # cached OpenAPI spec
+├── 8c2d5e1a9b3f7240.json   # cached MCP tool list
+├── usage.json               # usage tracking data
+└── oauth/
+    └── <hash>/
+        ├── tokens.json      # cached OAuth tokens
+        └── client.json      # registered client info
+```
+
+<Note>
+  OAuth tokens are cached separately in `~/.cache/mcp2cli/oauth/` and are not affected by `--refresh` or `--cache-ttl`. See [Authentication](/features/authentication) for details.
+</Note>
+
+
+# Output control
+Source: https://www.mintlify.com/knowsuchagency/mcp2cli/features/output-control
+
+Filter, format, and truncate output for humans and LLM agents
+
+mcp2cli gives you several flags to shape how results are printed. They work across all modes and can be combined.
+
+## Formatting
+
+<CardGroup>
+  <Card title="--pretty" icon="indent">
+    Pretty-print JSON with 2-space indentation. Also enabled automatically when stdout is a TTY.
+
+    ```bash theme={null}
+    mcp2cli --spec ./spec.json --pretty list-pets
+    ```
+  </Card>
+
+  <Card title="--raw" icon="code">
+    Print the raw response body without any JSON parsing. Useful when the response is not JSON or you want the exact bytes.
+
+    ```bash theme={null}
+    mcp2cli --spec ./spec.json --raw get-data
+    ```
+  </Card>
+</CardGroup>
+
+## Filtering with jq
+
+`--jq EXPR` pipes the output through [jq](https://jqlang.github.io/jq/) with the given expression. jq must be installed and available on your `PATH`.
+
+```bash theme={null}
+# Extract a single field from each record
+mcp2cli --spec ./spec.json list-pets --jq '.[].name'
+
+# Count matching records
+mcp2cli --spec ./spec.json list-pets --jq '[.[] | select(.status == "available")] | length'
+```
+
+<Note>
+  If jq is not installed, mcp2cli exits with an error and prints the install URL. Get jq at [https://jqlang.github.io/jq/](https://jqlang.github.io/jq/).
+</Note>
+
+## Truncating arrays
+
+`--head N` limits array output to the first N records before any other processing. Scalars and objects pass through unchanged.
+
+```bash theme={null}
+# First 5 records
+mcp2cli --spec ./spec.json list-records --head 5
+
+# Preview first 3, then apply a jq filter
+mcp2cli --spec ./spec.json list-records --head 3 --jq '.'
+```
+
+## TOON encoding
+
+`--toon` encodes the output in [TOON format](https://github.com/toon-format/toon), which uses 40–60% fewer tokens than JSON for large uniform arrays. This is useful when feeding mcp2cli output directly to an LLM agent.
+
+```bash theme={null}
+mcp2cli --mcp https://mcp.example.com/sse --toon list-tags
+```
+
+TOON requires the `@toon-format/cli` npm package:
+
+```bash theme={null}
+npm install -g @toon-format/cli
+```
+
+<Warning>
+  If the TOON CLI is not installed, mcp2cli prints a warning to stderr and falls back to normal JSON output rather than failing.
+</Warning>
+
+## Pipe-friendly output
+
+When stdout is not a TTY (e.g. piped to another command), mcp2cli outputs compact JSON automatically. You don't need `--pretty` for human-readable output in a terminal — it's already the default there.
+
+```bash theme={null}
+# Compact JSON when piped
+mcp2cli --spec ./spec.json list-pets | jq '.[] | .name'
+```
+
+## Combining flags
+
+`--head`, `--jq`, `--pretty`, and `--raw` can be combined. Processing order is: `--head` → `--jq` → `--pretty`.
+
+```bash theme={null}
+# Truncate to 3 records, then apply a jq filter
+mcp2cli --spec ./spec.json list-records --head 3 --jq '.[].id'
+```
+
+<Warning>
+  `--jq` and `--toon` are mutually exclusive. Passing both flags will exit with an error.
+</Warning>
+
+
+# Usage tracking
+Source: https://www.mintlify.com/knowsuchagency/mcp2cli/features/usage-tracking
+
+mcp2cli tracks tool invocations to rank --list output and reduce tokens
+
+mcp2cli records every successful tool call locally and uses that data to sort `--list` output. The most-used tools rise to the top, so LLM agents spending tokens on tool discovery see the most relevant results first.
+
+All data stays on your machine. Nothing is sent to any server.
+
+## How it works
+
+After each successful invocation, mcp2cli increments a call count and updates a `last_used` timestamp for that tool and source. When you run `--list` on a source that has usage data, results are sorted by call frequency by default.
+
+Usage data is stored in `~/.cache/mcp2cli/usage.json`:
+
+```json theme={null}
+{
+  "a3f1c9d2e4b7f012": {
+    "list-pets": { "count": 42, "last_used": "2026-04-06T10:30:00+00:00" },
+    "create-pet": { "count": 7, "last_used": "2026-04-05T14:22:10+00:00" }
+  }
+}
+```
+
+The top-level keys are 16-character SHA-256 hashes derived from the source URL or command.
+
+## Sorting --list output
+
+Use `--sort` to control how `--list` orders tools:
+
+| Mode      | Behavior                                               |
+| --------- | ------------------------------------------------------ |
+| `usage`   | Most-called first. **Default when usage data exists.** |
+| `recent`  | Most-recently-used first.                              |
+| `alpha`   | Alphabetical by tool name.                             |
+| `default` | Original insertion order from the spec or server.      |
+
+```bash theme={null}
+# Most-used tools first (auto when usage data exists)
+mcp2cli @myapi --list
+
+# Most recently used first
+mcp2cli @myapi --list --sort recent
+
+# Alphabetical
+mcp2cli @myapi --list --sort alpha
+```
+
+## Reducing token cost
+
+Two flags help cut the token cost of `--list` when working with large APIs:
+
+<CardGroup>
+  <Card title="--top N" icon="list-ol">
+    Show only the top N tools instead of the full list.
+
+    ```bash theme={null}
+    mcp2cli @myapi --list --top 10
+    ```
+  </Card>
+
+  <Card title="--compact" icon="align-justify">
+    Print tool names only, space-separated, with no descriptions.
+
+    ```bash theme={null}
+    mcp2cli @myapi --list --compact
+    ```
+  </Card>
+</CardGroup>
+
+Combine them for the smallest possible output:
+
+```bash theme={null}
+mcp2cli @myapi --list --top 10 --compact
+```
+
+For a real-world API with 96 tools:
+
+* Default `--list`: \~1,400 tokens
+* `--top 10 --compact`: \~20 tokens
+
+## Effective sort when no usage data exists
+
+When mcp2cli has no usage data for a source (e.g., the first time you connect), `--list` preserves insertion order from the spec or server. Explicit `--sort` flags still work regardless of whether usage data exists — `alpha` sorting, for example, requires no history.
+
+
+# AI agent skill
+Source: https://www.mintlify.com/knowsuchagency/mcp2cli/guides/ai-agent-skill
+
+Teach Claude Code, Cursor, and Codex to use mcp2cli with a single install command
+
+The mcp2cli skill is an installable instruction set that teaches AI coding agents how to use mcp2cli. Once installed, your agent can discover tools, call any MCP server or OpenAPI endpoint, and generate new skills from APIs — without you having to explain the CLI in every conversation.
+
+## Install the skill
+
+<Steps>
+  <Step title="Run the install command">
+    Install the mcp2cli skill into your agent's skill directory:
+
+    ```bash theme={null}
+    npx skills add knowsuchagency/mcp2cli --skill mcp2cli
+    ```
+
+    This works with Claude Code, Cursor, and Codex. The skill is added to `.claude/skills/` (or the equivalent directory for your agent) and is automatically picked up on the next session.
+  </Step>
+
+  <Step title="Verify the install">
+    Ask your agent to list available tools from any MCP server:
+
+    ```
+    List the tools available at https://mcp.example.com/sse
+    ```
+
+    The agent will run `mcp2cli --mcp https://mcp.example.com/sse --list` without needing you to explain the flags.
+  </Step>
+</Steps>
+
+## What the skill teaches
+
+The skill gives your agent working knowledge of mcp2cli's full interface — modes, flags, output control, and token efficiency strategies. Specifically, the agent learns to:
+
+<CardGroup>
+  <Card title="Discover tools" icon="magnifying-glass">
+    Run `--list`, `--search`, and `--compact` to find the right tool without wasting tokens on full schema output.
+  </Card>
+
+  <Card title="Call any source" icon="plug">
+    Connect to MCP servers (HTTP/SSE or stdio), OpenAPI specs, and GraphQL endpoints without writing code.
+  </Card>
+
+  <Card title="Handle auth" icon="lock">
+    Use `env:` and `file:` prefixes to pass credentials safely. Understand OAuth flows and token caching.
+  </Card>
+
+  <Card title="Generate skills" icon="wand-magic-sparkles">
+    Discover, test, and bake a new API into a reusable skill without manual documentation.
+  </Card>
+</CardGroup>
+
+## Prompts to try after installing
+
+Once the skill is installed, your agent understands mcp2cli's interface and can act on natural-language requests:
+
+<AccordionGroup>
+  <Accordion title="Discover tools on an MCP server">
+    ```
+    List the tools available at https://mcp.example.com/sse
+    ```
+
+    The agent runs:
+
+    ```bash theme={null}
+    mcp2cli --mcp https://mcp.example.com/sse --list
+    ```
+
+    For a more token-efficient result, it may use `--top` and `--compact`:
+
+    ```bash theme={null}
+    mcp2cli --mcp https://mcp.example.com/sse --list --top 10 --compact
+    ```
+  </Accordion>
+
+  <Accordion title="Call a specific tool">
+    ```
+    Call the search tool with query 'test' using mcp2cli
+    ```
+
+    The agent inspects the tool's parameters first, then calls it:
+
+    ```bash theme={null}
+    mcp2cli --mcp https://mcp.example.com/sse search --help
+    mcp2cli --mcp https://mcp.example.com/sse search --query "test"
+    ```
+  </Accordion>
+
+  <Accordion title="Interact with an OpenAPI endpoint">
+    ```
+    List available pets from https://petstore3.swagger.io/api/v3/openapi.json
+    ```
+
+    The agent fetches and caches the spec, then calls the right operation:
+
+    ```bash theme={null}
+    mcp2cli --spec https://petstore3.swagger.io/api/v3/openapi.json --list
+    mcp2cli --spec https://petstore3.swagger.io/api/v3/openapi.json find-pets-by-status --status available
+    ```
+  </Accordion>
+
+  <Accordion title="Create a baked tool for an API">
+    ```
+    Create a baked tool for the Petstore API
+    ```
+
+    The agent discovers the spec, bakes a named config, and installs a wrapper:
+
+    ```bash theme={null}
+    mcp2cli bake create petstore --spec https://petstore3.swagger.io/api/v3/openapi.json
+    mcp2cli @petstore --list
+    ```
+  </Accordion>
+
+  <Accordion title="Generate a new skill from an API">
+    ```
+    Create a skill for https://api.example.com/openapi.json
+    ```
+
+    The agent runs the full skill-generation workflow: discover all commands, inspect parameters, test edge cases, bake the connection, install the wrapper, and write a `SKILL.md` with usage patterns and gotchas discovered during testing.
+  </Accordion>
+</AccordionGroup>
+
+## Why this matters
+
+Without the skill, an agent discovering tools from a large MCP server must read the full tool schema on every turn. A server with 96 tools produces roughly 1,400 tokens of schema overhead per request — most of it redundant.
+
+The skill teaches the agent to use mcp2cli's token-efficient discovery flags instead:
+
+| Command                     | Tokens (96 tools) |
+| --------------------------- | ----------------- |
+| `--list` (default)          | \~1,400           |
+| `--list --top 10`           | \~150             |
+| `--list --top 10 --compact` | \~20              |
+
+The agent no longer needs to see full JSON schemas to decide which tool to call. It reads the compact list, picks a tool, inspects only that tool's `--help`, and calls it. See [Token efficiency](/guides/token-efficiency) for the full breakdown.
+
+<Tip>
+  After installing, tell your agent to use `--top 10 --compact` for initial tool discovery and only fetch the full `--help` for the specific tool it intends to call. This keeps token usage low even on servers with hundreds of tools.
+</Tip>
+
+
+# Secrets management
+Source: https://www.mintlify.com/knowsuchagency/mcp2cli/guides/secrets-management
+
+Pass credentials securely using env: and file: prefixes
+
+Passing secrets as literal CLI arguments is a common security mistake. Arguments are visible in process listings (`ps aux`), shell history, and log output. mcp2cli provides `env:` and `file:` prefixes that resolve secrets at runtime from environment variables or files — so the credential never appears in the command line.
+
+## The problem with literal secrets
+
+```bash theme={null}
+# Don't do this — the token is visible in ps aux and .bash_history
+mcp2cli --mcp https://mcp.example.com/sse --auth-header "Authorization:sk-abc123..." --list
+```
+
+Anyone with access to process listings on the same machine can read the token. Shell history persists it across sessions.
+
+## Secret prefixes
+
+mcp2cli supports two prefixes for any secret-valued flag:
+
+| Prefix                 | Behavior                                                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `env:VAR_NAME`         | Reads the value from the named environment variable. Exits with an error if the variable is not set.               |
+| `file:/path/to/secret` | Reads the value from the file at the given path. Trailing newlines are stripped. Exits if the file does not exist. |
+| *(literal)*            | Passed as-is. Use for non-secret values or when you accept the risk.                                               |
+
+### Supported flags
+
+The following flags support `env:` and `file:` prefixes:
+
+* `--auth-header` values (the part after the colon)
+* `--oauth-client-id`
+* `--oauth-client-secret`
+
+## Examples
+
+<Tabs>
+  <Tab title="Environment variable">
+    Set the secret in your shell environment, then reference it with `env:`:
+
+    ```bash theme={null}
+    export MY_API_TOKEN="sk-abc123..."
+
+    mcp2cli --mcp https://mcp.example.com/sse \
+      --auth-header "Authorization:env:MY_API_TOKEN" \
+      --list
+    ```
+
+    The value of `MY_API_TOKEN` is resolved at runtime. The literal string `env:MY_API_TOKEN` is what appears in the process listing.
+  </Tab>
+
+  <Tab title="File">
+    Write the secret to a file with restricted permissions, then reference it with `file:`:
+
+    ```bash theme={null}
+    echo "sk-abc123..." > /run/secrets/api_key
+    chmod 600 /run/secrets/api_key
+
+    mcp2cli --mcp https://mcp.example.com/sse \
+      --auth-header "Authorization:file:/run/secrets/api_key" \
+      --list
+    ```
+
+    Trailing newlines are stripped automatically. Works well with Docker secrets mounted at `/run/secrets/`.
+  </Tab>
+
+  <Tab title="OAuth credentials">
+    Both `--oauth-client-id` and `--oauth-client-secret` accept the same prefixes:
+
+    ```bash theme={null}
+    mcp2cli --mcp https://mcp.example.com/sse \
+      --oauth-client-secret "file:/run/secrets/client_secret" \
+      --oauth-client-id "my-client-id" \
+      --list
+    ```
+
+    Client IDs are not always secret, but client secrets always are. Use `file:` or `env:` for the secret.
+  </Tab>
+</Tabs>
+
+## Integration with secret managers
+
+Any tool that injects environment variables before running a command works seamlessly with the `env:` prefix. mcp2cli reads the variable after the secret manager has populated it.
+
+<CodeGroup>
+  ```bash Vault (via envconsul) theme={null}
+  envconsul -config=./envconsul.hcl -- \
+    mcp2cli --mcp https://mcp.example.com/sse \
+      --oauth-client-id "env:OAUTH_CLIENT_ID" \
+      --oauth-client-secret "env:OAUTH_CLIENT_SECRET" \
+      --list
+  ```
+
+  ```bash Doppler theme={null}
+  doppler run -- \
+    mcp2cli --spec https://api.example.com/spec.json \
+      --auth-header "Authorization:env:API_TOKEN" \
+      --list
+  ```
+
+  ```bash 1Password CLI theme={null}
+  op run --env-file=.env -- \
+    mcp2cli --mcp https://mcp.example.com/sse \
+      --auth-header "x-api-key:env:MY_API_KEY" \
+      --list
+  ```
+
+  ```bash fnox theme={null}
+  fnox exec -- mcp2cli --mcp https://mcp.example.com/sse \
+    --oauth-client-id "env:OAUTH_CLIENT_ID" \
+    --oauth-client-secret "env:OAUTH_CLIENT_SECRET" \
+    --list
+  ```
+</CodeGroup>
+
+## Bake mode and secrets
+
+When you create a baked tool with `bake create`, the `env:` and `file:` prefixes are stored as-is in `~/.config/mcp2cli/baked.json`. The reference is stored, not the resolved value.
+
+```bash theme={null}
+mcp2cli bake create myapi \
+  --spec https://api.example.com/spec.json \
+  --auth-header "Authorization:env:MY_API_TOKEN"
+```
+
+The baked config stores `"Authorization:env:MY_API_TOKEN"`. Each time you invoke `mcp2cli @myapi`, the value of `MY_API_TOKEN` is resolved fresh from the environment.
+
+`bake show` masks secret values in its output — the literal `env:` or `file:` reference is shown, never the resolved credential:
+
+```bash theme={null}
+mcp2cli bake show myapi
+```
+
+<Note>
+  Because the `env:` reference is stored rather than the resolved value, rotating a secret requires only updating the environment variable — not editing the baked config.
+</Note>
+
+## Implementation reference
+
+The resolution logic lives in `resolve_secret` in `src/mcp2cli/__init__.py`:
+
+```python theme={null}
+def resolve_secret(value: str) -> str:
+    """Resolve a secret value from env var, file, or literal.
+
+    Supports:
+      env:VAR_NAME   — read from environment variable
+      file:/path     — read from file (trailing newline stripped)
+      literal value  — returned as-is
+    """
+    if value.startswith("env:"):
+        var = value[4:]
+        resolved = os.environ.get(var)
+        if resolved is None:
+            print(f"Error: environment variable {var!r} is not set", file=sys.stderr)
+            sys.exit(1)
+        return resolved
+    if value.startswith("file:"):
+        path = Path(value[5:])
+        if not path.exists():
+            print(f"Error: secret file not found: {path}", file=sys.stderr)
+            sys.exit(1)
+        return path.read_text().rstrip("\n")
+    return value
+```
+
+If the environment variable is not set or the file does not exist, mcp2cli exits immediately with a descriptive error — it never silently uses an empty string.
+
+<Warning>
+  Avoid passing raw secrets as literal CLI arguments. Even in a controlled environment, literals end up in shell history, CI logs, and process snapshots. Use `env:` or `file:` prefixes instead.
+</Warning>
+
+
+# Token efficiency
+Source: https://www.mintlify.com/knowsuchagency/mcp2cli/guides/token-efficiency
+
+How mcp2cli saves 96–99% of tokens wasted on tool schemas
+
+Every time an LLM agent calls a tool, the tool schema travels with the request. A server with 96 tools produces roughly 1,400 tokens of schema overhead — per turn. Across a multi-step workflow, schema tokens dominate total cost while carrying almost no information the model doesn't already have.
+
+mcp2cli moves tool discovery to the CLI layer. The model sees one compact line per tool instead of a full JSON object. The schema is never sent.
+
+## The problem in numbers
+
+A standard MCP or OpenAPI tool schema includes the tool name, description, every parameter name, type, and description, plus any enum values or nested objects. For a server with 96 tools:
+
+| Discovery method                    | Approximate tokens |
+| ----------------------------------- | ------------------ |
+| Full JSON schema (all 96 tools)     | \~50,000+          |
+| `mcp2cli --list` (default)          | \~1,400            |
+| `mcp2cli --list --top 10`           | \~150              |
+| `mcp2cli --list --top 10 --compact` | \~20               |
+
+The reduction from raw schema to `--list --top 10 --compact` is **96–99%** on large servers.
+
+## Discovery strategies
+
+Use these flags in combination to match your token budget to the task.
+
+### Default list
+
+```bash theme={null}
+mcp2cli @myapi --list
+```
+
+Prints one tool per line with a truncated description. Sorted by call frequency when usage data exists — the tools you use most appear first automatically. At \~1,400 tokens for 96 tools, this is the richest output short of reading raw schemas.
+
+### Top N tools
+
+```bash theme={null}
+mcp2cli @myapi --list --top 10
+```
+
+Caps output to the N most relevant tools. Combined with usage-aware sorting, `--top 10` surfaces the tools you're most likely to need. Use this when you have a rough idea of the task but want to scan options.
+
+### Compact names only
+
+```bash theme={null}
+mcp2cli @myapi --list --compact
+```
+
+Prints tool names space-separated on a single line, no descriptions. Useful when the agent already knows what tool it's looking for and just needs to confirm the exact name.
+
+### Minimum footprint
+
+```bash theme={null}
+mcp2cli @myapi --list --top 10 --compact
+```
+
+\~20 tokens for 10 tool names. Use this for initial discovery at the start of an agentic workflow, then fetch full `--help` for the one tool you intend to call.
+
+```bash theme={null}
+mcp2cli @myapi search --help
+```
+
+### Inspect a specific tool
+
+```bash theme={null}
+mcp2cli @myapi search --help
+```
+
+Shows only the flags for a single tool. Costs a fraction of listing all tools, and gives the agent everything it needs to construct a correct call.
+
+<Tip>
+  The recommended pattern for agents: start with `--list --top 10 --compact`, pick a tool, then run `<tool> --help`. Total discovery cost: \~50 tokens instead of \~1,400.
+</Tip>
+
+## Usage-aware ranking
+
+mcp2cli tracks every tool invocation locally in `~/.cache/mcp2cli/usage.json`. After the first few calls to a source, `--list` automatically sorts by call frequency — the tools you use most appear first.
+
+```bash theme={null}
+# Sort by most frequently called (default when usage data exists)
+mcp2cli @myapi --list
+
+# Sort by most recently called
+mcp2cli @myapi --list --sort recent
+
+# Alphabetical
+mcp2cli @myapi --list --sort alpha
+
+# Preserve original server order
+mcp2cli @myapi --list --sort default
+```
+
+You can also search by name or description substring without listing everything:
+
+```bash theme={null}
+mcp2cli @myapi --search "task"
+```
+
+`--search` implies `--list` and works across all modes.
+
+## Output control for large responses
+
+Discovery tokens are only part of the cost. Tool responses can also be large. mcp2cli provides three mechanisms to reduce response size before it reaches the model.
+
+### TOON encoding
+
+```bash theme={null}
+mcp2cli --mcp https://mcp.example.com/sse --toon list-tags
+```
+
+TOON (Token-Oriented Object Notation) encodes large uniform arrays in a compact columnar format. For typical tabular API responses, TOON uses **40–60% fewer tokens than JSON**. It requires the `@toon-format/cli` package:
+
+```bash theme={null}
+npm install -g @toon-format/cli
+```
+
+<Note>
+  TOON is most effective for arrays of objects with repeated structure (e.g. lists of records, search results). For single objects or scalar values it falls back to normal JSON output.
+</Note>
+
+### Truncation with `--head`
+
+```bash theme={null}
+# Preview the first 5 records from a large dataset
+mcp2cli @myapi list-records --head 5
+
+# Preview then filter
+mcp2cli @myapi list-records --head 3 --jq '.'
+```
+
+`--head N` slices JSON arrays to the first N elements before returning output. Use it to inspect large datasets without loading the full response into context. Especially useful when records contain large fields (e.g. geometry polygons, embedded blobs).
+
+### Filtering with `--jq`
+
+```bash theme={null}
+# Extract only names from a list
+mcp2cli @myapi list-pets --jq '.[].name'
+
+# Count results
+mcp2cli @myapi list-pets --jq 'length'
+
+# Filter by condition
+mcp2cli @myapi list-pets --jq '[.[] | select(.status == "available")] | length'
+```
+
+`--jq` pipes JSON output through [jq](https://jqlang.github.io/jq/) before returning it. The model sees only the filtered result. Requires `jq` to be installed.
+
+<Tip>
+  Prefer `--jq` over writing a Python script to process JSON. It's more token-efficient, avoids script overhead, and the expression is readable inline.
+</Tip>
+
+## Bake mode and tool filtering
+
+When you bake a connection, you can filter which tools are included at load time with `--include` and `--exclude`. The agent only ever sees the relevant subset.
+
+```bash theme={null}
+# Only expose read operations
+mcp2cli bake create myapi-readonly \
+  --spec https://api.example.com/spec.json \
+  --methods GET \
+  --exclude "delete-*,update-*"
+
+# Use the filtered view
+mcp2cli @myapi-readonly --list
+```
+
+Filtering at bake time is the most aggressive reduction: tools excluded from the baked config never appear in `--list` output and cannot be called accidentally.
+
+See [Bake mode](/features/bake-mode) for full filtering options.
+
+## Recommended workflow for agents
+
+<Steps>
+  <Step title="Initial discovery">
+    Start with the minimum footprint to see what's available:
+
+    ```bash theme={null}
+    mcp2cli @myapi --list --top 10 --compact
+    ```
+  </Step>
+
+  <Step title="Inspect a specific tool">
+    Once you've identified the right tool, get its full parameter list:
+
+    ```bash theme={null}
+    mcp2cli @myapi search --help
+    ```
+  </Step>
+
+  <Step title="Call and filter">
+    Call the tool and filter the response to only what the agent needs:
+
+    ```bash theme={null}
+    mcp2cli @myapi search --query "test" --jq '.[].name' --head 10
+    ```
+  </Step>
+</Steps>
+
+This pattern keeps per-turn token cost well under 100 tokens for discovery, regardless of how many tools the server exposes.
+
+
+# Installation
+Source: https://www.mintlify.com/knowsuchagency/mcp2cli/installation
+
+Install mcp2cli using uv or run it directly with uvx
+
+## Requirements
+
+* Python >= 3.10
+* [uv](https://docs.astral.sh/uv/) (recommended) or pip
+
+mcp2cli version **2.7.0** depends on:
+
+* `mcp >= 1.0`
+* `httpx`
+* `pyyaml`
+
+These are installed automatically.
+
+## Install mcp2cli
+
+<Tabs>
+  <Tab title="Run without installing">
+    Use `uvx` to run mcp2cli directly without installing it. `uvx` downloads and caches the package in an isolated environment on first run:
+
+    ```bash theme={null}
+    uvx mcp2cli --help
+    ```
+
+    This is the fastest way to try mcp2cli. Subsequent runs use the cached environment.
+  </Tab>
+
+  <Tab title="Install globally">
+    Install mcp2cli as a persistent global tool using `uv tool install`:
+
+    ```bash theme={null}
+    uv tool install mcp2cli
+    ```
+
+    After installing, the `mcp2cli` command is available in your shell without the `uvx` prefix.
+  </Tab>
+</Tabs>
+
+## Verify the installation
+
+Check that mcp2cli is available and confirm the version:
+
+```bash theme={null}
+mcp2cli --version
+```
+
+You should see output like:
+
+```
+mcp2cli 2.7.0
+```
+
+## AI agent skill
+
+mcp2cli ships with an installable [skill](https://skills.sh) that teaches AI coding agents (Claude Code, Cursor, Codex) how to use it. Install it with:
+
+```bash theme={null}
+npx skills add knowsuchagency/mcp2cli --skill mcp2cli
+```
+
+Once installed, your agent can discover and call any MCP server or OpenAPI endpoint — and even generate new skills from APIs.
+
+<Note>
+  The skill requires Node.js and npx. It does not affect the mcp2cli Python installation.
+</Note>
+
+See the [AI agent skill guide](/guides/ai-agent-skill) for usage examples.
+
+
+# Introduction
+Source: https://www.mintlify.com/knowsuchagency/mcp2cli/introduction
+
+What mcp2cli is and why it exists
+
+mcp2cli turns any MCP server, OpenAPI spec, or GraphQL endpoint into a fully dynamic command-line interface — at runtime, with zero code generation. Point it at an API and start calling tools in seconds.
+
+## The problem
+
+When LLM agents call tools, they send the full tool schema on every turn. A server with 96 tools produces roughly 1,400 tokens of schema overhead — per request. That overhead is wasted: the agent already knows what tools exist. Across an agentic workflow, **96–99% of tokens consumed by tool discovery are redundant**.
+
+mcp2cli moves tool discovery to the CLI layer. Instead of passing schemas to the model, you call the tool directly from the terminal. The model sees only the result.
+
+## What mcp2cli does
+
+* Introspects APIs at runtime — no SDK, no codegen, no build step
+* Generates typed subcommands dynamically from specs and tool definitions
+* Passes arguments as CLI flags and returns structured output
+* Tracks invocations locally to rank tools by usage, reducing `--list` token cost further
+* Supports OAuth, bake mode for reusable configs, and TOON output for token-efficient encoding
+
+## Supported sources
+
+<CardGroup>
+  <Card title="MCP HTTP/SSE" icon="server" href="/modes/mcp-http">
+    Connect to any MCP server over HTTP or SSE transport using `--mcp`
+  </Card>
+
+  <Card title="MCP stdio" icon="square-terminal" href="/modes/mcp-stdio">
+    Spawn and communicate with local MCP servers over stdin/stdout using `--mcp-stdio`
+  </Card>
+
+  <Card title="OpenAPI" icon="file-code" href="/modes/openapi">
+    Turn any OpenAPI 3.x spec (JSON or YAML, local or remote) into a CLI using `--spec`
+  </Card>
+
+  <Card title="GraphQL" icon="diagram-project" href="/modes/graphql">
+    Introspect and call any GraphQL endpoint using `--graphql`
+  </Card>
+</CardGroup>
+
+## Key capabilities
+
+**Bake mode** — save connection settings (URL, auth headers, OAuth config) as a named tool so you never repeat flags:
+
+```bash theme={null}
+mcp2cli bake create petstore --spec https://petstore3.swagger.io/api/v3/openapi.json
+mcp2cli @petstore --list
+```
+
+**Usage-aware ranking** — mcp2cli tracks which tools you call and ranks `--list` output by frequency. Combined with `--top` and `--compact`, a list of 96 tools shrinks from \~1,400 tokens to \~20:
+
+```bash theme={null}
+mcp2cli @myapi --list --top 10 --compact
+```
+
+**OAuth** — authorization code + PKCE and client credentials flows are built in, with automatic token caching and refresh.
+
+**Token-efficient output** — `--toon` encodes large uniform arrays in a compact format that uses 40–60% fewer tokens than JSON.
+
+**Output control** — filter with `--jq`, truncate with `--head`, pretty-print with `--pretty`, or get raw bytes with `--raw`.
+
+## AI agent skill
+
+mcp2cli ships with an installable [skill](https://skills.sh) that teaches AI coding agents (Claude Code, Cursor, Codex) how to use it. Once installed, your agent can discover and call any MCP server or OpenAPI endpoint without manual prompting.
+
+```bash theme={null}
+npx skills add knowsuchagency/mcp2cli --skill mcp2cli
+```
+
+See the [AI agent skill guide](/guides/ai-agent-skill) for details.
+
+
+# GraphQL
+Source: https://www.mintlify.com/knowsuchagency/mcp2cli/modes/graphql
+
+Introspect and call any GraphQL endpoint — queries and mutations
+
+Use `--graphql` to point mcp2cli at a GraphQL endpoint. mcp2cli runs the introspection query, discovers every query and mutation, builds typed subcommands for each, and auto-generates selection sets — no SDL parsing or code generation required.
+
+## Connect and list operations
+
+Pass the endpoint URL to `--graphql` and add `--list` to see all available queries and mutations grouped by operation type:
+
+```bash theme={null}
+mcp2cli --graphql https://api.example.com/graphql --list
+```
+
+Output is grouped into `queries:` and `mutations:` sections so you can quickly identify what is available.
+
+## Call a query
+
+Subcommand names are the kebab-case version of the GraphQL field names. Pass arguments as typed flags derived from the field's arguments in the schema:
+
+```bash theme={null}
+mcp2cli --graphql https://api.example.com/graphql users --limit 10
+```
+
+## Call a mutation
+
+Mutations are called the same way as queries. mcp2cli determines the operation type from the schema:
+
+```bash theme={null}
+mcp2cli --graphql https://api.example.com/graphql create-user --name "Alice" --email "alice@example.com"
+```
+
+Run any subcommand with `--help` to see its flags and argument types:
+
+```bash theme={null}
+mcp2cli --graphql https://api.example.com/graphql create-user --help
+```
+
+## Auto-generated selection sets
+
+mcp2cli builds selection sets automatically from the return type reported by the introspection schema. You do not need to write GraphQL documents or parse an SDL file — just point and run.
+
+The generated document looks like:
+
+```
+query($limit: Int) { users(limit: $limit) { id name email createdAt } }
+```
+
+Variables are declared with the correct GraphQL types derived from the schema's type system.
+
+## Override the selection set
+
+Use `--fields` to replace the auto-generated selection set with your own space-separated field list:
+
+```bash theme={null}
+mcp2cli --graphql https://api.example.com/graphql users --fields "id name email"
+```
+
+<Tip>
+  Use `--fields` when the default selection set includes fields you don't need, or when you want to request nested fields that the auto-generator doesn't traverse into.
+</Tip>
+
+## Name collision handling
+
+When a query and a mutation share the same field name, mcp2cli prefixes the subcommand name to avoid collisions:
+
+* The query becomes `query-{name}`
+* The mutation becomes `mutation-{name}`
+
+<Note>
+  This only applies when there is an actual collision between a query field name and a mutation field name. In all other cases, the plain kebab-case name is used.
+</Note>
+
+## Search operations
+
+Use `--search PATTERN` to filter the list of operations by name or description. The match is case-insensitive and substring-based. `--search` implies `--list`:
+
+```bash theme={null}
+mcp2cli --graphql https://api.example.com/graphql --search "user"
+```
+
+## Authentication
+
+Pass one or more HTTP headers with `--auth-header KEY:VALUE`:
+
+```bash theme={null}
+mcp2cli --graphql https://api.example.com/graphql --auth-header "Authorization:Bearer tok_..." users
+```
+
+Values support `env:` and `file:` prefixes to avoid exposing secrets in process listings:
+
+```bash theme={null}
+mcp2cli --graphql https://api.example.com/graphql \
+  --auth-header "Authorization:env:GRAPHQL_TOKEN" \
+  users
+```
+
+## Example commands
+
+<CodeGroup>
+  ```bash List operations theme={null}
+  mcp2cli --graphql https://api.example.com/graphql --list
+  ```
+
+  ```bash Call a query theme={null}
+  mcp2cli --graphql https://api.example.com/graphql users --limit 10
+  ```
+
+  ```bash Call a mutation theme={null}
+  mcp2cli --graphql https://api.example.com/graphql create-user --name "Alice" --email "alice@example.com"
+  ```
+
+  ```bash Override selection set theme={null}
+  mcp2cli --graphql https://api.example.com/graphql users --fields "id name email"
+  ```
+
+  ```bash With authentication theme={null}
+  mcp2cli --graphql https://api.example.com/graphql --auth-header "Authorization:Bearer tok_..." users
+  ```
+</CodeGroup>
+
+
+# MCP HTTP/SSE
+Source: https://www.mintlify.com/knowsuchagency/mcp2cli/modes/mcp-http
+
+Connect to MCP servers over HTTP or Server-Sent Events
+
+Use `--mcp` to connect to an MCP server exposed over HTTP. mcp2cli discovers all available tools from the server, turns each one into a subcommand, and routes your call back over the same connection.
+
+## Connect and list tools
+
+Pass the server URL to `--mcp` and add `--list` to see every tool the server exposes:
+
+```bash theme={null}
+mcp2cli --mcp https://mcp.example.com/sse --list
+```
+
+Each tool appears as a subcommand name alongside its description. The list reflects what the live server reports — no static config required.
+
+## Call a tool
+
+Subcommand names are the kebab-case version of the tool names reported by the server. Pass arguments as typed flags:
+
+```bash theme={null}
+mcp2cli --mcp https://mcp.example.com/sse search --query "test"
+```
+
+Run any subcommand with `--help` to see its flags and descriptions:
+
+```bash theme={null}
+mcp2cli --mcp https://mcp.example.com/sse search --help
+```
+
+## Transport modes
+
+mcp2cli supports three transport modes for MCP HTTP connections. Use `--transport` to control which one is used.
+
+| Value            | Behaviour                                                    |
+| ---------------- | ------------------------------------------------------------ |
+| `auto` (default) | Tries streamable HTTP first; falls back to SSE if that fails |
+| `streamable`     | Forces streamable HTTP transport only                        |
+| `sse`            | Forces SSE transport only                                    |
+
+<Note>
+  Use `--transport sse` to skip the streamable HTTP probe when you know the server only speaks SSE. This avoids an extra round-trip on the first connection.
+</Note>
+
+```bash theme={null}
+mcp2cli --mcp https://mcp.example.com/sse --transport sse --list
+```
+
+## Authentication
+
+Pass one or more HTTP headers with `--auth-header KEY:VALUE`. The flag is repeatable:
+
+```bash theme={null}
+mcp2cli --mcp https://mcp.example.com/sse --auth-header "x-api-key:sk-..." \
+  query --sql "SELECT 1"
+```
+
+To avoid exposing secrets in process listings, use the `env:` or `file:` prefix in the value:
+
+```bash theme={null}
+mcp2cli --mcp https://mcp.example.com/sse \
+  --auth-header "Authorization:env:MY_API_TOKEN" \
+  --list
+```
+
+`env:MY_API_TOKEN` reads the value from the `MY_API_TOKEN` environment variable at runtime. `file:/run/secrets/token` reads from a file path.
+
+## Search tools
+
+Use `--search PATTERN` to filter tools by name or description. The match is case-insensitive and substring-based. `--search` implies `--list`, so you do not need both flags:
+
+```bash theme={null}
+mcp2cli --mcp https://mcp.example.com/sse --search "task"
+```
+
+<Tip>
+  `--search` works across all modes — `--mcp`, `--mcp-stdio`, `--spec`, and `--graphql`.
+</Tip>
+
+## Resources and prompts
+
+MCP servers can expose [Resources](https://modelcontextprotocol.io/docs/concepts/resources) and [Prompts](https://modelcontextprotocol.io/docs/concepts/prompts) in addition to tools. mcp2cli supports all three:
+
+```bash theme={null}
+# List resources
+mcp2cli --mcp https://mcp.example.com/sse --list-resources
+
+# Read a resource by URI
+mcp2cli --mcp https://mcp.example.com/sse --read-resource "file:///data/report.txt"
+
+# List prompt templates
+mcp2cli --mcp https://mcp.example.com/sse --list-prompts
+
+# Get a prompt by name
+mcp2cli --mcp https://mcp.example.com/sse --get-prompt summarize --prompt-arg "topic=AI"
+```
+
+## Persistent sessions
+
+Use `--session-start` to keep the MCP server process alive between calls, avoiding reconnection overhead on every invocation:
+
+```bash theme={null}
+# Start a named session
+mcp2cli --mcp https://mcp.example.com/sse --session-start myserver
+
+# Call tools through the session
+mcp2cli --session myserver search --query "test"
+mcp2cli --session myserver --list
+
+# Stop the session when done
+mcp2cli --session-stop myserver
+```
+
+## Example commands
+
+<CodeGroup>
+  ```bash List tools theme={null}
+  mcp2cli --mcp https://mcp.example.com/sse --list
+  ```
+
+  ```bash Call a tool theme={null}
+  mcp2cli --mcp https://mcp.example.com/sse search --query "test"
+  ```
+
+  ```bash With authentication theme={null}
+  mcp2cli --mcp https://mcp.example.com/sse --auth-header "x-api-key:sk-..." \
+    query --sql "SELECT 1"
+  ```
+
+  ```bash Force SSE transport theme={null}
+  mcp2cli --mcp https://mcp.example.com/sse --transport sse --list
+  ```
+
+  ```bash Search tools theme={null}
+  mcp2cli --mcp https://mcp.example.com/sse --search "task"
+  ```
+</CodeGroup>
+
+
+# MCP stdio
+Source: https://www.mintlify.com/knowsuchagency/mcp2cli/modes/mcp-stdio
+
+Spawn and talk to local MCP servers over stdin/stdout
+
+Use `--mcp-stdio` to launch a local MCP server as a subprocess and communicate with it over stdin/stdout. mcp2cli spawns the process, performs the MCP handshake, and exposes every tool as a subcommand — no network required.
+
+## Spawn a server and list tools
+
+Pass the shell command that starts your MCP server as a quoted string:
+
+```bash theme={null}
+mcp2cli --mcp-stdio "npx @modelcontextprotocol/server-filesystem /tmp" --list
+```
+
+mcp2cli spawns the command, waits for it to become ready, then prints every tool the server reports. The server process is terminated when mcp2cli exits.
+
+## Call a tool
+
+After listing, call any tool by name (kebab-cased) with its arguments as flags:
+
+```bash theme={null}
+mcp2cli --mcp-stdio "npx @modelcontextprotocol/server-filesystem /tmp" \
+  read-file --path /tmp/hello.txt
+```
+
+Run any subcommand with `--help` to see its available flags:
+
+```bash theme={null}
+mcp2cli --mcp-stdio "npx @modelcontextprotocol/server-filesystem /tmp" \
+  read-file --help
+```
+
+## Pass environment variables
+
+Use `--env KEY=VALUE` to inject environment variables into the server process. The flag is repeatable:
+
+```bash theme={null}
+mcp2cli --mcp-stdio "node server.js" --env API_KEY=sk-... --env DEBUG=1 \
+  search --query "test"
+```
+
+<Note>
+  To avoid exposing secrets in process listings, you can pass them via the env vars of the parent shell rather than inlining them in the `--env` value. Any environment variable already set in your shell is automatically inherited by the subprocess.
+</Note>
+
+## Search tools
+
+Use `--search PATTERN` to filter tools by name or description without listing everything. The match is case-insensitive and substring-based:
+
+```bash theme={null}
+mcp2cli --mcp-stdio "npx @modelcontextprotocol/server-filesystem /tmp" \
+  --search "read"
+```
+
+## Resources and prompts
+
+If the spawned MCP server exposes Resources or Prompts, you can access them the same way as with HTTP servers:
+
+```bash theme={null}
+# List resources
+mcp2cli --mcp-stdio "npx @modelcontextprotocol/server-filesystem /tmp" --list-resources
+
+# Read a resource by URI
+mcp2cli --mcp-stdio "npx @modelcontextprotocol/server-filesystem /tmp" \
+  --read-resource "file:///tmp/hello.txt"
+
+# List prompt templates
+mcp2cli --mcp-stdio "node server.js" --list-prompts
+```
+
+## Persistent sessions
+
+Use `--session-start` to keep the stdio server process running between calls. This avoids the overhead of re-spawning and re-initializing the server on every invocation:
+
+```bash theme={null}
+# Start a named session
+mcp2cli --mcp-stdio "npx @modelcontextprotocol/server-filesystem /tmp" \
+  --session-start myfs
+
+# Call tools through the session
+mcp2cli --session myfs read-file --path /tmp/hello.txt
+
+# Stop the session
+mcp2cli --session-stop myfs
+```
+
+## Example commands
+
+<CodeGroup>
+  ```bash List tools theme={null}
+  mcp2cli --mcp-stdio "npx @modelcontextprotocol/server-filesystem /tmp" --list
+  ```
+
+  ```bash Call a tool theme={null}
+  mcp2cli --mcp-stdio "npx @modelcontextprotocol/server-filesystem /tmp" \
+    read-file --path /tmp/hello.txt
+  ```
+
+  ```bash With environment variables theme={null}
+  mcp2cli --mcp-stdio "node server.js" --env API_KEY=sk-... --env DEBUG=1 \
+    search --query "test"
+  ```
+</CodeGroup>
+
+
+# OpenAPI
+Source: https://www.mintlify.com/knowsuchagency/mcp2cli/modes/openapi
+
+Turn any OpenAPI 3.x spec into a CLI — local or remote, JSON or YAML
+
+Use `--spec` to point mcp2cli at an OpenAPI 3.x spec. mcp2cli fetches and parses the spec, turns every operation into a subcommand, and maps path, query, header, and body parameters to typed CLI flags — no code generation required.
+
+## Supported spec formats
+
+mcp2cli accepts specs in JSON or YAML format, from a URL or a local file path.
+
+<Tabs>
+  <Tab title="Remote URL">
+    ```bash theme={null}
+    mcp2cli --spec https://petstore3.swagger.io/api/v3/openapi.json --list
+    ```
+
+    Remote specs are cached in `~/.cache/mcp2cli/` with a 1-hour TTL by default. Use `--refresh` to bypass the cache.
+  </Tab>
+
+  <Tab title="Local file">
+    ```bash theme={null}
+    mcp2cli --spec ./api.yaml --base-url http://localhost:8000 --list
+    ```
+
+    Local files are never cached. You must provide `--base-url` when using a local spec, because mcp2cli cannot infer the server URL from a file path.
+  </Tab>
+</Tabs>
+
+## Override the base URL
+
+When the spec's `servers` block points to the wrong host (or is absent), use `--base-url` to override it:
+
+```bash theme={null}
+mcp2cli --spec ./openapi.json --base-url https://api.example.com list-pets --status available
+```
+
+## List all operations
+
+Add `--list` to print every subcommand with a short description:
+
+```bash theme={null}
+mcp2cli --spec https://petstore3.swagger.io/api/v3/openapi.json --list
+```
+
+## Call an operation
+
+Subcommand names are derived from the `operationId` field in the spec, converted to kebab-case. If an operation has no `operationId`, mcp2cli generates a name from the HTTP method and path.
+
+Pass arguments as typed flags matching the operation's parameters:
+
+```bash theme={null}
+mcp2cli --spec ./openapi.json --base-url https://api.example.com list-pets --status available
+```
+
+Run any subcommand with `--help` to see all its flags:
+
+```bash theme={null}
+mcp2cli --spec ./openapi.json list-pets --help
+```
+
+## Parameter locations
+
+Parameters from all locations in the spec become CLI flags:
+
+| OpenAPI location         | CLI flag source  |
+| ------------------------ | ---------------- |
+| `path`                   | `--{param-name}` |
+| `query`                  | `--{param-name}` |
+| `header`                 | `--{param-name}` |
+| `requestBody` properties | `--{prop-name}`  |
+
+<Note>
+  `$ref` resolution happens automatically. mcp2cli dereferences the entire spec before extracting commands, so you do not need to pre-process the spec.
+</Note>
+
+## POST and PUT with JSON body from stdin
+
+For operations with a request body, you can pipe JSON directly from stdin using `--stdin`:
+
+```bash theme={null}
+echo '{"name": "Fido", "tag": "dog"}' | mcp2cli --spec ./spec.json create-pet --stdin
+```
+
+Individual body properties can also be passed as flags when the spec defines them as top-level properties of the request body schema.
+
+## Authentication
+
+Pass one or more HTTP headers with `--auth-header KEY:VALUE`:
+
+```bash theme={null}
+mcp2cli --spec ./spec.json --auth-header "Authorization:Bearer tok_..." create-item --name "Test"
+```
+
+The flag is repeatable. Values support `env:` and `file:` prefixes to avoid exposing secrets in process listings:
+
+```bash theme={null}
+mcp2cli --spec ./spec.json \
+  --auth-header "Authorization:env:API_TOKEN" \
+  list-pets
+```
+
+## Example commands
+
+<CodeGroup>
+  ```bash List from remote spec theme={null}
+  mcp2cli --spec https://petstore3.swagger.io/api/v3/openapi.json --list
+  ```
+
+  ```bash Call an endpoint theme={null}
+  mcp2cli --spec ./openapi.json --base-url https://api.example.com list-pets --status available
+  ```
+
+  ```bash With authentication theme={null}
+  mcp2cli --spec ./spec.json --auth-header "Authorization:Bearer tok_..." create-item --name "Test"
+  ```
+
+  ```bash POST body from stdin theme={null}
+  echo '{"name": "Fido", "tag": "dog"}' | mcp2cli --spec ./spec.json create-pet --stdin
+  ```
+
+  ```bash Local YAML spec theme={null}
+  mcp2cli --spec ./api.yaml --base-url http://localhost:8000 --list
+  ```
+</CodeGroup>
+
+
+# Quickstart
+Source: https://www.mintlify.com/knowsuchagency/mcp2cli/quickstart
+
+Call your first API in under 60 seconds
+
+<Steps>
+  <Step title="Install mcp2cli">
+    Run mcp2cli directly with `uvx` — no installation required:
+
+    ```bash theme={null}
+    uvx mcp2cli --help
+    ```
+
+    Or install it globally so you can call `mcp2cli` without the `uvx` prefix:
+
+    ```bash theme={null}
+    uv tool install mcp2cli
+    ```
+
+    See [Installation](/installation) for full details and requirements.
+  </Step>
+
+  <Step title="List operations from an API">
+    Point mcp2cli at the Petstore OpenAPI spec and list all available operations:
+
+    ```bash theme={null}
+    mcp2cli --spec https://petstore3.swagger.io/api/v3/openapi.json --list
+    ```
+
+    mcp2cli fetches and caches the spec, then prints every operation as a subcommand with a short description. The same `--list` flag works across all modes: `--mcp`, `--mcp-stdio`, `--spec`, and `--graphql`.
+
+    <Tip>
+      Use `--search` to filter tools by name or description without scrolling through the full list:
+
+      ```bash theme={null}
+      mcp2cli --spec https://petstore3.swagger.io/api/v3/openapi.json --search "pet"
+      ```
+    </Tip>
+  </Step>
+
+  <Step title="Call an operation">
+    Subcommands are generated from the spec. Pass arguments as typed flags:
+
+    ```bash theme={null}
+    mcp2cli --spec ./openapi.json --base-url https://api.example.com list-pets --status available
+    ```
+
+    Run `<subcommand> --help` to see all flags for a specific operation:
+
+    ```bash theme={null}
+    mcp2cli --spec ./openapi.json list-pets --help
+    ```
+  </Step>
+
+  <Step title="Bake settings for reuse">
+    Tired of repeating `--spec` and auth flags on every call? Bake them into a named configuration:
+
+    ```bash theme={null}
+    mcp2cli bake create petstore --spec https://petstore3.swagger.io/api/v3/openapi.json
+    ```
+
+    Then call the baked tool with the `@` prefix — no connection flags needed:
+
+    ```bash theme={null}
+    mcp2cli @petstore --list
+    mcp2cli @petstore list-pets --status available
+    ```
+
+    Baked configs are stored in `~/.config/mcp2cli/baked.json`.
+  </Step>
+</Steps>
+
+## Explore the modes
+
+<CardGroup>
+  <Card title="MCP HTTP/SSE" icon="server" href="/modes/mcp-http">
+    Connect to MCP servers over HTTP or SSE
+  </Card>
+
+  <Card title="MCP stdio" icon="square-terminal" href="/modes/mcp-stdio">
+    Spawn local MCP servers over stdin/stdout
+  </Card>
+
+  <Card title="OpenAPI" icon="file-code" href="/modes/openapi">
+    Turn any OpenAPI 3.x spec into a CLI
+  </Card>
+
+  <Card title="GraphQL" icon="diagram-project" href="/modes/graphql">
+    Introspect and call any GraphQL endpoint
+  </Card>
+</CardGroup>
+
+
+# Bake commands
+Source: https://www.mintlify.com/knowsuchagency/mcp2cli/reference/bake-commands
+
+Save and manage named connection configurations
+
+Bake mode lets you save connection settings — URL, auth headers, OAuth config, transport, and filters — as a named tool. Once baked, you run the tool with a simple `@name` prefix instead of repeating flags on every call.
+
+```bash theme={null}
+# Without bake
+mcp2cli --spec https://petstore3.swagger.io/api/v3/openapi.json \
+  --auth-header "Authorization:Bearer tok_..." \
+  --cache-ttl 7200 \
+  list-pets --status available
+
+# With bake
+mcp2cli @petstore list-pets --status available
+```
+
+Configs are stored in `~/.config/mcp2cli/baked.json`. Override the directory with the `MCP2CLI_CONFIG_DIR` environment variable.
+
+<Note>
+  Baked tool names must match the pattern `[a-z][a-z0-9-]*` — lowercase letters, digits, and hyphens only, starting with a letter.
+</Note>
+
+***
+
+## bake create
+
+Save a connection configuration as a named tool.
+
+**Syntax**
+
+```bash theme={null}
+mcp2cli bake create NAME [options]
+```
+
+**Source options** (mutually exclusive, one required)
+
+<ParamField type="URL|FILE">
+  OpenAPI spec URL or local file path to bake.
+</ParamField>
+
+<ParamField type="URL">
+  MCP server URL (HTTP/SSE) to bake.
+</ParamField>
+
+<ParamField type="CMD">
+  MCP stdio server command to bake.
+</ParamField>
+
+**Connection options**
+
+<ParamField type="URL">
+  Override the base URL. Stored in the config and used on every invocation.
+</ParamField>
+
+<ParamField type="K:V">
+  HTTP header to include on every request. Repeatable. Values support `env:` and `file:` prefixes so secrets are never stored in plaintext in `baked.json`.
+</ParamField>
+
+<ParamField type="KEY=VALUE">
+  Environment variable for the MCP stdio server process. Repeatable. Only relevant with `--mcp-stdio`.
+</ParamField>
+
+<ParamField type="string">
+  MCP HTTP transport: `auto` | `sse` | `streamable`.
+</ParamField>
+
+<ParamField type="integer">
+  Cache TTL in seconds for the baked tool.
+</ParamField>
+
+**OAuth options**
+
+<ParamField type="boolean">
+  Enable OAuth (authorization code + PKCE flow).
+</ParamField>
+
+<ParamField type="ID">
+  OAuth client ID. Supports `env:` and `file:` prefixes.
+</ParamField>
+
+<ParamField type="string">
+  OAuth client secret. Supports `env:` and `file:` prefixes.
+</ParamField>
+
+<ParamField type="NAME">
+  Client name sent during Dynamic Client Registration.
+</ParamField>
+
+<ParamField type="SCOPE">
+  OAuth scope(s) to request.
+</ParamField>
+
+<ParamField type="URI">
+  Full redirect URI for the OAuth callback. Must be a loopback `http://` URI.
+</ParamField>
+
+<ParamField type="string">
+  OAuth flow: `auto` | `authorization_code` | `client_credentials`.
+</ParamField>
+
+**Filtering options**
+
+<ParamField type="string">
+  Comma-separated glob patterns to whitelist tools. Only matching tools are exposed when using this baked tool.
+
+  ```bash theme={null}
+  --include "list-*,get-*"
+  ```
+</ParamField>
+
+<ParamField type="string">
+  Comma-separated glob patterns to blacklist tools. Matching tools are hidden.
+
+  ```bash theme={null}
+  --exclude "delete-*,update-*"
+  ```
+</ParamField>
+
+<ParamField type="string">
+  Comma-separated HTTP methods to allow (OpenAPI only). Tools for other methods are hidden.
+
+  ```bash theme={null}
+  --methods "GET,POST"
+  ```
+</ParamField>
+
+**Other**
+
+<ParamField type="string">
+  Human-readable description stored in the config. Displayed in `bake list`.
+</ParamField>
+
+<ParamField type="boolean">
+  Overwrite an existing baked tool with the same name without prompting.
+</ParamField>
+
+**Examples**
+
+```bash theme={null}
+# Bake an OpenAPI spec with auth, filters, and a custom TTL
+mcp2cli bake create petstore \
+  --spec https://petstore3.swagger.io/api/v3/openapi.json \
+  --auth-header "Authorization:env:PETSTORE_TOKEN" \
+  --exclude "delete-*" \
+  --methods GET,POST \
+  --cache-ttl 7200
+
+# Bake an MCP stdio server with tool filtering
+mcp2cli bake create mygit \
+  --mcp-stdio "npx @mcp/github" \
+  --include "search-*,list-*" \
+  --exclude "delete-*"
+
+# Overwrite an existing baked tool
+mcp2cli bake create petstore --spec https://api.example.com/v2/openapi.json --force
+```
+
+***
+
+## bake list
+
+List all baked tools with their type and source.
+
+**Syntax**
+
+```bash theme={null}
+mcp2cli bake list
+```
+
+**Output**
+
+Prints a table with three columns: `Name`, `Type`, and `Source`.
+
+```
+Name                 Type       Source
+--------------------------------------------------------------------------------
+mygit                mcp_stdio  npx @mcp/github
+petstore             spec       https://petstore3.swagger.io/api/v3/openapi.json
+```
+
+Source values longer than 48 characters are truncated with `...`.
+
+***
+
+## bake show
+
+Show the full stored configuration for a baked tool. Auth header values are masked: literal secrets are truncated to their first four characters followed by `****`. Values using `env:` or `file:` prefixes are shown as-is.
+
+**Syntax**
+
+```bash theme={null}
+mcp2cli bake show NAME
+```
+
+**Example**
+
+```bash theme={null}
+mcp2cli bake show petstore
+```
+
+```json theme={null}
+{
+  "source_type": "spec",
+  "source": "https://petstore3.swagger.io/api/v3/openapi.json",
+  "base_url": null,
+  "auth_headers": [["Authorization", "Bear****"]],
+  "env_vars": {},
+  "cache_ttl": 7200,
+  "transport": "auto",
+  "oauth": false,
+  "oauth_client_id": null,
+  "oauth_client_secret": null,
+  "oauth_client_name": "mcp2cli",
+  "oauth_scope": null,
+  "oauth_redirect_uri": null,
+  "oauth_flow": "auto",
+  "include": [],
+  "exclude": ["delete-*"],
+  "methods": ["GET", "POST"],
+  "description": ""
+}
+```
+
+***
+
+## bake update
+
+Update specific settings on an existing baked tool without recreating it. Only the fields you pass are changed.
+
+**Syntax**
+
+```bash theme={null}
+mcp2cli bake update NAME [options]
+```
+
+**Options**
+
+<ParamField type="integer">
+  New cache TTL in seconds.
+</ParamField>
+
+<ParamField type="string">
+  Replace the include glob list (comma-separated).
+</ParamField>
+
+<ParamField type="string">
+  Replace the exclude glob list (comma-separated).
+</ParamField>
+
+<ParamField type="string">
+  Replace the allowed HTTP methods list (comma-separated, OpenAPI only).
+</ParamField>
+
+<ParamField type="string">
+  Update the description.
+</ParamField>
+
+<ParamField type="URL">
+  Update the base URL override.
+</ParamField>
+
+<ParamField type="string">
+  Update the MCP HTTP transport: `auto` | `sse` | `streamable`.
+</ParamField>
+
+**Example**
+
+```bash theme={null}
+# Extend TTL and narrow to GET only
+mcp2cli bake update petstore --cache-ttl 86400 --methods GET
+```
+
+***
+
+## bake remove
+
+Delete a baked tool. If a wrapper script was installed with `bake install`, it is also removed from `~/.local/bin`.
+
+**Syntax**
+
+```bash theme={null}
+mcp2cli bake remove NAME
+```
+
+**Example**
+
+```bash theme={null}
+mcp2cli bake remove petstore
+# Baked tool 'petstore' removed.
+# (also removes ~/.local/bin/petstore if it exists)
+```
+
+***
+
+## bake install
+
+Create a standalone executable wrapper script that calls `mcp2cli @NAME "$@"`. The wrapper is placed in `~/.local/bin` by default, making the baked tool available as a first-class CLI command.
+
+**Syntax**
+
+```bash theme={null}
+mcp2cli bake install NAME [--dir DIR]
+```
+
+**Options**
+
+<ParamField type="DIR">
+  Directory to install the wrapper into. Defaults to `~/.local/bin`. The directory is created if it does not exist.
+</ParamField>
+
+**Example**
+
+```bash theme={null}
+# Install to ~/.local/bin/petstore
+mcp2cli bake install petstore
+
+# Install to a project-local scripts directory
+mcp2cli bake install petstore --dir ./scripts/
+
+# Now call it directly (if ~/.local/bin is on PATH)
+petstore --list
+petstore list-pets --status available
+```
+
+<Tip>
+  If `~/.local/bin` is not in your `PATH`, the install command will print a reminder. Add `export PATH="$HOME/.local/bin:$PATH"` to your shell profile.
+</Tip>
+
+The generated wrapper script contains:
+
+```sh theme={null}
+#!/bin/sh
+exec mcp2cli @petstore "$@"
+```
+
+***
+
+## @NAME
+
+Run a baked tool directly using the `@` prefix. All positional arguments and flags after `@NAME` are forwarded to the underlying source.
+
+**Syntax**
+
+```bash theme={null}
+mcp2cli @NAME [args]
+```
+
+**Examples**
+
+```bash theme={null}
+# List tools
+mcp2cli @petstore --list
+
+# Call a subcommand
+mcp2cli @petstore list-pets --status available
+
+# Combine with output flags
+mcp2cli @petstore --list --top 10 --compact
+mcp2cli @mygit search-repos --query "rust" --jq '.[].full_name'
+```
+
+<Note>
+  `@NAME` is syntactic sugar for re-running `mcp2cli` with all the saved flags from the baked config plus any `--include`/`--exclude`/`--methods` filters applied on top.
+</Note>
+
+
+# Environment variables
+Source: https://www.mintlify.com/knowsuchagency/mcp2cli/reference/environment-variables
+
+Environment variables that control mcp2cli behavior
+
+mcp2cli reads two environment variables at startup to override its default file system locations.
+
+***
+
+## MCP2CLI\_CACHE\_DIR
+
+<ParamField type="string">
+  Override the directory where mcp2cli stores cached data. When unset, defaults to `~/.cache/mcp2cli/`.
+
+  Affects:
+
+  * Remote spec and tool list cache (keyed by URL hash or `--cache-key`)
+  * Usage tracking file (`usage.json`)
+  * Active session socket and metadata files (`sessions/`)
+
+  Does **not** affect the OAuth token cache, which is always stored inside this same directory under `oauth/` — so overriding `MCP2CLI_CACHE_DIR` does relocate OAuth tokens too.
+
+  ```bash theme={null}
+  MCP2CLI_CACHE_DIR=/tmp/my-cache mcp2cli --spec ./spec.json --list
+  ```
+</ParamField>
+
+***
+
+## MCP2CLI\_CONFIG\_DIR
+
+<ParamField type="string">
+  Override the directory where mcp2cli stores configuration. When unset, defaults to `~/.config/mcp2cli/`.
+
+  Affects:
+
+  * Baked tool configurations (`baked.json`)
+
+  ```bash theme={null}
+  MCP2CLI_CONFIG_DIR=/etc/mcp2cli mcp2cli bake list
+  ```
+</ParamField>
+
+***
+
+## File locations
+
+The table below summarises all files mcp2cli reads or writes and which environment variable controls their location.
+
+| File                     | Default location                        | Controlled by        |
+| ------------------------ | --------------------------------------- | -------------------- |
+| Baked tool configs       | `~/.config/mcp2cli/baked.json`          | `MCP2CLI_CONFIG_DIR` |
+| Spec and tool list cache | `~/.cache/mcp2cli/<hash>.json`          | `MCP2CLI_CACHE_DIR`  |
+| Usage tracking           | `~/.cache/mcp2cli/usage.json`           | `MCP2CLI_CACHE_DIR`  |
+| OAuth tokens             | `~/.cache/mcp2cli/oauth/`               | `MCP2CLI_CACHE_DIR`  |
+| Session metadata         | `~/.cache/mcp2cli/sessions/<name>.json` | `MCP2CLI_CACHE_DIR`  |
+
+***
+
+## Examples
+
+**Use a temporary cache directory for CI**
+
+```bash theme={null}
+MCP2CLI_CACHE_DIR=/tmp/mcp2cli-ci mcp2cli --spec https://api.example.com/openapi.json --list
+```
+
+<Tip>
+  In CI pipelines, set `MCP2CLI_CACHE_DIR` to a writable temp directory and `MCP2CLI_CONFIG_DIR` to a pre-populated config directory that contains your `baked.json`. This avoids writing to the home directory and lets you cache specs between runs with full control over the cache path.
+</Tip>
+
+**Relocate config and cache to a shared path**
+
+```bash theme={null}
+export MCP2CLI_CONFIG_DIR=/opt/mcp2cli/config
+export MCP2CLI_CACHE_DIR=/opt/mcp2cli/cache
+mcp2cli bake list
+```
+
+**Override the cache directory for a single invocation**
+
+```bash theme={null}
+MCP2CLI_CACHE_DIR=/tmp/fresh mcp2cli --spec ./spec.json --refresh --list
+```
+
+<Note>
+  Local file specs (passed as a file path rather than a URL to `--spec`) are never cached regardless of `MCP2CLI_CACHE_DIR`.
+</Note>
+
+
+# Global options
+Source: https://www.mintlify.com/knowsuchagency/mcp2cli/reference/global-options
+
+All global flags for mcp2cli — source selection, auth, output, and more
+
+Global options appear before the subcommand name and apply to every invocation.
+
+```bash theme={null}
+mcp2cli [global options] <subcommand> [command options]
+```
+
+***
+
+## Source
+
+Exactly one source flag is required on most invocations. These flags are mutually exclusive. Session management operations (`--session-list`, `--session-stop`) do not require a source flag.
+
+<ParamField type="URL|FILE">
+  OpenAPI spec to introspect. Accepts a remote URL (`https://...`) or a local file path (JSON or YAML). Local files are never cached.
+
+  ```bash theme={null}
+  mcp2cli --spec https://petstore3.swagger.io/api/v3/openapi.json --list
+  mcp2cli --spec ./api.yaml --base-url http://localhost:8000 --list
+  ```
+</ParamField>
+
+<ParamField type="URL">
+  MCP server URL for HTTP or SSE transport.
+
+  ```bash theme={null}
+  mcp2cli --mcp https://mcp.example.com/sse --list
+  ```
+</ParamField>
+
+<ParamField type="CMD">
+  Shell command that launches an MCP server using stdio transport. The command is parsed with `shlex.split`, so quoting rules apply.
+
+  ```bash theme={null}
+  mcp2cli --mcp-stdio "npx @modelcontextprotocol/server-filesystem /tmp" --list
+  ```
+</ParamField>
+
+<ParamField type="URL">
+  GraphQL endpoint URL. mcp2cli introspects the schema and auto-generates subcommands for every query and mutation.
+
+  ```bash theme={null}
+  mcp2cli --graphql https://api.example.com/graphql --list
+  ```
+</ParamField>
+
+***
+
+## Connection options
+
+<ParamField type="K:V">
+  HTTP header to include with every request, formatted as `Name:Value`. Repeatable — pass the flag multiple times to add several headers.
+
+  The value portion supports `env:` and `file:` prefixes to avoid exposing secrets in process listings:
+
+  * `Authorization:env:MY_TOKEN` — read from environment variable `MY_TOKEN`
+  * `x-api-key:file:/run/secrets/key` — read from file
+
+  ```bash theme={null}
+  mcp2cli --mcp https://mcp.example.com/sse \
+    --auth-header "Authorization:Bearer tok_..." \
+    --auth-header "x-tenant-id:acme" \
+    --list
+  ```
+</ParamField>
+
+<ParamField type="URL">
+  Override the base URL derived from the spec's `servers` block. Required when using a local spec file that doesn't embed a base URL, and also needed for OAuth discovery with local spec files.
+
+  ```bash theme={null}
+  mcp2cli --spec ./openapi.json --base-url https://api.example.com --list
+  ```
+</ParamField>
+
+<ParamField type="string">
+  MCP HTTP transport mode. Only applies when `--mcp` is used.
+
+  | Value        | Behavior                                                  |
+  | ------------ | --------------------------------------------------------- |
+  | `auto`       | Tries streamable HTTP first, falls back to SSE on failure |
+  | `sse`        | Forces SSE transport, skips streamable HTTP               |
+  | `streamable` | Forces streamable HTTP, no SSE fallback                   |
+
+  ```bash theme={null}
+  mcp2cli --mcp https://mcp.example.com/sse --transport sse --list
+  ```
+</ParamField>
+
+<ParamField type="KEY=VALUE">
+  Environment variable to pass to the MCP stdio server process. Repeatable. Only applies when `--mcp-stdio` is used.
+
+  ```bash theme={null}
+  mcp2cli --mcp-stdio "node server.js" --env API_KEY=sk-... --env DEBUG=1 search --query "test"
+  ```
+</ParamField>
+
+***
+
+## OAuth options
+
+<Note>
+  OAuth is not supported with `--mcp-stdio`. When using a local spec file, provide `--base-url` so mcp2cli can discover the OAuth server.
+</Note>
+
+<ParamField type="boolean">
+  Enable OAuth authentication using the authorization code + PKCE flow. Opens a browser window for interactive login. Tokens are cached in `~/.cache/mcp2cli/oauth/` and refreshed automatically.
+
+  ```bash theme={null}
+  mcp2cli --mcp https://mcp.example.com/sse --oauth --list
+  ```
+</ParamField>
+
+<ParamField type="ID">
+  OAuth client ID. Supports `env:VAR` and `file:/path` prefixes. When provided alongside `--oauth-client-secret`, mcp2cli defaults to the client credentials flow unless `--oauth-flow` overrides it.
+
+  ```bash theme={null}
+  mcp2cli --spec https://api.example.com/openapi.json \
+    --oauth-client-id "env:OAUTH_CLIENT_ID" \
+    --oauth-client-secret "env:OAUTH_CLIENT_SECRET" \
+    list-pets
+  ```
+</ParamField>
+
+<ParamField type="string">
+  OAuth client secret. Supports `env:VAR` and `file:/path` prefixes. Requires `--oauth-client-id`.
+</ParamField>
+
+<ParamField type="SCOPE">
+  OAuth scope string to request. Pass multiple scopes space-separated within the value.
+
+  ```bash theme={null}
+  mcp2cli --graphql https://api.example.com/graphql --oauth --oauth-scope "read write" users
+  ```
+</ParamField>
+
+<ParamField type="NAME">
+  Client name sent during OAuth Dynamic Client Registration. Some servers require a specific name for DCR to succeed.
+</ParamField>
+
+<ParamField type="URI">
+  Full redirect URI for the OAuth callback (e.g. `http://localhost:3334/oauth/callback`). Overrides the default, which uses a random loopback port (`http://127.0.0.1:<port>/callback`). Must be a loopback `http://` URI.
+</ParamField>
+
+<ParamField type="string">
+  OAuth flow to use.
+
+  | Value                | Behavior                                                                                              |
+  | -------------------- | ----------------------------------------------------------------------------------------------------- |
+  | `auto`               | Uses `client_credentials` when both client ID and secret are provided, otherwise `authorization_code` |
+  | `authorization_code` | Forces auth code + PKCE flow (required for confidential-client servers like Slack)                    |
+  | `client_credentials` | Machine-to-machine, no browser. Requires both `--oauth-client-id` and `--oauth-client-secret`         |
+</ParamField>
+
+***
+
+## Caching
+
+Specs and MCP tool lists are cached in `~/.cache/mcp2cli/` (override with `MCP2CLI_CACHE_DIR`). Local file specs are never cached.
+
+<ParamField type="KEY">
+  Custom string to use as the cache key instead of the URL hash. Useful when you want to pin a cache entry across URL changes.
+
+  ```bash theme={null}
+  mcp2cli --spec https://api.example.com/spec.json --cache-key my-api --list
+  ```
+</ParamField>
+
+<ParamField type="integer">
+  Cache time-to-live in seconds. Set to `0` to disable caching.
+
+  ```bash theme={null}
+  mcp2cli --spec https://api.example.com/spec.json --cache-ttl 86400 --list
+  ```
+</ParamField>
+
+<ParamField type="boolean">
+  Bypass the cache and re-fetch the spec or tool list even if a valid cached copy exists.
+
+  ```bash theme={null}
+  mcp2cli --spec https://api.example.com/spec.json --refresh --list
+  ```
+</ParamField>
+
+***
+
+## Listing and discovery
+
+<ParamField type="boolean">
+  Print all available subcommands for the given source and exit. Output format depends on source type: OpenAPI groups commands by HTTP method prefix; MCP shows tool names with descriptions.
+</ParamField>
+
+<ParamField type="PATTERN">
+  Filter the `--list` output to tools whose name or description contains the pattern (case-insensitive substring match). Implies `--list`.
+
+  ```bash theme={null}
+  mcp2cli --mcp https://mcp.example.com/sse --search "task"
+  ```
+</ParamField>
+
+<ParamField type="string">
+  Sort order for `--list` output.
+
+  | Value     | Behavior                                         |
+  | --------- | ------------------------------------------------ |
+  | `usage`   | Sort by call frequency (most-used first)         |
+  | `recent`  | Sort by last-used time                           |
+  | `alpha`   | Alphabetical order                               |
+  | `default` | Preserve insertion order from the spec or server |
+
+  When omitted, `--list` defaults to `usage` if usage data exists for the source, otherwise `default`.
+</ParamField>
+
+<ParamField type="integer">
+  Limit `--list` output to the top N tools. Useful for LLM agents that only need the most relevant tools.
+
+  ```bash theme={null}
+  mcp2cli @myapi --list --top 10 --compact
+  ```
+</ParamField>
+
+<ParamField type="boolean">
+  Print tool names only, space-separated, with no descriptions. Approximately 2 tokens per tool — optimal for LLM agents doing discovery.
+
+  ```bash theme={null}
+  mcp2cli @myapi --list --top 10 --compact
+  # → list-pets get-pet create-pet delete-pet ...
+  ```
+</ParamField>
+
+<ParamField type="boolean">
+  Show full, unwrapped tool descriptions in `--list` output. By default, descriptions are truncated with `...` to fit on one line.
+</ParamField>
+
+***
+
+## Output
+
+<ParamField type="FIELDS">
+  Override the auto-generated GraphQL selection set with a space-separated list of field names. Only applies when `--graphql` is used.
+
+  ```bash theme={null}
+  mcp2cli --graphql https://api.example.com/graphql users --fields "id name email"
+  ```
+</ParamField>
+
+<ParamField type="boolean">
+  Pretty-print JSON output with indentation. Automatically enabled when stdout is a terminal (TTY).
+</ParamField>
+
+<ParamField type="boolean">
+  Print the raw response body without JSON parsing. Useful for binary responses or when you want to pipe raw bytes.
+</ParamField>
+
+<ParamField type="boolean">
+  Encode output as TOON (Token-Oriented Object Notation) instead of JSON. TOON is 40–60% more token-efficient for large uniform arrays (e.g. list results) and 15–20% for semi-uniform data. Optimised for LLM consumption.
+
+  Requires [`@toon-format/cli`](https://www.npmjs.com/package/@toon-format/cli):
+
+  ```bash theme={null}
+  npm install -g @toon-format/cli
+  ```
+
+  <Warning>
+    `--toon` and `--jq` are mutually exclusive.
+  </Warning>
+</ParamField>
+
+<ParamField type="EXPR">
+  Filter JSON output through a [jq](https://jqlang.org) expression before printing. Requires `jq` to be installed and on `PATH`.
+
+  ```bash theme={null}
+  mcp2cli --spec ./spec.json list-pets --jq '.[].name'
+  mcp2cli --spec ./spec.json list-pets --jq '[.[] | select(.status == "available")] | length'
+  ```
+</ParamField>
+
+<ParamField type="integer">
+  Truncate array output to the first N elements before any further processing. Non-array values (strings, objects) are passed through unchanged.
+
+  ```bash theme={null}
+  mcp2cli --spec ./spec.json list-records --head 5
+  ```
+</ParamField>
+
+***
+
+## MCP resources
+
+These flags access MCP [Resources](https://modelcontextprotocol.io/docs/concepts/resources) — server-side data objects exposed alongside tools. Only available with `--mcp` and `--mcp-stdio`.
+
+<ParamField type="boolean">
+  List all resources the MCP server exposes.
+
+  ```bash theme={null}
+  mcp2cli --mcp https://mcp.example.com/sse --list-resources
+  ```
+</ParamField>
+
+<ParamField type="boolean">
+  List all resource templates (URI templates) the MCP server exposes.
+
+  ```bash theme={null}
+  mcp2cli --mcp https://mcp.example.com/sse --list-resource-templates
+  ```
+</ParamField>
+
+<ParamField type="URI">
+  Read the content of a specific resource by its URI.
+
+  ```bash theme={null}
+  mcp2cli --mcp https://mcp.example.com/sse --read-resource "file:///data/report.txt"
+  ```
+</ParamField>
+
+***
+
+## MCP prompts
+
+These flags access MCP [Prompts](https://modelcontextprotocol.io/docs/concepts/prompts) — server-defined prompt templates. Only available with `--mcp` and `--mcp-stdio`.
+
+<ParamField type="boolean">
+  List all prompt templates the MCP server exposes.
+
+  ```bash theme={null}
+  mcp2cli --mcp https://mcp.example.com/sse --list-prompts
+  ```
+</ParamField>
+
+<ParamField type="NAME">
+  Retrieve a prompt template by name, optionally passing arguments with `--prompt-arg`.
+
+  ```bash theme={null}
+  mcp2cli --mcp https://mcp.example.com/sse --get-prompt summarize --prompt-arg "topic=AI"
+  ```
+</ParamField>
+
+<ParamField type="KEY=VALUE">
+  Argument for `--get-prompt`. Repeatable.
+
+  ```bash theme={null}
+  mcp2cli --mcp https://mcp.example.com/sse \
+    --get-prompt summarize \
+    --prompt-arg "topic=AI" \
+    --prompt-arg "length=short"
+  ```
+</ParamField>
+
+***
+
+## Sessions
+
+Sessions let you keep a persistent MCP server process alive between calls, avoiding the startup cost of re-spawning the server on every invocation. Only available with `--mcp` and `--mcp-stdio`.
+
+<ParamField type="NAME">
+  Start a named persistent session daemon for an MCP server. Requires `--mcp` or `--mcp-stdio`.
+
+  ```bash theme={null}
+  mcp2cli --mcp https://mcp.example.com/sse --session-start myserver
+  # Session 'myserver' started (PID 12345)
+  ```
+</ParamField>
+
+<ParamField type="NAME">
+  Stop a named session daemon by name.
+
+  ```bash theme={null}
+  mcp2cli --session-stop myserver
+  ```
+</ParamField>
+
+<ParamField type="boolean">
+  List all active session daemons with their name, transport, status, and PID. Does not require a source flag.
+
+  ```bash theme={null}
+  mcp2cli --session-list
+  ```
+</ParamField>
+
+<ParamField type="NAME">
+  Route a tool call or listing operation through an existing session daemon instead of connecting directly.
+
+  ```bash theme={null}
+  # List tools via a running session
+  mcp2cli --session myserver --list
+
+  # Call a tool via a running session
+  mcp2cli --session myserver search --query "test"
+
+  # List resources via a running session
+  mcp2cli --session myserver --list-resources
+  ```
+</ParamField>
+
+***
+
+## Other
+
+<ParamField type="boolean">
+  Print the installed version of mcp2cli and exit.
+
+  ```bash theme={null}
+  mcp2cli --version
+  # → mcp2cli 2.7.0
+  ```
+</ParamField>
+
+

@@ -1,16 +1,30 @@
 # Mintlify Catalog — Probed Sites + Request Queue
 
+> 💾 **Local cache available at `docs/research/mintlify-cache/`.**
+> As of 2026-04-07, every repo in the verified table below has both
+> `llms.txt` AND `llms-full.txt` downloaded into
+> `docs/research/mintlify-cache/<owner>/<repo>/`. **Prefer the cached
+> files over `curl` round-trips** — zero latency, greppable across
+> the whole cache with `grep -rHi <topic> docs/research/mintlify-cache/`.
+> See `docs/research/mintlify-cache/README.md` for per-repo line
+> counts, sha256s, and refresh protocol.
+>
 > ⚠️ **Read `docs/research/mintlify-catalog-validation-log.md` first.**
 > A full end-to-end validation run (2026-04-07) found that the `mcp`
 > column below (`307` for every row) is **misleading**: the redirect
 > does resolve `200`, but that URL serves only a JSON descriptor, not
-> a live MCP protocol endpoint. The real per-repo MCP servers are
-> **auth-gated** and cannot be reached via `mcp2cli` without
-> credentials. The only `mcp2cli`-against-mintlify path that actually
-> works is the central MCP at `https://mintlify.com/docs/mcp`. The
-> validation log has the per-site probe evidence, nanosecond
-> timestamps, content sha256s, and the full follow-up list (skill +
-> rule corrections needed).
+> a live MCP protocol endpoint. Per-repo `/mcp` URLs are GET-only
+> preview endpoints — `POST` (which `mcp2cli` sends to speak MCP
+> protocol) returns `404 Not found`. An earlier revision of this
+> banner claimed the cause was auth-gating; that was an over-read
+> of Mintlify's authentication docs. The real cause is that the
+> per-repo `/mcp` URLs have no live MCP server behind them; only
+> the customer's own documentation domain hosts a live one (e.g.,
+> `resend.com/docs/mcp`, `docs.anthropic.com/mcp`), and none of the
+> 16 catalog repos do. Even the central MCP at
+> `https://mintlify.com/docs/mcp` is scope-limited to Mintlify's
+> own platform docs, not customer sites. See the validation log
+> for per-site probe evidence.
 
 Single source of truth for **which repos have mintlify-hosted docs with
 working AI-optimized endpoints**, used by `.claude/skills/mintlify/` and
@@ -26,9 +40,17 @@ and probe on the next research-tooling commit.
 |---|---|
 | `owner/repo` | GitHub `owner/repo` coordinate. |
 | `llms.txt` | HTTP status from `curl https://www.mintlify.com/<owner>/<repo>/llms.txt`. `200` means the llms.txt index is reachable and usable (this is the preferred access path per `.claude/rules/research-doc-sources.md`). |
-| `mcp` | HTTP status from `curl -A "Mozilla/5.0" https://mintlify.com/<owner>/<repo>/mcp`. **This column reports only the descriptor URL's HTTP status, NOT protocol reachability.** A `307` entry means "redirects to `https://www.mintlify.com/<owner>/<repo>/mcp` and resolves 200 after `-L`"; the response body is a JSON MCP *descriptor* listing declared tools. **The live MCP protocol endpoint behind that descriptor is auth-gated** and returns 404 to unauthenticated `mcp2cli` calls — see the validation log for full evidence. Use the **central** Mintlify MCP at `https://mintlify.com/docs/mcp` for actual queries. |
+| `mcp` | HTTP status from `curl -A "Mozilla/5.0" https://mintlify.com/<owner>/<repo>/mcp`. **This column reports only the descriptor URL's HTTP status, NOT protocol reachability.** A `307` entry means "redirects to `https://www.mintlify.com/<owner>/<repo>/mcp` and resolves 200 after `-L`"; the response body is a JSON MCP *descriptor* listing declared tools. **The per-repo URL has no live MCP server behind it** — `POST` (the method `mcp2cli` uses to speak MCP protocol) returns `404 Not found`. See the validation log for full evidence. Do not use `mcp2cli` against per-repo mintlify URLs. |
 | `verified` | Date of most recent probe (`YYYY-MM-DD`). |
 | `status` | `ok` / `llms-only` / `broken` / `queued`. In this catalog, `ok` means "llms.txt + descriptor JSON both return 200". It does **not** mean "MCP protocol endpoint is reachable" — that would be `ok-mcp`, which currently applies only to the central Mintlify MCP. |
+
+## Local cache
+
+Every verified row below has both `llms.txt` and `llms-full.txt`
+cached under `docs/research/mintlify-cache/<owner>/<repo>/`. The
+cached paths are the preferred access method; upstream `curl`
+invocations are only needed for per-page `.md` fetches (not cached)
+and for refreshing the cache.
 
 ## Verified sites
 

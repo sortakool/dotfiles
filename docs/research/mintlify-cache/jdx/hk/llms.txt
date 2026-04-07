@@ -1,0 +1,27 @@
+# hk
+
+## Docs
+
+- [Benchmarks](https://www.mintlify.com/jdx/hk/benchmarks.md): Performance comparison of hk, lefthook, pre-commit, and prek running 10 linters on a synthetic project.
+- [Built-in linters](https://www.mintlify.com/jdx/hk/builtins.md): 120+ pre-configured linters and formatters available through the Builtins module — ready to use with a single import.
+- [hk check](https://www.mintlify.com/jdx/hk/cli/check.md): Run linters in read-only check mode against staged or specified files.
+- [hk config](https://www.mintlify.com/jdx/hk/cli/config.md): Inspect and introspect the effective merged hk configuration.
+- [hk fix](https://www.mintlify.com/jdx/hk/cli/fix.md): Run linters and auto-fix issues in staged or specified files.
+- [hk init](https://www.mintlify.com/jdx/hk/cli/init.md): Generate an hk.pkl configuration file in the project root.
+- [hk install](https://www.mintlify.com/jdx/hk/cli/install.md): Install git hooks from hk.pkl into .git/hooks/.
+- [CLI overview](https://www.mintlify.com/jdx/hk/cli/overview.md): Reference for the hk command-line interface and its global flags.
+- [hk run](https://www.mintlify.com/jdx/hk/cli/run.md): Explicitly run a named git hook without committing.
+- [hk util](https://www.mintlify.com/jdx/hk/cli/util.md): Built-in Rust-native utility commands for common file checks and fixes.
+- [hk validate](https://www.mintlify.com/jdx/hk/cli/validate.md): Validate the hk.pkl configuration file for errors.
+- [Configuration](https://www.mintlify.com/jdx/hk/configuration.md): How hk layers configuration from built-in defaults up through CLI flags, and a full reference for every setting.
+- [Environment variables](https://www.mintlify.com/jdx/hk/environment-variables.md): Full reference for all HK_* environment variables used to configure hk.
+- [Hooks](https://www.mintlify.com/jdx/hk/hooks.md): How hk executes git hooks, the read/write locking model, and a reference for every supported hook type and step property.
+- [Introduction](https://www.mintlify.com/jdx/hk/introduction.md): hk is a high-performance git hook manager that runs linters in parallel using file-level read/write locks — safely, without race conditions.
+- [Logging and debugging](https://www.mintlify.com/jdx/hk/logging.md): Control log levels, enable tracing, generate timing reports, and debug common issues with hk.
+- [mise integration](https://www.mintlify.com/jdx/hk/mise-integration.md): How to use hk alongside mise-en-place for tool management, task running, environment variables, and automated hook installation.
+- [Pkl configuration language](https://www.mintlify.com/jdx/hk/pkl-introduction.md): An introduction to Pkl — the configuration language hk uses — covering syntax, imports, amending, caching, and how to test your config.
+- [Quick start](https://www.mintlify.com/jdx/hk/quickstart.md): Install hk and set up your first project with parallel linting in under 5 minutes.
+- [Why hk?](https://www.mintlify.com/jdx/hk/why-hk.md): How hk's parallel execution model, smart stashing, and secure builtins make it faster and safer than pre-commit, lefthook, prek, and husky.
+
+
+Built with [Mintlify](https://mintlify.com).

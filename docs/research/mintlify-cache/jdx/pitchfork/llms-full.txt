@@ -1,0 +1,4989 @@
+# pitchfork activate
+Source: https://www.mintlify.com/jdx/pitchfork/cli/activate
+
+Generate shell hook code that enables automatic daemon management when you change directories.
+
+## Synopsis
+
+```bash theme={null}
+pitchfork activate <shell>
+```
+
+## Description
+
+Generates shell integration code for your shell. When loaded, the hook runs `pitchfork cd` every time you change directories. This enables the `auto = ["start", "stop"]` feature in `pitchfork.toml`: daemons are started automatically when you enter a project directory and stopped when you leave.
+
+Supported shells: `bash`, `zsh`, `fish`.
+
+The generated code must be evaluated in your shell startup file — it is not a standalone script.
+
+## Arguments
+
+<ParamField type="string">
+  The shell to generate activation code for. Must be one of: `bash`, `zsh`, `fish`.
+</ParamField>
+
+## Setup
+
+<Tabs>
+  <Tab title="bash">
+    Add to `~/.bashrc`:
+
+    ```bash theme={null}
+    eval "$(pitchfork activate bash)"
+    ```
+  </Tab>
+
+  <Tab title="zsh">
+    Add to `~/.zshrc`:
+
+    ```bash theme={null}
+    eval "$(pitchfork activate zsh)"
+    ```
+  </Tab>
+
+  <Tab title="fish">
+    Add to `~/.config/fish/config.fish`:
+
+    ```fish theme={null}
+    pitchfork activate fish | source
+    ```
+  </Tab>
+</Tabs>
+
+## Examples
+
+```bash theme={null}
+# Print the bash activation code (inspect before adding to your shell config)
+pitchfork activate bash
+
+# Print the zsh activation code
+pitchfork activate zsh
+
+# Print the fish activation code
+pitchfork activate fish
+```
+
+## Notes
+
+<Note>
+  Without the shell hook, pitchfork's `auto = ["start", "stop"]` feature in `pitchfork.toml` will not work. The hook must be loaded in your shell for directory-based automatic daemon management.
+</Note>
+
+<Tip>
+  After adding the activation line to your shell config, restart your shell or source the config file to activate it immediately.
+</Tip>
+
+
+# pitchfork boot
+Source: https://www.mintlify.com/jdx/pitchfork/cli/boot
+
+Register or remove the pitchfork supervisor from automatic system boot startup.
+
+## Synopsis
+
+```bash theme={null}
+pitchfork boot <subcommand>
+```
+
+## Description
+
+Manages whether the pitchfork supervisor starts automatically when your system boots. Uses platform-specific mechanisms — **launchd** on macOS and **systemd** user services on Linux.
+
+## Subcommands
+
+### `pitchfork boot enable`
+
+Registers pitchfork to start automatically at boot. On macOS, this creates a LaunchAgent plist. On Linux, this creates a systemd user service unit.
+
+```bash theme={null}
+pitchfork boot enable
+```
+
+### `pitchfork boot disable`
+
+Removes the boot start registration. Pitchfork will no longer start automatically when the system boots. Running daemons are not affected.
+
+```bash theme={null}
+pitchfork boot disable
+```
+
+### `pitchfork boot status`
+
+Reports whether pitchfork is currently configured to start at boot.
+
+```bash theme={null}
+pitchfork boot status
+```
+
+## Examples
+
+```bash theme={null}
+# Register pitchfork to start on boot
+pitchfork boot enable
+
+# Remove pitchfork from boot startup
+pitchfork boot disable
+
+# Check the current boot start configuration
+pitchfork boot status
+```
+
+## Notes
+
+<Note>
+  `pitchfork boot enable` and `pitchfork boot disable` only control whether the **supervisor** starts at boot. Individual daemons with `boot_start = true` in their config are started by the supervisor once it is running.
+</Note>
+
+
+# pitchfork clean
+Source: https://www.mintlify.com/jdx/pitchfork/cli/clean
+
+Remove stopped and failed daemon entries from the pitchfork list.
+
+## Synopsis
+
+```bash theme={null}
+pitchfork clean
+pitchfork c
+```
+
+**Alias**: `c`
+
+## Description
+
+Removes entries for daemons that are no longer running from pitchfork's tracked state. This affects daemons with a `stopped`, `failed`, or `errored` status. Running daemons and their configurations in `pitchfork.toml` are not affected.
+
+Use `clean` to tidy up the output of `pitchfork list` after stopping daemons or after failed runs.
+
+## Examples
+
+```bash theme={null}
+# Remove all stopped and failed entries
+pitchfork clean
+
+# Using the alias
+pitchfork c
+```
+
+## Notes
+
+<Note>
+  `pitchfork clean` only removes entries from the in-memory and persisted daemon state. It does not delete log files or modify `pitchfork.toml`. Daemons removed by `clean` will reappear as `available` if they are still defined in config.
+</Note>
+
+
+# pitchfork completion
+Source: https://www.mintlify.com/jdx/pitchfork/cli/completion
+
+Generate tab-completion scripts for bash, zsh, or fish shells.
+
+## Synopsis
+
+```bash theme={null}
+pitchfork completion <shell>
+```
+
+## Description
+
+Generates tab-completion scripts for your shell. Completions are generated using the [`usage`](https://usage.jdx.dev) CLI tool, which must be installed and available on your `$PATH`.
+
+Supported shells: `bash`, `zsh`, `fish`.
+
+Redirect the output to the appropriate location for your shell to enable completions.
+
+## Arguments
+
+<ParamField type="string">
+  The shell to generate completions for. Must be one of: `bash`, `zsh`, `fish`.
+</ParamField>
+
+## Setup
+
+<Tabs>
+  <Tab title="bash">
+    ```bash theme={null}
+    pitchfork completion bash > ~/.local/share/bash-completion/completions/pitchfork
+    ```
+  </Tab>
+
+  <Tab title="zsh">
+    ```bash theme={null}
+    pitchfork completion zsh > ~/.zfunc/_pitchfork
+    ```
+
+    Make sure `~/.zfunc` is on your `$fpath`. Add the following to `~/.zshrc` if it isn't:
+
+    ```bash theme={null}
+    fpath=(~/.zfunc $fpath)
+    autoload -Uz compinit && compinit
+    ```
+  </Tab>
+
+  <Tab title="fish">
+    ```fish theme={null}
+    pitchfork completion fish > ~/.config/fish/completions/pitchfork.fish
+    ```
+  </Tab>
+</Tabs>
+
+## Examples
+
+```bash theme={null}
+# Generate and install bash completions
+pitchfork completion bash > ~/.local/share/bash-completion/completions/pitchfork
+
+# Generate and install zsh completions
+pitchfork completion zsh > ~/.zfunc/_pitchfork
+
+# Generate and install fish completions
+pitchfork completion fish > ~/.config/fish/completions/pitchfork.fish
+
+# Inspect the generated script before installing
+pitchfork completion bash
+```
+
+## Notes
+
+<Note>
+  The `usage` CLI tool must be installed for `pitchfork completion` to work. Install it with `cargo install usage-cli` or via `mise use -g usage`.
+</Note>
+
+
+# pitchfork config
+Source: https://www.mintlify.com/jdx/pitchfork/cli/config
+
+Manage and edit pitchfork.toml configuration files, including adding and removing daemon entries.
+
+## Synopsis
+
+```bash theme={null}
+pitchfork config [subcommand]
+pitchfork cfg [subcommand]
+```
+
+**Alias**: `cfg`
+
+## Description
+
+Without a subcommand, lists all `pitchfork.toml` files found in the filesystem hierarchy from the current directory upward. This includes project-level files (`pitchfork.toml`, `pitchfork.local.toml`, `.config/pitchfork.toml`) and user/system-level config files.
+
+Subcommands allow you to add and remove daemon entries directly from the command line without manually editing TOML files.
+
+## Subcommands
+
+### `pitchfork config add`
+
+Adds a new daemon entry to the nearest `pitchfork.toml` in the current directory hierarchy. Creates `pitchfork.toml` in the current directory if no project config file is found.
+
+**Usage**: `pitchfork config add [flags] <id> [args...]`
+
+**Alias**: `a`
+
+<ParamField type="string">
+  The daemon ID to add (e.g., `api` or `namespace/api`).
+</ParamField>
+
+<ParamField type="string[]">
+  Command and arguments to run as the daemon. An alternative to `--run`.
+</ParamField>
+
+<ParamField type="string">
+  The shell command string to run as the daemon.
+</ParamField>
+
+<ParamField type="string">
+  Number of restart attempts on failure. Use `"true"` for infinite retries, `"false"` or `"0"` to disable.
+</ParamField>
+
+<ParamField type="string[]">
+  Glob patterns to watch for file changes that trigger a daemon restart. Can be specified multiple times.
+</ParamField>
+
+<ParamField type="string">
+  Working directory for the daemon process.
+</ParamField>
+
+<ParamField type="string[]">
+  Environment variables in `KEY=value` format. Can be specified multiple times.
+</ParamField>
+
+<ParamField type="number">
+  Seconds to wait before considering the daemon ready.
+</ParamField>
+
+<ParamField type="string">
+  Regex pattern to match in daemon output to declare it ready.
+</ParamField>
+
+<ParamField type="string">
+  HTTP URL to poll for a 2xx response to declare the daemon ready.
+</ParamField>
+
+<ParamField type="number">
+  TCP port to check for readiness.
+</ParamField>
+
+<ParamField type="string">
+  Shell command to poll for readiness (exit code 0 = ready).
+</ParamField>
+
+<ParamField type="number[]">
+  Ports the daemon is expected to bind to. Can be specified multiple times or comma-separated.
+</ParamField>
+
+<ParamField type="flag">
+  Find an available port automatically if the expected port is in use.
+</ParamField>
+
+<ParamField type="string[]">
+  Daemon IDs that must be started before this daemon. Can be specified multiple times.
+</ParamField>
+
+<ParamField type="flag">
+  Start this daemon automatically when the pitchfork supervisor starts at boot.
+</ParamField>
+
+<ParamField type="flag">
+  Start this daemon automatically when you enter the project directory (requires shell hook).
+</ParamField>
+
+<ParamField type="flag">
+  Stop this daemon automatically when you leave the project directory (requires shell hook).
+</ParamField>
+
+<ParamField type="string">
+  Shell command to run when the daemon becomes ready.
+</ParamField>
+
+<ParamField type="string">
+  Shell command to run when the daemon fails.
+</ParamField>
+
+<ParamField type="string">
+  Shell command to run before each retry attempt.
+</ParamField>
+
+<ParamField type="string">
+  Shell command to run when the daemon is explicitly stopped by pitchfork.
+</ParamField>
+
+<ParamField type="string">
+  Shell command to run on any daemon termination (clean exit, crash, or stop).
+</ParamField>
+
+<ParamField type="string">
+  Cron schedule expression (6 fields: second minute hour day month weekday).
+</ParamField>
+
+<ParamField type="string">
+  Cron retrigger behavior when the previous run is still active. One of: `finish`, `always`, `success`, `fail`. Defaults to `finish`.
+</ParamField>
+
+***
+
+### `pitchfork config remove`
+
+Removes a daemon entry from the nearest project-level `pitchfork.toml`.
+
+**Usage**: `pitchfork config remove <id>`
+
+**Alias**: `rm`
+
+<ParamField type="string">
+  The daemon ID to remove (e.g., `api` or `namespace/api`).
+</ParamField>
+
+## Examples
+
+```bash theme={null}
+# List all pitchfork.toml files in scope
+pitchfork config
+
+# Add a daemon using positional args
+pitchfork config add api bun run server
+
+# Add a daemon with an explicit --run string
+pitchfork config add api --run 'npm start'
+
+# Add with arguments after --
+pitchfork config add api -- bun run server
+
+# Add with a retry policy
+pitchfork config add api --run 'npm start' --retry 3
+
+# Add with file watching
+pitchfork config add api --run 'npm start' --watch 'src/**/*.ts'
+
+# Add with auto start/stop on directory change
+pitchfork config add api --run 'npm start' --autostart --autostop
+
+# Add with a daemon dependency
+pitchfork config add worker --run './worker' --depends api
+
+# Remove a daemon from config
+pitchfork config remove api
+
+# Using the alias
+pitchfork cfg add api -- node server.js
+```
+
+## Notes
+
+<Note>
+  `pitchfork config add` writes to the nearest existing `pitchfork.toml` file in the current directory hierarchy. If none exists, it creates `pitchfork.toml` in the current directory.
+</Note>
+
+<Tip>
+  After adding a daemon with `pitchfork config add`, start it immediately with `pitchfork start <id>`.
+</Tip>
+
+
+# pitchfork disable
+Source: https://www.mintlify.com/jdx/pitchfork/cli/disable
+
+Prevent a daemon from being started manually or automatically until re-enabled.
+
+## Synopsis
+
+```bash theme={null}
+pitchfork disable <daemon>
+pitchfork d <daemon>
+```
+
+**Alias**: `d`
+
+## Description
+
+Disables a daemon to prevent it from being started manually or through automatic mechanisms such as the shell hook or `boot_start`. The daemon remains in the list with a `disabled` marker until you run `pitchfork enable` to restore it to normal operation.
+
+Disabling is useful for temporarily suspending a service without removing its configuration from `pitchfork.toml`.
+
+## Arguments
+
+<ParamField type="string">
+  The name of the daemon to disable, as defined in `pitchfork.toml`.
+</ParamField>
+
+## Examples
+
+```bash theme={null}
+# Disable a daemon
+pitchfork disable api
+
+# Using the alias
+pitchfork d api
+
+# Verify the daemon is marked as disabled
+pitchfork list
+```
+
+### Example output from `pitchfork list`
+
+```text theme={null}
+Name    PID    Status     Error
+api            stopped    disabled
+```
+
+## Notes
+
+<Note>
+  Disabling a daemon that is currently running does not stop it. Stop the daemon first with `pitchfork stop`, then disable it.
+</Note>
+
+<Tip>
+  Use `pitchfork enable` to restore a disabled daemon to its normal state.
+</Tip>
+
+
+# pitchfork enable
+Source: https://www.mintlify.com/jdx/pitchfork/cli/enable
+
+Re-enable a previously disabled daemon, allowing it to be started manually or automatically.
+
+## Synopsis
+
+```bash theme={null}
+pitchfork enable <daemon>
+pitchfork e <daemon>
+```
+
+**Alias**: `e`
+
+## Description
+
+Re-enables a daemon that was previously disabled with `pitchfork disable`. Once enabled, the daemon can be started manually with `pitchfork start` or automatically through the shell hook. Enabled is the default state for all daemons.
+
+## Arguments
+
+<ParamField type="string">
+  The name of the daemon to enable, as defined in `pitchfork.toml`.
+</ParamField>
+
+## Examples
+
+```bash theme={null}
+# Enable a disabled daemon
+pitchfork enable api
+
+# Using the alias
+pitchfork e api
+```
+
+## Notes
+
+<Note>
+  Enabling a daemon does not start it. Use `pitchfork start <daemon>` after enabling to start it immediately.
+</Note>
+
+
+# CLI reference
+Source: https://www.mintlify.com/jdx/pitchfork/cli/index
+
+Complete reference for all pitchfork commands, flags, and arguments.
+
+The `pitchfork` CLI manages background daemons from a `pitchfork.toml` file or on-the-fly. It communicates with a background supervisor process over a Unix socket, auto-starting the supervisor if it isn't already running.
+
+```bash theme={null}
+pitchfork <command> [options] [arguments]
+pitchfork --version
+pitchfork --help
+```
+
+**Version**: 2.3.0
+
+## Commands
+
+<CardGroup>
+  <Card title="start" icon="play" href="/cli/start">
+    Start one or more daemons defined in `pitchfork.toml`, waiting for each to be ready.
+  </Card>
+
+  <Card title="stop" icon="stop" href="/cli/stop">
+    Send a graceful stop signal to one or more running daemons.
+  </Card>
+
+  <Card title="restart" icon="rotate" href="/cli/restart">
+    Stop then start daemons, equivalent to `start --force`.
+  </Card>
+
+  <Card title="run" icon="circle-play" href="/cli/run">
+    Run a one-off command as a managed daemon without a config file.
+  </Card>
+
+  <Card title="list" icon="list" href="/cli/list">
+    Display a table of all tracked daemons and their statuses.
+  </Card>
+
+  <Card title="status" icon="circle-info" href="/cli/status">
+    Show detailed status for a single daemon.
+  </Card>
+
+  <Card title="logs" icon="file-lines" href="/cli/logs">
+    Display, filter, and follow log output from daemons.
+  </Card>
+
+  <Card title="tui" icon="display" href="/cli/tui">
+    Launch the interactive terminal dashboard.
+  </Card>
+
+  <Card title="activate" icon="bolt" href="/cli/activate">
+    Generate shell hook code for automatic daemon management on directory change.
+  </Card>
+
+  <Card title="boot" icon="power-off" href="/cli/boot">
+    Register or remove the pitchfork supervisor from system boot.
+  </Card>
+
+  <Card title="enable" icon="toggle-on" href="/cli/enable">
+    Re-enable a previously disabled daemon.
+  </Card>
+
+  <Card title="disable" icon="toggle-off" href="/cli/disable">
+    Prevent a daemon from starting or restarting.
+  </Card>
+
+  <Card title="clean" icon="broom" href="/cli/clean">
+    Remove stopped and failed daemon entries from the list.
+  </Card>
+
+  <Card title="wait" icon="hourglass" href="/cli/wait">
+    Block until a daemon stops, tailing its logs in real time.
+  </Card>
+
+  <Card title="config" icon="gear" href="/cli/config">
+    Manage and edit `pitchfork.toml` configuration files.
+  </Card>
+
+  <Card title="completion" icon="wand-magic-sparkles" href="/cli/completion">
+    Generate tab-completion scripts for bash, zsh, or fish.
+  </Card>
+</CardGroup>
+
+## Global usage
+
+```bash theme={null}
+# Show version
+pitchfork --version
+
+# Show help
+pitchfork --help
+
+# Show help for a specific command
+pitchfork start --help
+```
+
+<Note>
+  The supervisor process starts automatically the first time you run any pitchfork command that requires it. You don't need to start it manually.
+</Note>
+
+
+# pitchfork list
+Source: https://www.mintlify.com/jdx/pitchfork/cli/list
+
+Display a table of all tracked daemons with their PID, status, and error information.
+
+## Synopsis
+
+```bash theme={null}
+pitchfork list [flags]
+pitchfork ls [flags]
+```
+
+**Alias**: `ls`
+
+## Description
+
+Displays a table of all daemons pitchfork knows about. This includes:
+
+* **Active daemons** — daemons that have been started and are currently running, stopping, or stopped.
+* **Available daemons** — daemons defined in config files that have not yet been started.
+
+Each row shows the daemon's name, PID (if running), status, disabled indicator, and any error message.
+
+## Flags
+
+<ParamField type="flag">
+  Omit the column header row from the output. Useful when parsing output in scripts.
+</ParamField>
+
+## Examples
+
+```bash theme={null}
+# List all daemons
+pitchfork list
+
+# Using the alias
+pitchfork ls
+
+# Output without column headers (useful in scripts)
+pitchfork list --hide-header
+```
+
+### Example output
+
+```text theme={null}
+Name    PID    Status     Error
+api     12345  running
+worker         available
+db             errored    exit code 127
+redis   98765  running    disabled
+```
+
+## Notes
+
+<Note>
+  The `available` status means the daemon is defined in `pitchfork.toml` but has not been started yet. Use `pitchfork start <name>` to start it.
+</Note>
+
+<Tip>
+  Use `pitchfork clean` to remove stopped and failed entries from the list without affecting running daemons.
+</Tip>
+
+
+# pitchfork logs
+Source: https://www.mintlify.com/jdx/pitchfork/cli/logs
+
+Display, filter, and follow log output from one or more managed daemons.
+
+## Synopsis
+
+```bash theme={null}
+pitchfork logs [flags] [daemons...]
+pitchfork l [flags] [daemons...]
+```
+
+**Alias**: `l`
+
+## Description
+
+Shows logs from managed daemons. Log files are stored at `~/.local/state/pitchfork/logs/<daemon>/<daemon>.log` and include timestamps on every line.
+
+When viewing logs in an interactive terminal, pitchfork automatically uses a pager (controlled by the `$PAGER` environment variable, defaulting to `less`) if the output exceeds the terminal height.
+
+When multiple daemons are specified, logs from all of them are merged and sorted by timestamp.
+
+## Arguments
+
+<ParamField type="string[]">
+  One or more daemon IDs to show logs for. When omitted, logs from all known daemons are shown.
+</ParamField>
+
+## Flags
+
+<ParamField type="number">
+  Show only the last N lines. Does not apply when `--since` or `--until` is also used.
+</ParamField>
+
+<ParamField type="flag">
+  Follow logs in real time, printing new lines as they are written. Short form: `-t`. Also accepts `-f` or `--follow`.
+</ParamField>
+
+<ParamField type="string">
+  Show only log lines from this point in time. Short form: `-s`.
+
+  Accepted formats:
+
+  * Full datetime: `"2024-01-15 10:00:00"` or `"2024-01-15 10:00"`
+  * Time only (today's date): `"10:30:00"` or `"10:30"` — if in the future, yesterday is assumed
+  * Relative duration: `"5min"`, `"2h"`, `"1d"`
+</ParamField>
+
+<ParamField type="string">
+  Show only log lines up to this point in time. Short form: `-u`.
+
+  Accepted formats:
+
+  * Full datetime: `"2024-01-15 12:00:00"` or `"2024-01-15 12:00"`
+  * Time only (today's date): `"12:00:00"` or `"12:00"`
+</ParamField>
+
+<ParamField type="flag">
+  Delete log files for the specified daemon(s). Clears logs for all daemons when no daemon IDs are given. Short form: `-c`.
+</ParamField>
+
+<ParamField type="flag">
+  Output log lines without color or formatting. Disables the pager.
+</ParamField>
+
+<ParamField type="flag">
+  Disable the pager even when running in an interactive terminal.
+</ParamField>
+
+## Examples
+
+```bash theme={null}
+# Show all logs for 'api'
+pitchfork logs api
+
+# Show logs for multiple daemons, merged by timestamp
+pitchfork logs api worker
+
+# Show logs for all daemons
+pitchfork logs
+
+# Show the last 50 lines
+pitchfork logs api -n 50
+
+# Follow logs in real time
+pitchfork logs api --tail
+
+# Show logs since a specific datetime
+pitchfork logs api --since '2024-01-15 10:00:00'
+
+# Show logs since a time today
+pitchfork logs api --since '10:30:00'
+
+# Show logs in a time window
+pitchfork logs api --since '10:30' --until '12:00'
+
+# Show logs from the last 5 minutes
+pitchfork logs api --since 5min
+
+# Output raw lines (no color, no pager)
+pitchfork logs api --raw
+
+# Show last 100 raw lines
+pitchfork logs api --raw -n 100
+
+# Delete logs for 'api'
+pitchfork logs api --clear
+
+# Delete logs for all daemons
+pitchfork logs --clear
+```
+
+## Notes
+
+<Note>
+  Log files are stored at `~/.local/state/pitchfork/logs/<daemon-id>/<daemon-id>.log`. Each log line starts with a timestamp in `YYYY-MM-DD HH:MM:SS` format, enabling accurate time-range filtering.
+</Note>
+
+<Tip>
+  Combine `--since` and `--tail` to start following from a specific point in time: `pitchfork logs api --since 5min --tail`
+</Tip>
+
+
+# pitchfork restart
+Source: https://www.mintlify.com/jdx/pitchfork/cli/restart
+
+Stop then start one or more daemons, equivalent to running start --force.
+
+## Synopsis
+
+```bash theme={null}
+pitchfork restart [flags] [daemons...]
+```
+
+## Description
+
+Stops and then starts one or more daemons. This is equivalent to `pitchfork start --force` — the daemon is sent `SIGTERM`, and once it stops, it is started again from the `pitchfork.toml` configuration with full dependency resolution.
+
+You must provide at least one daemon ID or use `--all`.
+
+## Arguments
+
+<ParamField type="string[]">
+  One or more daemon IDs to restart.
+</ParamField>
+
+## Flags
+
+<ParamField type="flag">
+  Restart all currently running daemons. Short form: `-a`.
+</ParamField>
+
+<ParamField type="number">
+  Number of seconds to wait before considering the daemon ready after it restarts. Defaults to 3 seconds.
+</ParamField>
+
+<ParamField type="string">
+  Wait until the daemon's output matches this regex pattern before declaring it ready.
+</ParamField>
+
+<ParamField type="string">
+  Wait until the given HTTP URL responds with a 2xx status code before declaring the daemon ready.
+</ParamField>
+
+<ParamField type="number">
+  Wait until a TCP port is accepting connections before declaring the daemon ready.
+</ParamField>
+
+<ParamField type="string">
+  Run a shell command repeatedly until it exits with code 0, then declare the daemon ready.
+</ParamField>
+
+<ParamField type="flag">
+  Suppress the startup log output printed after the daemon becomes ready. Short form: `-q`.
+</ParamField>
+
+## Examples
+
+```bash theme={null}
+# Restart a single daemon
+pitchfork restart api
+
+# Restart multiple daemons
+pitchfork restart api worker
+
+# Restart all running daemons
+pitchfork restart --all
+
+# Restart and wait 5 seconds for the ready check
+pitchfork restart api --delay 5
+
+# Restart and wait for an HTTP health check
+pitchfork restart api --http http://localhost:3000/health
+
+# Restart and wait for a port to open
+pitchfork restart api --port 8080
+```
+
+## Notes
+
+<Note>
+  `pitchfork restart api` and `pitchfork start --force api` are equivalent. Both stop the running daemon before starting it again.
+</Note>
+
+
+# pitchfork run
+Source: https://www.mintlify.com/jdx/pitchfork/cli/run
+
+Run a one-off command as a managed daemon without a pitchfork.toml configuration file.
+
+## Synopsis
+
+```bash theme={null}
+pitchfork run [flags] <name> -- <command> [args...]
+pitchfork r [flags] <name> -- <command> [args...]
+```
+
+**Alias**: `r`
+
+## Description
+
+Runs an arbitrary command as a managed daemon tracked by the pitchfork supervisor. Unlike `pitchfork start`, this command does not require a `pitchfork.toml` file. The daemon is identified by the name you provide and can be monitored with `pitchfork status`, `pitchfork logs`, and other commands.
+
+The command to execute must be provided after `--`.
+
+## Arguments
+
+<ParamField type="string">
+  A name to assign to the daemon. Used to identify it in `pitchfork list`, `pitchfork logs`, and other commands.
+</ParamField>
+
+<ParamField type="string[]">
+  The command and its arguments to run as a daemon. Must follow `--` on the command line.
+</ParamField>
+
+## Flags
+
+<ParamField type="flag">
+  Stop the daemon if it is already running before starting it again. Short form: `-f`.
+</ParamField>
+
+<ParamField type="number">
+  Number of times to restart the daemon on a non-zero exit code. Set to `0` to disable retries.
+</ParamField>
+
+<ParamField type="number">
+  Number of seconds to wait before declaring the daemon ready. Defaults to 3 seconds. Short form: `-d`.
+</ParamField>
+
+<ParamField type="string">
+  Wait until the daemon's output matches this regex pattern before declaring it ready. Short form: `-o`.
+</ParamField>
+
+<ParamField type="string">
+  Wait until the given HTTP URL responds with a 2xx status code before declaring the daemon ready.
+</ParamField>
+
+<ParamField type="number">
+  Wait until a TCP port is accepting connections before declaring the daemon ready.
+</ParamField>
+
+<ParamField type="number[]">
+  Ports the daemon is expected to bind to. Can be specified multiple times or as a comma-separated list.
+</ParamField>
+
+<ParamField type="flag">
+  If the expected port is already in use, automatically find the next available port.
+</ParamField>
+
+<ParamField type="string">
+  Run a shell command repeatedly until it exits with code 0, then declare the daemon ready.
+</ParamField>
+
+<ParamField type="flag">
+  Suppress the startup log output printed after the daemon becomes ready. Short form: `-q`.
+</ParamField>
+
+## Examples
+
+```bash theme={null}
+# Run npm as a daemon named 'api'
+pitchfork run api -- npm run dev
+
+# Force-restart 'api' if it is already running
+pitchfork run api -f -- npm run dev
+
+# Restart up to 3 times on failure
+pitchfork run api --retry 3 -- ./server
+
+# Wait 5 seconds for the ready check
+pitchfork run api -d 5 -- ./server
+
+# Wait for a log output pattern
+pitchfork run api -o 'Listening' -- ./server
+
+# Wait for an HTTP health check
+pitchfork run api --http http://localhost:8080/health -- ./server
+
+# Wait for a TCP port
+pitchfork run api --port 8080 -- ./server
+```
+
+## Notes
+
+<Note>
+  `pitchfork run` registers the daemon globally (not tied to any project config). The daemon appears in `pitchfork list` and can be managed with all standard pitchfork commands.
+</Note>
+
+<Tip>
+  Use `pitchfork start` for daemons defined in `pitchfork.toml`. Use `pitchfork run` for quick one-off commands or ad-hoc services that don't need a config entry.
+</Tip>
+
+
+# pitchfork start
+Source: https://www.mintlify.com/jdx/pitchfork/cli/start
+
+Start one or more daemons defined in pitchfork.toml, waiting for each to be ready before returning.
+
+## Synopsis
+
+```bash theme={null}
+pitchfork start [flags] [daemons...]
+pitchfork s [flags] [daemons...]
+```
+
+**Alias**: `s`
+
+## Description
+
+Starts daemons defined in `pitchfork.toml` with a `[daemons.<name>]` section. The command blocks until each daemon is ready before returning.
+
+Pitchfork auto-starts the supervisor process if it isn't already running. When starting multiple daemons with dependencies, pitchfork resolves the dependency graph and starts them in the correct order.
+
+You must provide at least one daemon ID or one of `--all`, `--local`, or `--global`.
+
+## Arguments
+
+<ParamField type="string[]">
+  One or more daemon IDs defined in `pitchfork.toml` to start. Conflicts with `--all`, `--local`, and `--global`.
+</ParamField>
+
+## Flags
+
+<ParamField type="flag">
+  Start all daemons defined in the local `pitchfork.toml` file found in or above the current directory. Short form: `-l`. Alias: `--all-local`.
+</ParamField>
+
+<ParamField type="flag">
+  Start all daemons defined in the global config files (`~/.config/pitchfork/config.toml` and `/etc/pitchfork/config.toml`). Short form: `-g`. Alias: `--all-global`.
+</ParamField>
+
+<ParamField type="flag">
+  Start all daemons from both local and global configuration. Short form: `-a`.
+</ParamField>
+
+<ParamField type="flag">
+  Stop the daemon first if it is already running, then start it. Short form: `-f`.
+</ParamField>
+
+<ParamField type="number">
+  Number of seconds to wait before considering the daemon ready. Defaults to 3 seconds. Overrides the `ready_delay` value from config for this invocation.
+</ParamField>
+
+<ParamField type="string">
+  Wait until the daemon's stdout/stderr matches this regex pattern before declaring it ready. Overrides `ready_output` from config.
+</ParamField>
+
+<ParamField type="string">
+  Wait until the given HTTP URL responds with a 2xx status code before declaring the daemon ready. Overrides `ready_http` from config.
+</ParamField>
+
+<ParamField type="number">
+  Wait until a TCP port is accepting connections before declaring the daemon ready. Overrides `ready_port` from config.
+</ParamField>
+
+<ParamField type="string">
+  Run a shell command repeatedly until it exits with code 0, then declare the daemon ready. Overrides `ready_cmd` from config.
+</ParamField>
+
+<ParamField type="number[]">
+  Ports the daemon is expected to bind to. Can be specified multiple times. When combined with `--auto-bump-port`, pitchfork finds an available port if the expected one is already in use.
+</ParamField>
+
+<ParamField type="flag">
+  If the expected port is already in use, automatically find the next available port and pass it to the daemon.
+</ParamField>
+
+<ParamField type="flag">
+  Suppress the startup log output that is printed after the daemon becomes ready. Short form: `-q`.
+</ParamField>
+
+## Examples
+
+```bash theme={null}
+# Start a single daemon
+pitchfork start api
+
+# Start multiple daemons
+pitchfork start api worker
+
+# Start all local daemons defined in pitchfork.toml
+pitchfork start --local
+
+# Start all global daemons
+pitchfork start --global
+
+# Start all daemons (local and global)
+pitchfork start --all
+
+# Restart a daemon if it is already running
+pitchfork start api --force
+
+# Wait 5 seconds before marking the daemon ready
+pitchfork start api --delay 5
+
+# Wait for a specific log message before returning
+pitchfork start api --output 'Listening on'
+
+# Wait for an HTTP health check to pass
+pitchfork start api --http http://localhost:8080/health
+
+# Wait for a TCP port to open
+pitchfork start api --port 8080
+```
+
+## Notes
+
+<Note>
+  Ready check flags (`--delay`, `--output`, `--http`, `--port`, `--cmd`) override the equivalent `ready_*` fields from `pitchfork.toml` for that invocation only. They do not modify the config file.
+</Note>
+
+<Tip>
+  Use `pitchfork start --force` or `pitchfork restart` to restart a running daemon. Both are equivalent.
+</Tip>
+
+
+# pitchfork status
+Source: https://www.mintlify.com/jdx/pitchfork/cli/status
+
+Show detailed status information for a single daemon, including its PID and current state.
+
+## Synopsis
+
+```bash theme={null}
+pitchfork status <daemon>
+pitchfork stat <daemon>
+```
+
+**Alias**: `stat`
+
+## Description
+
+Shows the name, PID, and current status of a single daemon. The status reflects the daemon's last known state as recorded in pitchfork's state file.
+
+Possible status values: `running`, `stopped`, `failed`, `errored`, `waiting`, `stopping`.
+
+## Arguments
+
+<ParamField type="string">
+  The name of the daemon to inspect, as defined in `pitchfork.toml`.
+</ParamField>
+
+## Examples
+
+```bash theme={null}
+# Show status for a daemon named 'api'
+pitchfork status api
+
+# Using the alias
+pitchfork stat api
+```
+
+### Example output
+
+```text theme={null}
+Name: api
+PID: 12345
+Status: running
+```
+
+## Notes
+
+<Note>
+  If the daemon name is not found in the state file, `pitchfork status` exits with an error. Use `pitchfork list` to see all known daemons.
+</Note>
+
+
+# pitchfork stop
+Source: https://www.mintlify.com/jdx/pitchfork/cli/stop
+
+Send a graceful stop signal to one or more running daemons, escalating to SIGKILL if needed.
+
+## Synopsis
+
+```bash theme={null}
+pitchfork stop [flags] [daemons...]
+pitchfork kill [flags] [daemons...]
+```
+
+**Alias**: `kill`
+
+## Description
+
+Sends a stop signal to one or more running daemons using a two-step graceful shutdown strategy:
+
+1. Send `SIGTERM` and poll for up to \~3 seconds (starting at 10ms intervals, then 50ms).
+2. If the process is still running after that window, send `SIGKILL` to force termination.
+
+Most well-behaved processes exit immediately on `SIGTERM`. The escalation to `SIGKILL` ensures that stubborn processes are always terminated.
+
+When using `--all`, daemons are stopped in reverse dependency order — dependents are stopped before the daemons they depend on.
+
+You must provide at least one daemon ID or use `--all`.
+
+## Arguments
+
+<ParamField type="string[]">
+  One or more daemon IDs to stop. Cannot be combined with `--all`.
+</ParamField>
+
+## Flags
+
+<ParamField type="flag">
+  Stop all currently running daemons in reverse dependency order. Short form: `-a`. Cannot be combined with daemon ID arguments.
+</ParamField>
+
+## Examples
+
+```bash theme={null}
+# Stop a single daemon
+pitchfork stop api
+
+# Stop multiple daemons
+pitchfork stop api worker
+
+# Stop all running daemons in reverse dependency order
+pitchfork stop --all
+
+# Using the alias
+pitchfork kill api
+```
+
+## Notes
+
+<Note>
+  `--all` and explicit daemon IDs cannot be used together. Choose one or the other.
+</Note>
+
+<Tip>
+  Daemons stopped with `pitchfork stop` remain in the list with a `stopped` status. Use `pitchfork clean` to remove stopped entries from the list.
+</Tip>
+
+
+# pitchfork tui
+Source: https://www.mintlify.com/jdx/pitchfork/cli/tui
+
+Launch the interactive terminal dashboard to monitor daemons and view logs in real time.
+
+## Synopsis
+
+```bash theme={null}
+pitchfork tui
+```
+
+## Description
+
+Opens pitchfork's interactive terminal user interface (TUI). The TUI provides a live dashboard showing daemon statuses, streaming log output, and controls for starting and stopping daemons — all from within the terminal.
+
+## Examples
+
+```bash theme={null}
+pitchfork tui
+```
+
+## Notes
+
+<Tip>
+  Use the TUI for a live overview during development when you want to monitor multiple daemons and their logs in a single pane. For scripting and automation, use the individual commands like `pitchfork list` and `pitchfork logs`.
+</Tip>
+
+
+# pitchfork wait
+Source: https://www.mintlify.com/jdx/pitchfork/cli/wait
+
+Block until a daemon stops, tailing its logs in real time. Exits with the same code as the daemon.
+
+## Synopsis
+
+```bash theme={null}
+pitchfork wait <daemon>
+pitchfork w <daemon>
+```
+
+**Alias**: `w`
+
+## Description
+
+Blocks the current process until the specified daemon stops running. While waiting, the daemon's log output is streamed to the terminal in real time.
+
+When the daemon exits, `pitchfork wait` exits with the same status code as the daemon process. This makes it useful in scripts that need to synchronize on a daemon completing its work.
+
+## Arguments
+
+<ParamField type="string">
+  The name of the daemon to wait for, as defined in `pitchfork.toml` or started with `pitchfork run`.
+</ParamField>
+
+## Examples
+
+```bash theme={null}
+# Wait for the 'api' daemon to stop
+pitchfork wait api
+
+# Using the alias
+pitchfork w api
+
+# Run a command after the daemon stops
+pitchfork wait api && echo "api has stopped"
+
+# Use in a script to wait for a job daemon
+pitchfork run job -- ./run-migration.sh
+pitchfork wait job
+echo "migration finished with exit code $?"
+```
+
+## Notes
+
+<Note>
+  If the daemon is not currently running when you call `pitchfork wait`, the command exits immediately with a warning.
+</Note>
+
+<Tip>
+  `pitchfork wait` is designed for short-lived daemon processes (like migration scripts or build jobs started with `pitchfork run`). For long-running services, use `pitchfork logs --tail` instead.
+</Tip>
+
+
+# Architecture
+Source: https://www.mintlify.com/jdx/pitchfork/concepts/architecture
+
+A technical deep-dive into how Pitchfork is built.
+
+This page is for developers who want to understand Pitchfork's internals — how processes are managed, how state is stored, and how the different components fit together.
+
+## System overview
+
+```
+┌────────────────────────────────────────────────────────────┐
+│                         USER                                │
+│           pitchfork start/stop/status/run/logs              │
+└───────────────────────────┬────────────────────────────────┘
+                            │
+                            ▼
+┌────────────────────────────────────────────────────────────┐
+│                          CLI                                │
+│  • Reads pitchfork.toml configs                             │
+│  • Sends IPC requests                                       │
+└───────────────────────────┬────────────────────────────────┘
+                            │ Unix socket
+                            │ ~/.local/state/pitchfork/ipc/main.sock
+                            ▼
+┌────────────────────────────────────────────────────────────┐
+│                       SUPERVISOR                            │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
+│  │ IPC Server  │  │  Interval   │  │    Cron     │         │
+│  │             │  │  Watcher    │  │   Watcher   │         │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘         │
+│         │                │                │                 │
+│         └────────────────┼────────────────┘                 │
+│                          ▼                                  │
+│              ┌───────────────────────┐                      │
+│              │   Daemon management   │                      │
+│              │  • spawn processes    │                      │
+│              │  • monitor output     │                      │
+│              │  • handle retries     │                      │
+│              └───────────────────────┘                      │
+└────────────────────────────────────────────────────────────┘
+                            │
+             ┌──────────────┼──────────────┐
+             ▼              ▼              ▼
+        ┌─────────┐   ┌─────────┐   ┌─────────┐
+        │ Daemon  │   │ Daemon  │   │ Daemon  │
+        └─────────┘   └─────────┘   └─────────┘
+```
+
+## Components
+
+| Component  | Source              | Purpose                                                  |
+| ---------- | ------------------- | -------------------------------------------------------- |
+| CLI        | `src/cli/`          | User commands, config parsing, IPC client                |
+| Supervisor | `src/supervisor/`   | Background process, daemon management                    |
+| IPC        | `src/ipc/`          | Unix socket communication with MessagePack serialization |
+| State file | `src/state_file.rs` | Persistent TOML state with file locking                  |
+
+## Supervisor auto-start
+
+The supervisor is a long-lived background process. The CLI never manages daemons directly — it always delegates through IPC.
+
+When you run any Pitchfork command:
+
+1. The CLI checks whether the supervisor is listening at `~/.local/state/pitchfork/ipc/main.sock`.
+2. If the socket is absent, the CLI forks and exec's the supervisor in the background.
+3. The CLI then connects and sends its request.
+
+The supervisor continues running until explicitly stopped or the machine reboots, keeping all managed daemons alive independently of any terminal session.
+
+## IPC protocol
+
+The CLI and supervisor communicate over a Unix domain socket using **MessagePack** serialization (or JSON when the `PITCHFORK_IPC_JSON` environment variable is set, useful for debugging).
+
+Requests from the CLI include operations such as `Run`, `Stop`, `GetActiveDaemons`, and `UpdateShellDir`. The supervisor replies with typed responses like `DaemonStart`, `DaemonReady`, `DaemonFailed`, and `PortConflict`.
+
+## Background watchers
+
+The supervisor runs two background tasks continuously alongside the IPC server.
+
+### Interval watcher (every 10 seconds)
+
+* Refreshes process state — checks which PIDs are still alive.
+* Handles autostop — stops daemons when the shell that started them changes out of the project directory.
+* Retries failed daemons that have remaining retry attempts.
+* Checks resource limits (CPU and memory) for all running daemons.
+
+### Cron watcher (every 60 seconds)
+
+* Scans daemons with `cron` schedules.
+* Triggers execution according to the configured retrigger policy (`skip`, `queue`, or `restart`).
+
+### File watcher (event-driven)
+
+* Watches filesystem paths specified in a daemon's `watch` field.
+* Restarts the daemon when a matching file changes.
+
+## Daemon states
+
+| State      | Meaning                                                     |
+| ---------- | ----------------------------------------------------------- |
+| `Running`  | Process is alive and has passed its ready check (if any)    |
+| `Waiting`  | Process started; supervisor is polling the ready check      |
+| `Stopping` | SIGTERM sent; supervisor is waiting for the process to exit |
+| `Stopped`  | Process exited with code 0                                  |
+| `Errored`  | Process exited with a non-zero exit code                    |
+
+State transitions are always written to the state file before the supervisor acts on them, ensuring the on-disk record stays consistent even if the supervisor is interrupted.
+
+## State persistence
+
+All runtime state is stored in `~/.local/state/pitchfork/state.toml`. This file is read and written under an `fslock` file lock to prevent concurrent corruption when multiple CLI invocations run simultaneously.
+
+```toml theme={null}
+[daemons.myapp]
+id = "myapp"
+pid = 12345
+status = "running"
+dir = "/path/to/project"
+autostop = true
+retry = 2
+retry_count = 0
+
+[disabled]
+# Set of disabled daemon IDs
+
+[shell_dirs]
+# Map of shell_pid → working directory
+```
+
+The `shell_dirs` map is how autostop works: each interactive shell reports its current directory via `UpdateShellDir` IPC calls (installed by the shell hook), and the interval watcher stops daemons whose owning shell has left the project directory.
+
+## Process spawning
+
+When the supervisor receives a `Run` request:
+
+1. Checks whether the daemon is already running (PID exists and is alive).
+2. Prepends `exec` to the command to replace the shell process with the target binary directly, eliminating an unnecessary wrapper process.
+3. Creates the log file at `~/.local/share/pitchfork/logs/<namespace>--<name>/<namespace>--<name>.log`.
+4. Spawns the process with piped stdout and stderr.
+5. Records the PID in the state file.
+6. Starts a monitoring task that polls or waits for the ready check.
+
+## Process termination
+
+Pitchfork uses a two-phase graceful shutdown:
+
+<Steps>
+  <Step title="SIGTERM">
+    The supervisor sends SIGTERM to the process (and its children first). It then polls every 10 ms, waiting up to approximately 3 seconds for the process to exit voluntarily.
+  </Step>
+
+  <Step title="SIGKILL">
+    If the process has not exited after the grace period, the supervisor sends SIGKILL to force termination.
+  </Step>
+</Steps>
+
+This ensures well-behaved processes have time to flush buffers and close connections, while stubborn processes are always eventually cleaned up. Zombie processes are detected correctly and do not trigger unnecessary escalation.
+
+## Readiness detection
+
+When a ready check is configured, the supervisor keeps the daemon in the `Waiting` state until the check passes. The first check to succeed marks the daemon as `Running`.
+
+| Method       | Config key     | Trigger                                      |
+| ------------ | -------------- | -------------------------------------------- |
+| Delay        | `ready_delay`  | Wait N seconds; if still running, mark ready |
+| Output match | `ready_output` | A regex matches a line on stdout or stderr   |
+| HTTP         | `ready_http`   | An HTTP endpoint returns a 2xx response      |
+| Port         | `ready_port`   | A TCP port is accepting connections          |
+| Command      | `ready_cmd`    | A shell command exits with code 0            |
+
+```toml theme={null}
+[daemons.api]
+run = "npm run dev"
+ready_http = "http://localhost:3000/health"
+
+[daemons.worker]
+run = "./worker"
+ready_output = "Worker started"
+
+[daemons.db]
+run = "postgres -D ~/.local/share/postgres/data"
+ready_port = 5432
+```
+
+## Key source files
+
+| File                             | Purpose                                             |
+| -------------------------------- | --------------------------------------------------- |
+| `src/supervisor/mod.rs`          | Supervisor struct, startup, signal handling         |
+| `src/supervisor/lifecycle.rs`    | Daemon start/stop operations                        |
+| `src/supervisor/watchers.rs`     | Interval, cron, and file watcher tasks              |
+| `src/supervisor/autostop.rs`     | Autostop logic                                      |
+| `src/supervisor/retry.rs`        | Retry with backoff                                  |
+| `src/supervisor/ipc_handlers.rs` | IPC request dispatch                                |
+| `src/ipc/`                       | Unix socket client and server, MessagePack protocol |
+| `src/pitchfork_toml.rs`          | Config file parsing and merging                     |
+| `src/state_file.rs`              | Persistent state management                         |
+| `src/daemon.rs`                  | Daemon struct and ID validation                     |
+
+
+# How it works
+Source: https://www.mintlify.com/jdx/pitchfork/concepts/how-it-works
+
+A tour of the client-server architecture that powers Pitchfork.
+
+Pitchfork is built around a persistent **supervisor** process that runs in the background and manages all your daemons. Your CLI commands are thin clients that talk to the supervisor over a Unix socket — they never manage processes directly.
+
+## The big picture
+
+```
+You → CLI → IPC (Unix socket) → Supervisor → Your daemons
+```
+
+| Layer          | What it does                                                                                |
+| -------------- | ------------------------------------------------------------------------------------------- |
+| **CLI**        | Reads config files, resolves daemon IDs, sends requests to the supervisor                   |
+| **IPC**        | Unix domain socket at `~/.local/state/pitchfork/ipc/main.sock`, serialized with MessagePack |
+| **Supervisor** | Spawns and monitors processes, handles retries, cron, autostop                              |
+| **Daemons**    | Your actual background services (API server, database, worker, etc.)                        |
+
+## Supervisor auto-start
+
+You never need to start the supervisor manually. Whenever you run a Pitchfork command, the CLI checks whether the supervisor is already listening on the socket. If it is not, the CLI starts the supervisor in the background and then connects.
+
+<Note>
+  The supervisor continues running between commands. It keeps your daemons alive even after the terminal session that started them is closed.
+</Note>
+
+## What happens when you run `pitchfork start`
+
+<Steps>
+  <Step title="Config is loaded">
+    The CLI reads all `pitchfork.toml` files in the config hierarchy — system, user, and project — and merges them in order.
+  </Step>
+
+  <Step title="Supervisor is contacted">
+    The CLI connects to the supervisor's Unix socket. If the supervisor is not running, it is started automatically in the background first.
+  </Step>
+
+  <Step title="Run request is sent">
+    The CLI sends a `Run` IPC request containing the resolved daemon configuration (command, ready check, retry policy, etc.).
+  </Step>
+
+  <Step title="Process is spawned">
+    The supervisor checks whether the daemon is already running. If not, it prepends `exec` to the command (eliminating the shell wrapper), creates a log file, and spawns the process.
+  </Step>
+
+  <Step title="Readiness is checked">
+    If a ready check is configured (`ready_http`, `ready_port`, `ready_output`, `ready_delay`, or `ready_cmd`), the supervisor waits until the check passes before reporting the daemon as ready.
+  </Step>
+
+  <Step title="CLI returns">
+    Once the daemon is running (or ready), the supervisor sends a response and the CLI exits. The daemon keeps running in the background.
+  </Step>
+</Steps>
+
+## Daemon lifecycle
+
+A daemon moves through well-defined states during its lifetime:
+
+| State      | Meaning                                                              |
+| ---------- | -------------------------------------------------------------------- |
+| `Waiting`  | Process started; supervisor is waiting for a ready check to pass     |
+| `Running`  | Process is alive and ready                                           |
+| `Stopping` | SIGTERM has been sent; supervisor is waiting for the process to exit |
+| `Stopped`  | Process exited with code 0                                           |
+| `Errored`  | Process exited with a non-zero exit code                             |
+
+When a daemon exits unexpectedly, the supervisor retries it up to the configured `retry` count before marking it `Errored`.
+
+## Config hierarchy
+
+Pitchfork merges configuration from multiple files. Later entries override earlier ones:
+
+| Priority    | File                                        | Namespace |
+| ----------- | ------------------------------------------- | --------- |
+| 1 (lowest)  | `/etc/pitchfork/config.toml`                | `global`  |
+| 2           | `~/.config/pitchfork/config.toml`           | `global`  |
+| 3           | `.config/pitchfork.toml` (root → cwd)       | project   |
+| 4           | `.config/pitchfork.local.toml` (root → cwd) | project   |
+| 5           | `pitchfork.toml` (root → cwd)               | project   |
+| 6 (highest) | `pitchfork.local.toml` (root → cwd)         | project   |
+
+Project configs are discovered by walking from the filesystem root down to your current directory, so parent directories can provide shared defaults.
+
+<Tip>
+  Use `pitchfork.local.toml` for machine-specific overrides you do not want to commit to version control.
+</Tip>
+
+## Why this architecture?
+
+Splitting the CLI from the supervisor means your daemons stay running even when you close terminals, run commands from scripts, or switch directories. The supervisor is the single source of truth for process state, and all CLI commands simply read from or write to it.
+
+For a deeper technical dive, see [Architecture](/concepts/architecture).
+
+
+# Namespaces
+Source: https://www.mintlify.com/jdx/pitchfork/concepts/namespaces
+
+How Pitchfork keeps daemons from different projects from colliding.
+
+When you work across multiple projects, it is common for each one to define daemons with the same name — `api`, `worker`, `db`. Namespaces let Pitchfork manage all of them at the same time without ambiguity.
+
+## The problem namespaces solve
+
+Imagine two projects, each with a `pitchfork.toml` that defines an `api` daemon:
+
+```
+~/projects/
+├── frontend/
+│   └── pitchfork.toml    # [daemons.api]
+└── backend/
+    └── pitchfork.toml    # [daemons.api]
+```
+
+Without namespacing these would conflict. Pitchfork solves this by automatically qualifying every daemon ID with a **namespace** derived from its config file location.
+
+## Daemon ID formats
+
+Every daemon has two forms of ID:
+
+| Format       | Example        | When to use                  |
+| ------------ | -------------- | ---------------------------- |
+| Short ID     | `api`          | Inside the project directory |
+| Qualified ID | `frontend/api` | From anywhere; unambiguous   |
+
+## Namespace derivation rules
+
+| Config file location                        | Namespace used                           |
+| ------------------------------------------- | ---------------------------------------- |
+| `/etc/pitchfork/config.toml`                | `global`                                 |
+| `~/.config/pitchfork/config.toml`           | `global`                                 |
+| Project config with `namespace = "..."` set | The value you specified                  |
+| Project config without `namespace`          | Parent directory name of the config file |
+
+If the derived directory name is invalid (contains `--`, spaces, or non-ASCII characters), Pitchfork fails with a clear error and prompts you to set `namespace` explicitly:
+
+```toml theme={null}
+# pitchfork.toml
+namespace = "my-project"
+
+[daemons.api]
+run = "npm run dev"
+```
+
+## Using short IDs
+
+When you are inside a project directory, you can omit the namespace:
+
+```bash theme={null}
+cd ~/projects/frontend
+pitchfork start api        # starts frontend/api
+pitchfork status api       # shows status of frontend/api
+pitchfork logs api         # streams logs for frontend/api
+```
+
+Short ID resolution order:
+
+1. Prefer a daemon in the current directory's namespace.
+2. If not found locally, use a unique match from the merged config.
+3. If `global/<id>` exists in the merged config, use it.
+4. If no match is found, return a not-found error.
+5. If multiple namespaces match, return an ambiguity error and require the qualified form.
+
+## Using qualified IDs
+
+From any directory, use the `namespace/name` form:
+
+```bash theme={null}
+# From anywhere on the filesystem
+pitchfork start frontend/api
+pitchfork status backend/api
+pitchfork logs frontend/api
+pitchfork stop backend/api
+```
+
+Qualified IDs are parsed directly and work even when there is no `pitchfork.toml` in the current directory.
+
+## The `global` namespace
+
+Daemons defined in `~/.config/pitchfork/config.toml` or `/etc/pitchfork/config.toml` belong to the `global` namespace. These are typically long-lived services like databases that are not tied to a specific project:
+
+```toml theme={null}
+# ~/.config/pitchfork/config.toml
+
+[daemons.postgres]
+run = "postgres -D ~/.local/share/postgres/data"
+ready_port = 5432
+```
+
+```bash theme={null}
+pitchfork start global/postgres
+pitchfork logs global/redis
+```
+
+## Display behavior
+
+Pitchfork hides namespaces in output when they are unambiguous, and shows them when they are needed:
+
+<Tabs>
+  <Tab title="No conflict">
+    When only one daemon is named `api`:
+
+    ```
+    $ pitchfork list
+    api    12345  running
+    ```
+  </Tab>
+
+  <Tab title="Conflict">
+    When multiple daemons share the same short name:
+
+    ```
+    $ pitchfork list
+    frontend/api  12345  running
+    backend/api   12346  running
+    ```
+  </Tab>
+</Tabs>
+
+## Naming rules
+
+| Rule                          | Valid         | Invalid   |
+| ----------------------------- | ------------- | --------- |
+| No double dashes              | `my-app`      | `my--app` |
+| No slashes in short ID        | `api`         | `api/v2`  |
+| Single slash for qualified ID | `project/api` | `a/b/c`   |
+| No spaces                     | `my_app`      | `my app`  |
+| No parent references          | `myapp`       | `../etc`  |
+| ASCII only                    | `myapp123`    | `myäpp`   |
+
+The `--` sequence is reserved for internal path encoding — Pitchfork converts `namespace/daemon` to `namespace--daemon` when constructing filesystem paths (log directories, state entries). This conversion is transparent: you always use `/` in commands.
+
+## Path encoding
+
+| Daemon ID               | Log directory                  | Log file                     |
+| ----------------------- | ------------------------------ | ---------------------------- |
+| `frontend/api`          | `logs/frontend--api/`          | `frontend--api.log`          |
+| `my-project/web-server` | `logs/my-project--web-server/` | `my-project--web-server.log` |
+| `global/postgres`       | `logs/global--postgres/`       | `global--postgres.log`       |
+
+## Examples
+
+### Managing multiple projects
+
+```bash theme={null}
+# Start services in two separate projects
+cd ~/projects/frontend && pitchfork start api
+cd ~/projects/backend && pitchfork start api
+
+# See all running daemons with qualified names
+pitchfork list
+# frontend/api  12345  running
+# backend/api   12346  running
+
+# Stream logs for one specific project
+pitchfork logs frontend/api
+
+# Stop from anywhere
+pitchfork stop backend/api
+```
+
+### Working within a single project
+
+```bash theme={null}
+cd ~/projects/frontend
+
+# Short IDs resolve to this project's daemons
+pitchfork start api
+pitchfork logs api
+pitchfork stop api
+```
+
+
+# Your first project
+Source: https://www.mintlify.com/jdx/pitchfork/first-daemon
+
+Set up a pitchfork.toml with multiple daemons for a realistic development environment.
+
+This guide walks through configuring Pitchfork for a project with multiple services — a pattern you'll use for most real-world setups.
+
+<Steps>
+  <Step title="Create a pitchfork.toml">
+    In your project root, create `pitchfork.toml` and define your daemons:
+
+    ```toml pitchfork.toml theme={null}
+    [daemons.postgres]
+    run = "docker run --rm -p 5432:5432 -e POSTGRES_PASSWORD=dev postgres:16"
+    auto = ["start", "stop"]
+    ready_delay = 5
+
+    [daemons.redis]
+    run = "redis-server --port 6379"
+    auto = ["start", "stop"]
+    ready_delay = 2
+
+    [daemons.api]
+    run = "npm run dev:api"
+    auto = ["start", "stop"]
+    ready_output = "listening on"
+    depends = ["postgres", "redis"]
+    ```
+
+    This defines three daemons. The `api` daemon declares `depends` on `postgres` and `redis`, so Pitchfork starts those first and waits for them to be ready before starting the API.
+
+    <Tip>
+      The `auto = ["start", "stop"]` field enables the shell hook — daemons with this setting will start automatically when you enter the project directory and stop when you leave. See the [shell hook guide](/guides/shell-hook) for setup instructions.
+    </Tip>
+  </Step>
+
+  <Step title="Start all daemons">
+    From your project root, start everything at once:
+
+    ```bash theme={null}
+    pitchfork start --all
+    ```
+
+    Or start a specific subset:
+
+    ```bash theme={null}
+    pitchfork start postgres redis
+    ```
+
+    Pitchfork respects dependency ordering — it starts `postgres` and `redis` in parallel, waits for both to be ready, then starts `api`.
+  </Step>
+
+  <Step title="Check status">
+    List all daemons and their current state:
+
+    ```bash theme={null}
+    pitchfork list
+    ```
+
+    Output:
+
+    ```
+    NAME      PID    STATUS
+    api       12347  running
+    postgres  12345  running
+    redis     12346  running
+    ```
+
+    Get detailed status for a single daemon:
+
+    ```bash theme={null}
+    pitchfork status api
+    ```
+  </Step>
+
+  <Step title="View logs">
+    Tail logs for a specific daemon:
+
+    ```bash theme={null}
+    pitchfork logs api
+    ```
+
+    Follow logs in real-time:
+
+    ```bash theme={null}
+    pitchfork logs api --tail
+    ```
+
+    View logs from multiple daemons at once:
+
+    ```bash theme={null}
+    pitchfork logs api postgres
+    ```
+  </Step>
+
+  <Step title="Enable the shell hook">
+    With `auto = ["start", "stop"]` set in your config, daemons can start and stop automatically as you change directories. To enable this, add the activation line to your shell config:
+
+    ```bash theme={null}
+    # bash
+    echo 'eval "$(pitchfork activate bash)"' >> ~/.bashrc
+
+    # zsh
+    echo 'eval "$(pitchfork activate zsh)"' >> ~/.zshrc
+
+    # fish
+    echo 'pitchfork activate fish | source' >> ~/.config/fish/config.fish
+    ```
+
+    Reload your shell, then `cd` out of and back into the project directory — your daemons will start automatically.
+  </Step>
+</Steps>
+
+## Restart on changes
+
+If a daemon is already running, `pitchfork start` does nothing by default. Use `--force` to restart it:
+
+```bash theme={null}
+pitchfork start api --force
+```
+
+## Stop daemons
+
+Stop a specific daemon:
+
+```bash theme={null}
+pitchfork stop api
+```
+
+Stop all daemons defined in the current project's config:
+
+```bash theme={null}
+pitchfork stop api postgres redis
+```
+
+## Add ready checks
+
+Make Pitchfork wait until a daemon is truly ready before starting dependents. Three options are available:
+
+```toml pitchfork.toml theme={null}
+[daemons.api]
+run = "npm run dev:api"
+ready_http = "http://localhost:3000/health"  # wait for HTTP 200
+
+[daemons.redis]
+run = "redis-server"
+ready_output = "Ready to accept connections"  # wait for log output
+
+[daemons.postgres]
+run = "docker run --rm -p 5432:5432 -e POSTGRES_PASSWORD=dev postgres:16"
+ready_delay = 5  # wait a fixed number of seconds
+```
+
+See the [ready checks guide](/guides/ready-checks) for all options.
+
+## Enable auto-restart
+
+Have Pitchfork restart a daemon automatically if it crashes:
+
+```toml pitchfork.toml theme={null}
+[daemons.api]
+run = "npm run dev:api"
+retry = 3
+```
+
+The `retry` field sets the maximum number of restart attempts. See the [auto-restart guide](/guides/auto-restart) for details.
+
+## What's next
+
+<CardGroup>
+  <Card title="Shell hook" icon="hook" href="/guides/shell-hook">
+    Auto-start and auto-stop daemons when changing directories.
+  </Card>
+
+  <Card title="Ready checks" icon="heart-pulse" href="/guides/ready-checks">
+    Configure exactly when Pitchfork considers a daemon ready.
+  </Card>
+
+  <Card title="Auto-restart" icon="rotate" href="/guides/auto-restart">
+    Recover automatically from crashes with retry policies.
+  </Card>
+
+  <Card title="Configuration reference" icon="sliders" href="/reference/configuration">
+    Complete reference for all `pitchfork.toml` options.
+  </Card>
+</CardGroup>
+
+
+# Auto restart
+Source: https://www.mintlify.com/jdx/pitchfork/guides/auto-restart
+
+Configure pitchfork to automatically restart daemons when they crash.
+
+Pitchfork can automatically restart daemons that exit unexpectedly. Use the `retry` option to control how many times a daemon is retried before it is marked as failed.
+
+## Basic configuration
+
+```toml theme={null}
+[daemons.api]
+run = "npm run server:api"
+retry = 3  # retry up to 3 times on failure (4 total attempts)
+```
+
+Setting `retry = 3` means pitchfork will make 3 additional attempts after the first failure, for 4 total attempts.
+
+## Infinite retries
+
+Use `retry = true` for daemons that must always be running:
+
+```toml theme={null}
+[daemons.critical-worker]
+run = "npm run worker"
+retry = true  # retry forever until manually stopped
+```
+
+To disable retries explicitly (the default), use `retry = false` or `retry = 0`.
+
+## CLI override
+
+You can override the retry count from the command line:
+
+```bash theme={null}
+# Override for pitchfork run
+pitchfork run my-task --retry 3 -- ./my-script.sh
+
+# Override for pitchfork start (overrides pitchfork.toml)
+pitchfork start api --retry 5
+```
+
+## How retry works
+
+Pitchfork uses two different retry strategies depending on when the failure occurs.
+
+### Startup failures
+
+If the daemon fails before its ready check completes, pitchfork retries synchronously with exponential backoff:
+
+```
+$ pitchfork start api
+Daemon fails immediately
+Wait 1s... retry (attempt 1/3)
+Daemon fails again
+Wait 2s... retry (attempt 2/3)
+Daemon fails again
+Wait 4s... retry (attempt 3/3)
+All retries exhausted
+ERROR: daemon api failed with exit code 1
+```
+
+The backoff sequence is 1s, 2s, 4s, 8s, and so on. The `pitchfork start` command blocks until the daemon becomes ready or all retries are exhausted.
+
+**Typical causes:** waiting for a dependency, temporary port conflict, or resource constraints during startup.
+
+### Runtime crashes
+
+If the daemon crashes after successfully starting, the supervisor handles retries in the background:
+
+```
+$ pitchfork start api
+started api
+# daemon runs for a while...
+# daemon crashes unexpectedly
+# supervisor detects crash
+# waits 10 seconds... retry (attempt 1/3)
+# daemon starts successfully
+```
+
+Runtime retries happen every 10 seconds, independently of any CLI commands you're running.
+
+**Typical causes:** transient network issues, memory leaks causing periodic crashes, or external resource failures.
+
+## Example configurations
+
+**Service that might fail transiently:**
+
+```toml theme={null}
+[daemons.api]
+run = "npm run server"
+retry = 5
+ready_http = "http://localhost:3000/health"
+```
+
+**Database with startup retries:**
+
+```toml theme={null}
+[daemons.postgres]
+run = "postgres -D /var/lib/pgsql/data"
+retry = 3
+ready_output = "ready to accept connections"
+```
+
+**Mission-critical daemon that should never stay down:**
+
+```toml theme={null}
+[daemons.payment-processor]
+run = "./processor"
+retry = true
+ready_port = 9000
+```
+
+## Combine with ready checks
+
+Retry and ready checks work together. The ready check determines when a startup attempt is considered successful. If the daemon exits before the ready check passes, it counts as a startup failure and retry kicks in.
+
+```toml theme={null}
+[daemons.api]
+run = "npm run server"
+retry = 3
+ready_http = "http://localhost:3000/health"  # must pass for startup to succeed
+```
+
+## React to retries with lifecycle hooks
+
+Use lifecycle hooks to log, alert, or take action on each retry attempt or final failure. See the [Lifecycle hooks guide](/guides/lifecycle-hooks) for details.
+
+```toml theme={null}
+[daemons.api]
+run = "npm run server"
+retry = 3
+
+[daemons.api.hooks]
+on_retry = "echo 'retrying api (attempt $PITCHFORK_RETRY_COUNT)...'"
+on_fail  = "./scripts/alert-team.sh"
+```
+
+
+# Start on boot
+Source: https://www.mintlify.com/jdx/pitchfork/guides/boot-start
+
+Configure pitchfork to start automatically when your system boots using launchd on macOS or systemd on Linux.
+
+Configure pitchfork to start automatically when you log in, and mark individual daemons to launch alongside it.
+
+## Enable boot start
+
+<Steps>
+  <Step title="Register pitchfork with your system">
+    ```bash theme={null}
+    pitchfork boot enable
+    ```
+
+    On macOS, this creates a LaunchAgent. On Linux, this creates a systemd user service.
+    Pitchfork will start automatically at your next login.
+  </Step>
+
+  <Step title="Add boot daemons to your global config">
+    Open `~/.config/pitchfork/config.toml` and add the daemons you want to start at boot.
+    Set `boot_start = true` on each one:
+
+    ```toml theme={null}
+    [daemons.postgres]
+    run = "postgres -D /usr/local/var/postgres"
+    boot_start = true
+    ready_output = "ready to accept connections"
+    retry = true
+
+    [daemons.redis]
+    run = "redis-server"
+    boot_start = true
+    ready_port = 6379
+    ```
+
+    <Note>
+      Boot daemons should live in `~/.config/pitchfork/config.toml`, not in a project-level
+      `pitchfork.toml`. The supervisor runs from your home directory at login, so project
+      configs in subdirectories won't be loaded.
+    </Note>
+  </Step>
+
+  <Step title="Verify the setup">
+    Check that boot start is registered and that your daemons are listed:
+
+    ```bash theme={null}
+    pitchfork boot status
+    pitchfork list
+    ```
+  </Step>
+</Steps>
+
+## Disable boot start
+
+```bash theme={null}
+pitchfork boot disable
+```
+
+This removes the platform-specific registration. Pitchfork and its daemons will no longer start at login.
+
+## How it works by platform
+
+<CodeGroup>
+  ```text macOS (launchd) theme={null}
+  pitchfork boot enable  →  creates ~/Library/LaunchAgents/dev.jdx.pitchfork.plist
+  System login           →  launchd reads the plist and starts pitchfork
+  pitchfork supervisor   →  starts all daemons with boot_start = true
+  ```
+
+  ```text Linux (systemd) theme={null}
+  pitchfork boot enable  →  creates ~/.config/systemd/user/pitchfork.service
+                             and runs: systemctl --user enable --now pitchfork
+  System login           →  systemd user session starts pitchfork.service
+  pitchfork supervisor   →  starts all daemons with boot_start = true
+  ```
+</CodeGroup>
+
+The boot sequence is:
+
+1. System login triggers the platform init system.
+2. The init system launches the pitchfork supervisor.
+3. The supervisor reads your config and starts all daemons where `boot_start = true`.
+4. Daemons run in the background until you stop them or reboot.
+
+## The `boot_start` option
+
+Add `boot_start = true` to any daemon in your global config to include it in the boot sequence.
+Omitting the option or setting it to `false` means the daemon will not start at boot.
+
+```toml theme={null}
+[daemons.postgres]
+run = "postgres -D /usr/local/var/postgres"
+boot_start = true   # starts at boot
+
+[daemons.dev-server]
+run = "npm run dev"
+boot_start = false  # manual start only
+```
+
+## mise integration for boot daemons
+
+When pitchfork starts at login, your shell profile (`.zshrc`, `.bashrc`, etc.) has not been
+sourced, so tools installed via mise or Homebrew may not be on `PATH`.
+
+Enable mise integration to make sure your daemons can find their tools:
+
+```toml theme={null}
+# ~/.config/pitchfork/config.toml
+[settings.general]
+mise = true
+
+[daemons.api]
+run = "node server.js"
+boot_start = true
+```
+
+Or enable it per daemon:
+
+```toml theme={null}
+[daemons.api]
+run = "node server.js"
+boot_start = true
+mise = true
+```
+
+See the [mise integration guide](/guides/mise-integration) for details.
+
+
+# Container mode
+Source: https://www.mintlify.com/jdx/pitchfork/guides/container-mode
+
+Run pitchfork as PID 1 inside a Docker container with proper zombie reaping and signal forwarding.
+
+<Warning>
+  Container mode is an **experimental** feature. Its behavior may change in future releases and it
+  is not guaranteed to work in all environments. Use it at your own risk.
+</Warning>
+
+Container mode lets you use pitchfork as the entrypoint of a Docker container, handling the
+special responsibilities that come with running as PID 1.
+
+## The problem with PID 1 in Docker
+
+When a process runs as PID 1 inside a container, it becomes responsible for two things that a
+normal init system (like systemd) would handle automatically:
+
+**Zombie reaping** — When a child process exits, the kernel re-parents any of its orphaned
+children to PID 1. Without an explicit `waitpid` call, those processes accumulate as zombies in
+the process table indefinitely.
+
+**Signal forwarding** — The Linux kernel does not apply default signal handlers to PID 1. A bare
+`SIGTERM` sent by `docker stop` is silently ignored unless PID 1 explicitly catches it.
+
+Running pitchfork as a container entrypoint without container mode means orphaned processes from
+your daemons may pile up as zombies, and `docker stop` may hang or force-kill the container after
+its timeout.
+
+## Enable container mode
+
+<Tabs>
+  <Tab title="CLI flag (recommended)">
+    ```bash theme={null}
+    pitchfork supervisor run --container
+    ```
+  </Tab>
+
+  <Tab title="Environment variable">
+    ```bash theme={null}
+    PITCHFORK_CONTAINER=true pitchfork supervisor run
+    ```
+  </Tab>
+
+  <Tab title="Settings file">
+    ```toml theme={null}
+    [settings.supervisor]
+    container = true
+    ```
+  </Tab>
+</Tabs>
+
+The CLI flag and environment variable take priority over the settings file.
+
+## What container mode does
+
+When container mode is enabled, pitchfork makes two changes to its signal handling:
+
+1. **SIGCHLD handler** — pitchfork installs a handler that reaps all orphaned and zombie child
+   processes. Only processes *not* managed by the supervisor are reaped this way; managed daemons
+   are tracked and reaped by their own monitoring tasks.
+
+2. **SIGTERM / SIGINT routing** — pitchfork catches these signals and runs its normal graceful
+   shutdown sequence, stopping all managed daemons cleanly before the process exits. This ensures
+   `docker stop` works correctly.
+
+## Example Dockerfile
+
+```dockerfile theme={null}
+FROM debian:bookworm-slim
+
+# Install pitchfork
+COPY --from=ghcr.io/jdx/pitchfork:latest /usr/local/bin/pitchfork /usr/local/bin/pitchfork
+
+# Copy your application and config
+COPY pitchfork.toml /app/pitchfork.toml
+WORKDIR /app
+
+# Run pitchfork as PID 1 in container mode
+ENTRYPOINT ["pitchfork", "supervisor", "run", "--container"]
+```
+
+## Example pitchfork.toml for containers
+
+```toml theme={null}
+[settings.supervisor]
+container = true
+
+[daemons.api]
+run        = "node server.js"
+ready_http = "http://localhost:3000/health"
+retry      = true
+
+[daemons.worker]
+run     = "python worker.py"
+depends = ["api"]
+retry   = true
+```
+
+<Note>
+  Using `retry = true` in containers is recommended for daemons that should always be running.
+  If a daemon crashes, pitchfork will restart it automatically instead of leaving the container
+  in a degraded state.
+</Note>
+
+
+# File watching
+Source: https://www.mintlify.com/jdx/pitchfork/guides/file-watching
+
+Automatically restart daemons when source files change.
+
+The `watch` option lets you specify glob patterns for files that should trigger a daemon restart when they change. This is useful in development when you want your server to reload automatically after editing source files.
+
+## Basic configuration
+
+```toml theme={null}
+[daemons.api]
+run = "npm run dev"
+watch = ["src/**/*.ts", "package.json"]
+```
+
+Whenever a `.ts` file under `src/` or the `package.json` file changes, pitchfork automatically restarts the `api` daemon.
+
+## Glob pattern syntax
+
+Patterns follow standard glob syntax. They are resolved relative to the `pitchfork.toml` file that defines the daemon.
+
+| Pattern         | Matches                                          |
+| --------------- | ------------------------------------------------ |
+| `*.js`          | All `.js` files in the project root              |
+| `src/**/*.ts`   | All `.ts` files in `src/` and its subdirectories |
+| `package.json`  | A specific file                                  |
+| `lib/**/*.py`   | All `.py` files in `lib/` and its subdirectories |
+| `config/*.toml` | All `.toml` files in the `config/` directory     |
+
+## How it works
+
+<Steps>
+  <Step title="Pattern registration">
+    When the supervisor starts, it scans all daemon configs for `watch` patterns and registers the relevant directories for recursive filesystem watching.
+  </Step>
+
+  <Step title="Change detection">
+    The `notify` crate receives filesystem events. Events are debounced for 1 second to avoid rapid restarts during batch saves or editor auto-saves that write multiple files in quick succession.
+  </Step>
+
+  <Step title="Pattern matching">
+    Changed files are matched against each daemon's glob patterns.
+  </Step>
+
+  <Step title="Restart">
+    Any running daemon with a matching pattern is automatically restarted. Stopped daemons are not affected.
+  </Step>
+</Steps>
+
+<Note>
+  Only running daemons are restarted. If a daemon is stopped, file changes will not start it.
+</Note>
+
+## Examples
+
+### TypeScript API server
+
+```toml theme={null}
+[daemons.api]
+run = "npm run dev"
+watch = ["src/**/*.ts", "src/**/*.tsx", "package.json", "tsconfig.json"]
+ready_http = "http://localhost:3000/health"
+```
+
+### Python Flask app
+
+```toml theme={null}
+[daemons.flask]
+run = "flask run --reload"
+watch = ["app/**/*.py", "templates/**/*.html", "requirements.txt"]
+ready_port = 5000
+```
+
+### Go service
+
+```toml theme={null}
+[daemons.server]
+run = "go run ./cmd/server"
+watch = ["**/*.go", "go.mod", "go.sum"]
+ready_port = 8080
+```
+
+### Multi-service project
+
+```toml theme={null}
+[daemons.postgres]
+run = "postgres -D /var/lib/pgsql/data"
+ready_port = 5432
+# No watch — database doesn't need hot reload
+
+[daemons.api]
+run = "npm run dev"
+depends = ["postgres"]
+watch = ["src/**/*.ts", "package.json"]
+ready_http = "http://localhost:3000/health"
+
+[daemons.worker]
+run = "npm run worker"
+depends = ["postgres"]
+watch = ["src/worker/**/*.ts", "package.json"]
+```
+
+## Combining with other features
+
+### With ready checks
+
+Add a ready check so pitchfork waits for the daemon to be fully up after each file-triggered restart:
+
+```toml theme={null}
+[daemons.api]
+run = "npm run dev"
+watch = ["src/**/*.ts"]
+ready_http = "http://localhost:3000/health"
+```
+
+### With the shell hook
+
+Combine with `auto` for a fully automated development workflow:
+
+```toml theme={null}
+[daemons.api]
+run = "npm run dev"
+watch = ["src/**/*.ts"]
+auto = ["start", "stop"]
+```
+
+### With retry
+
+If the daemon might fail during a restart (for example, while a build step is in progress), add `retry`:
+
+```toml theme={null}
+[daemons.api]
+run = "npm run dev"
+watch = ["src/**/*.ts"]
+retry = 3
+```
+
+## Performance notes
+
+* **Debouncing:** Changes are debounced for 1 second. If you save multiple files in quick succession, only the final state triggers a restart.
+* **Directory watching:** Pitchfork watches the unique parent directories of your patterns recursively, not every individual file. This keeps the number of OS-level watch handles low.
+* **Specificity:** Use specific patterns like `src/**/*.ts` rather than `**/*` to avoid matching build artifacts in `node_modules`, `target`, or `.git`.
+
+## Troubleshooting
+
+**Files are not triggering a restart:**
+
+* Confirm the pattern matches your files (patterns are case-sensitive).
+* Make sure the daemon is running — use `pitchfork list` to check.
+* Check supervisor logs for watch registration messages.
+
+**Too many restarts:**
+
+* Tighten your glob patterns to exclude build output directories:
+
+  ```toml theme={null}
+  watch = ["src/**/*.ts"]  # only src/, not node_modules or dist
+  ```
+
+
+# Lifecycle hooks
+Source: https://www.mintlify.com/jdx/pitchfork/guides/lifecycle-hooks
+
+Run custom shell commands when daemons become ready, fail, retry, or stop.
+
+Lifecycle hooks let you run shell commands in response to daemon events. Use them to send alerts when a service goes down, clean up resources on exit, or log retry attempts for debugging.
+
+## Configuration
+
+Add a `[daemons.<name>.hooks]` section to your `pitchfork.toml`:
+
+```toml theme={null}
+[daemons.api]
+run = "npm run server"
+retry = 3
+ready_http = "http://localhost:3000/health"
+
+[daemons.api.hooks]
+on_ready = "curl -X POST https://alerts.example.com/ready"
+on_fail  = "./scripts/cleanup.sh"
+on_retry = "echo 'retrying api server...'"
+on_stop  = "./scripts/notify-stopped.sh"
+on_exit  = "./scripts/cleanup.sh"
+```
+
+## Hook events
+
+### `on_ready`
+
+Fires when the daemon passes its readiness check (delay, output match, HTTP, port, or command check).
+
+```toml theme={null}
+[daemons.api.hooks]
+on_ready = "curl -s -X POST https://slack.example.com/webhook -d '{\"text\": \"API is up\"}'"
+```
+
+### `on_fail`
+
+Fires when the daemon fails and all retries are exhausted. If `retry = 0`, fires immediately on the first failure.
+
+```toml theme={null}
+[daemons.api.hooks]
+on_fail = "./scripts/alert-team.sh"
+```
+
+The `PITCHFORK_EXIT_CODE` environment variable contains the exit code of the failed process.
+
+### `on_retry`
+
+Fires before each retry attempt.
+
+```toml theme={null}
+[daemons.api.hooks]
+on_retry = "echo 'Retrying api (attempt $PITCHFORK_RETRY_COUNT)...'"
+```
+
+### `on_stop`
+
+Fires when the daemon is explicitly stopped by pitchfork — via `pitchfork stop`, the shell hook leaving a directory, or supervisor shutdown.
+
+```toml theme={null}
+[daemons.api.hooks]
+on_stop = "./scripts/notify-stopped.sh"
+```
+
+### `on_exit`
+
+Fires on any daemon termination: intentional stop, clean exit, or crash. Also fires during supervisor shutdown.
+
+```toml theme={null}
+[daemons.infra.hooks]
+on_exit = "docker compose down --volumes"
+```
+
+<Warning>
+  For daemons with `retry > 0`, `on_exit` fires only after all retries are exhausted — not on each individual crash attempt. Use `on_retry` if you need to react to every failure.
+</Warning>
+
+## Environment variables
+
+All hooks receive these environment variables:
+
+| Variable                     | Description                                                                                                                                          |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PITCHFORK_DAEMON_ID`        | Fully-qualified daemon ID (`namespace/name`)                                                                                                         |
+| `PITCHFORK_DAEMON_NAMESPACE` | The daemon's namespace                                                                                                                               |
+| `PITCHFORK_RETRY_COUNT`      | Current retry attempt number (0 on first run)                                                                                                        |
+| `PITCHFORK_EXIT_CODE`        | Exit code of the process (`on_fail`, `on_stop`, `on_exit`). Set to `-1` for processes terminated by a signal (e.g. SIGTERM).                         |
+| `PITCHFORK_EXIT_REASON`      | Why the daemon stopped: `"stop"` (intentional), `"fail"` (non-zero exit), or `"exit"` (unexpected clean exit). Available in `on_stop` and `on_exit`. |
+
+Any custom `env` variables from the daemon config are also passed to hook commands.
+
+## Behavior
+
+* Hooks are **fire-and-forget** — they run in the background and never block the daemon or the supervisor.
+* Hook commands run in the daemon's working directory.
+* Errors in hooks are logged but do not affect the daemon.
+* Hooks re-read `pitchfork.toml` each time they fire, so config changes take effect without restarting.
+
+## Examples
+
+**Send a Slack alert on failure:**
+
+```toml theme={null}
+[daemons.api]
+run = "npm run server"
+retry = 3
+
+[daemons.api.hooks]
+on_fail = "curl -s -X POST $SLACK_WEBHOOK -d '{\"text\": \"API failed (exit $PITCHFORK_EXIT_CODE)\"}'"
+```
+
+**Log retry attempts to a file:**
+
+```toml theme={null}
+[daemons.worker]
+run = "python worker.py"
+retry = 5
+
+[daemons.worker.hooks]
+on_retry = "sh -c 'echo \"$(date): retry $PITCHFORK_RETRY_COUNT\" >> /var/log/worker-retries.log'"
+```
+
+**Acquire and release a lock around a daemon's lifecycle:**
+
+```toml theme={null}
+[daemons.processor]
+run = "./process-queue.sh"
+retry = 2
+
+[daemons.processor.hooks]
+on_ready = "./scripts/acquire-locks.sh"
+on_fail  = "./scripts/release-locks.sh"
+```
+
+**Tear down infrastructure whenever a daemon exits:**
+
+```toml theme={null}
+[daemons.infra]
+run = "docker compose up"
+
+[daemons.infra.hooks]
+on_exit = "docker compose down --volumes --remove-orphans"
+```
+
+**Log the exit reason from a shared script:**
+
+```toml theme={null}
+[daemons.api]
+run = "npm run server"
+
+[daemons.api.hooks]
+on_exit = "sh -c 'echo \"Daemon exited: reason=$PITCHFORK_EXIT_REASON code=$PITCHFORK_EXIT_CODE\" >> /var/log/api-exits.log'"
+```
+
+
+# Viewing logs
+Source: https://www.mintlify.com/jdx/pitchfork/guides/logs
+
+View, filter, tail, and manage daemon logs from the command line, TUI, or web UI.
+
+Pitchfork captures stdout and stderr from every daemon and stores them in
+`~/.local/state/pitchfork/logs/`. You can view logs from the CLI, the TUI, or the web UI.
+
+## Basic usage
+
+Show all logs for a daemon:
+
+```bash theme={null}
+pitchfork logs api
+```
+
+When output exceeds your terminal height, logs are automatically paged using `less` (or `$PAGER`
+if set), starting at the end of the file.
+
+Show logs for multiple daemons at once. Entries are interleaved and sorted by timestamp:
+
+```bash theme={null}
+pitchfork logs api worker database
+```
+
+Show all logs for all known daemons:
+
+```bash theme={null}
+pitchfork logs
+```
+
+## Following logs in real time
+
+```bash theme={null}
+pitchfork logs api --tail
+# aliases: --follow, -t, -f
+```
+
+Press `Ctrl+C` to stop following.
+
+## Limiting line count
+
+Show only the last N lines:
+
+```bash theme={null}
+pitchfork logs api -n 50
+pitchfork logs api -n 10
+```
+
+When combined with `--since` or `--until`, `-n` limits lines from the filtered results.
+
+## Filtering by time
+
+Use `--since` (`-s`) and `--until` (`-u`) to narrow logs to a time range.
+
+### Relative time
+
+```bash theme={null}
+# Logs from the last 5 minutes
+pitchfork logs api --since 5min
+
+# Logs from the last 2 hours
+pitchfork logs api --since 2h
+
+# Logs from the last day
+pitchfork logs api --since 1d
+```
+
+### Time only (today's date assumed)
+
+```bash theme={null}
+pitchfork logs api --since 10:30
+pitchfork logs api --since 14:30:00
+```
+
+If the given time is in the future, pitchfork assumes you meant yesterday.
+
+### Full datetime
+
+```bash theme={null}
+pitchfork logs api --since "2024-01-15 09:00:00"
+pitchfork logs api --until "2024-01-15 17:00:00"
+pitchfork logs api --since "2024-01-15 09:00" --until "2024-01-15 12:00"
+```
+
+### Combining with line limit
+
+```bash theme={null}
+# Last 20 lines from the past hour
+pitchfork logs api --since 1h -n 20
+```
+
+## Raw output
+
+Output log lines without color or formatting. Useful for piping to other tools:
+
+```bash theme={null}
+pitchfork logs api --raw
+
+# Pipe to grep
+pitchfork logs api --raw | grep ERROR
+
+# Save to a file
+pitchfork logs api --raw > api.log
+```
+
+## Disable pager
+
+Force direct output to stdout even when logs would normally trigger the pager:
+
+```bash theme={null}
+pitchfork logs api --no-pager
+```
+
+## Clearing logs
+
+Delete all logs for a specific daemon:
+
+```bash theme={null}
+pitchfork logs api --clear
+```
+
+Delete logs for all daemons:
+
+```bash theme={null}
+pitchfork logs --clear
+```
+
+## Supervisor logs
+
+View pitchfork's own internal logs:
+
+```bash theme={null}
+pitchfork logs pitchfork
+```
+
+## Log file location
+
+Logs are stored in:
+
+```text theme={null}
+~/.local/state/pitchfork/logs/<namespace>--<daemon>/
+```
+
+Each daemon has its own log directory using the `namespace--daemon` naming pattern. For example,
+a daemon named `api` in a project with namespace `myapp` has its logs at:
+
+```text theme={null}
+~/.local/state/pitchfork/logs/myapp--api/
+```
+
+Log files persist across restarts. Each daemon appends to the same log file, so you can see
+history from previous runs.
+
+## Log flush interval
+
+By default, log output is flushed to disk every 500 ms. You can adjust this in your settings:
+
+```toml theme={null}
+# ~/.config/pitchfork/config.toml
+[settings.supervisor]
+log_flush_interval = "1s"
+```
+
+Lower values make logs appear sooner in the UI at the cost of slightly higher I/O.
+
+## Viewing logs in the TUI and web UI
+
+You can also view live logs without leaving your terminal using the TUI, or from a browser using
+the web UI.
+
+* [Terminal UI (TUI)](/guides/tui) — `pitchfork tui`, then press `l` or `Enter` on a daemon.
+* [Web UI](/guides/web-ui) — select a daemon to see its real-time log stream.
+
+
+# mise integration
+Source: https://www.mintlify.com/jdx/pitchfork/guides/mise-integration
+
+Use mise with pitchfork to ensure the correct tool versions and environment variables are available to your daemons.
+
+[mise](https://mise.jdx.dev) is a polyglot tool version manager that handles installing and
+activating tools (Node, Python, Go, etc.) and environment variables per directory.
+
+When pitchfork and mise are used together, mise takes care of the environment and pitchfork
+handles process lifecycle.
+
+## Why mise integration is needed
+
+When you open a terminal, your shell profile (`.zshrc`, `.bashrc`, etc.) runs and activates mise,
+putting the right tool versions on `PATH`. Daemons started at boot or via cron don't have that
+luxury — they run without an interactive shell, so mise hooks are never sourced and tools aren't
+available.
+
+The built-in `mise = true` option solves this by wrapping daemon commands with `mise x --`, which
+activates the correct tool versions and environment variables before your daemon runs.
+
+## Enable mise globally
+
+Add this to `~/.config/pitchfork/config.toml` to enable mise for all daemons:
+
+```toml theme={null}
+[settings.general]
+mise = true
+```
+
+## Enable or disable mise per daemon
+
+Override the global setting for individual daemons in `pitchfork.toml`:
+
+```toml theme={null}
+[daemons.api]
+run  = "node server.js"
+mise = true   # use mise for this daemon
+
+[daemons.simple]
+run  = "echo hello"
+mise = false  # skip mise even if globally enabled
+```
+
+The per-daemon `mise` setting takes precedence over `general.mise`. If neither is set, mise is
+disabled by default.
+
+## How it works
+
+When `mise = true` is set, pitchfork wraps the daemon command before executing it:
+
+```text theme={null}
+# Without mise
+sh -c "exec node server.js"
+
+# With mise
+sh -c "exec /path/to/mise x -- node server.js"
+```
+
+`mise x --` reads your `mise.toml` or `.tool-versions` in the daemon's working directory and
+activates all tools and environment variables before running the command.
+
+## Custom mise binary path
+
+Pitchfork searches these locations automatically:
+
+* `~/.local/bin/mise`
+* `~/.cargo/bin/mise`
+* `/usr/local/bin/mise`
+* `/opt/homebrew/bin/mise`
+
+If mise is installed elsewhere, specify the path explicitly:
+
+```toml theme={null}
+# ~/.config/pitchfork/config.toml
+[settings.general]
+mise     = true
+mise_bin = "/opt/custom/bin/mise"
+```
+
+## Using mise tasks as daemon commands
+
+You can use mise tasks directly as daemon run commands. This gives you full control over tool
+installation, environment variables, and task dependencies:
+
+<CodeGroup>
+  ```toml pitchfork.toml theme={null}
+  [daemons.docs]
+  run = "mise run docs:dev"
+  ```
+
+  ```toml mise.toml theme={null}
+  [env]
+  NODE_ENV = "development"
+
+  [tools]
+  node = "20"
+
+  [tasks."docs:setup"]
+  run = "npm install"
+
+  [tasks."docs:dev"]
+  run = "node docs/index.js"
+  depends = ["docs:setup"]
+  ```
+</CodeGroup>
+
+When you run `pitchfork start docs`:
+
+1. Pitchfork calls `mise run docs:dev`.
+2. mise ensures Node 20 is installed.
+3. mise runs `docs:setup` (npm install) first.
+4. mise sets `NODE_ENV=development` and starts the server.
+5. Pitchfork monitors the process and handles restarts.
+
+## Example: full-stack app
+
+<CodeGroup>
+  ```toml pitchfork.toml theme={null}
+  [daemons.api]
+  run        = "mise run api:dev"
+  auto       = ["start", "stop"]
+  ready_http = "http://localhost:3000/health"
+
+  [daemons.frontend]
+  run          = "mise run frontend:dev"
+  auto         = ["start", "stop"]
+  ready_output = "ready in"
+  ```
+
+  ```toml mise.toml theme={null}
+  [tools]
+  node   = "20"
+  python = "3.11"
+
+  [env]
+  DATABASE_URL = "postgres://localhost/myapp"
+
+  [tasks."api:setup"]
+  run = "pip install -r requirements.txt"
+
+  [tasks."api:dev"]
+  run     = "uvicorn main:app --reload"
+  depends = ["api:setup"]
+
+  [tasks."frontend:setup"]
+  run = "npm install"
+
+  [tasks."frontend:dev"]
+  run     = "npm run dev"
+  depends = ["frontend:setup"]
+  ```
+</CodeGroup>
+
+## Summary of settings
+
+| Setting               | Scope      | Description                                 |
+| --------------------- | ---------- | ------------------------------------------- |
+| `general.mise`        | Global     | Wrap all daemon commands with `mise x --`.  |
+| `general.mise_bin`    | Global     | Explicit path to the mise binary.           |
+| `daemons.<name>.mise` | Per-daemon | Override the global setting for one daemon. |
+
+<Tip>
+  `mise = true` is especially important for daemons that use `boot_start = true`. Without it,
+  tools installed via mise won't be on `PATH` at login time. See the
+  [start on boot guide](/guides/boot-start) for a complete example.
+</Tip>
+
+
+# Ready checks
+Source: https://www.mintlify.com/jdx/pitchfork/guides/ready-checks
+
+Configure how pitchfork determines when a daemon is ready to accept requests.
+
+When you run `pitchfork start` or `pitchfork run`, the command waits until the daemon is "ready" before returning. This ensures dependent processes don't start before their dependencies are actually available — for example, your API server won't start until its database is accepting connections.
+
+## Check types
+
+Pitchfork supports five ready check strategies. You can set them in `pitchfork.toml` or override them from the CLI.
+
+| Check   | Config key     | CLI flag   | Ready when                                 |
+| ------- | -------------- | ---------- | ------------------------------------------ |
+| Delay   | `ready_delay`  | `--delay`  | Daemon runs for N seconds without crashing |
+| Output  | `ready_output` | `--output` | Pattern matches stdout/stderr              |
+| HTTP    | `ready_http`   | `--http`   | Endpoint returns a 2xx status              |
+| Port    | `ready_port`   | `--port`   | TCP connection to port succeeds            |
+| Command | `ready_cmd`    | `--cmd`    | Shell command exits with code 0            |
+
+If you configure multiple checks, the first one to succeed marks the daemon as ready.
+
+<Note>
+  If the daemon exits with a non-zero code before any check passes, `pitchfork start` exits with that same code.
+</Note>
+
+## Delay check
+
+Wait a fixed number of seconds after starting. If the daemon is still running at that point, it is considered ready. This is the default check, with a 3-second delay.
+
+<CodeGroup>
+  ```toml pitchfork.toml theme={null}
+  [daemons.myapp]
+  run = "node server.js"
+  ready_delay = 5  # wait 5 seconds (default: 3)
+  ```
+
+  ```bash CLI theme={null}
+  pitchfork start myapp --delay 5
+  pitchfork run myapp --delay 5 -- node server.js
+  ```
+</CodeGroup>
+
+**Best for:** Simple services where a short wait is enough to confirm the process didn't immediately crash.
+
+## Output check
+
+Wait until a specific pattern appears in the daemon's stdout or stderr. The pattern is a regular expression.
+
+<CodeGroup>
+  ```toml pitchfork.toml theme={null}
+  [daemons.database]
+  run = "postgres -D /var/lib/pgsql/data"
+  ready_output = "database system is ready to accept connections"
+
+  [daemons.webserver]
+  run = "python -m http.server 8080"
+  ready_output = "Serving HTTP on"
+  ```
+
+  ```bash CLI theme={null}
+  pitchfork start database --output "ready to accept connections"
+  pitchfork run myapp --output "Server listening" -- node server.js
+  ```
+</CodeGroup>
+
+**Best for:** Services that print a specific message when they finish starting up.
+
+## HTTP check
+
+Wait until an HTTP endpoint returns a 2xx status code. The check polls every 500ms with a 5-second timeout per request.
+
+<CodeGroup>
+  ```toml pitchfork.toml theme={null}
+  [daemons.api]
+  run = "python -m uvicorn main:app"
+  ready_http = "http://localhost:8000/health"
+
+  [daemons.webserver]
+  run = "node server.js"
+  ready_http = "http://localhost:3000/ready"
+  ```
+
+  ```bash CLI theme={null}
+  pitchfork start api --http http://localhost:8000/health
+  pitchfork run myapp --http http://localhost:8080/health -- node server.js
+  ```
+</CodeGroup>
+
+**Best for:** Web services with a dedicated health or readiness endpoint.
+
+## Port check
+
+Wait until the daemon is listening on a specific TCP port. The check polls every 500ms by attempting a connection to `127.0.0.1:<port>`.
+
+<CodeGroup>
+  ```toml pitchfork.toml theme={null}
+  [daemons.api]
+  run = "node server.js"
+  ready_port = 3000
+
+  [daemons.database]
+  run = "postgres -D /var/lib/pgsql/data"
+  ready_port = 5432
+  ```
+
+  ```bash CLI theme={null}
+  pitchfork start api --port 3000
+  pitchfork run myapp --port 8080 -- node server.js
+  ```
+</CodeGroup>
+
+**Best for:** Services that bind to a known port but don't expose a health endpoint.
+
+## Command check
+
+Wait until a shell command exits with code 0. The check polls every 500ms.
+
+<CodeGroup>
+  ```toml pitchfork.toml theme={null}
+  [daemons.database]
+  run = "postgres -D /var/lib/pgsql/data"
+  ready_cmd = "pg_isready -h localhost"
+
+  [daemons.api]
+  run = "node server.js"
+  ready_cmd = "curl -sf http://localhost:3000/health"
+  ```
+
+  ```bash CLI theme={null}
+  pitchfork start database --cmd "pg_isready -h localhost"
+  pitchfork run myapp --cmd "curl -sf http://localhost:3000/health" -- node server.js
+  ```
+</CodeGroup>
+
+**Best for:** Services that need custom readiness logic, or where you already have a CLI tool for checking readiness (like `pg_isready` for PostgreSQL or `redis-cli ping` for Redis).
+
+## Common patterns
+
+<AccordionGroup>
+  <Accordion title="PostgreSQL">
+    Use the output check to wait for PostgreSQL's startup message, or use `pg_isready` for a more robust check:
+
+    ```toml theme={null}
+    # Output check — watches for the startup log line
+    [daemons.postgres]
+    run = "postgres -D /var/lib/pgsql/data"
+    ready_output = "database system is ready to accept connections"
+    ```
+
+    ```toml theme={null}
+    # Command check — uses pg_isready utility
+    [daemons.postgres]
+    run = "postgres -D /var/lib/pgsql/data"
+    ready_cmd = "pg_isready -h localhost"
+    ```
+  </Accordion>
+
+  <Accordion title="Redis">
+    ```toml theme={null}
+    # Output check
+    [daemons.redis]
+    run = "redis-server"
+    ready_output = "Ready to accept connections"
+    ```
+
+    ```toml theme={null}
+    # Command check
+    [daemons.redis]
+    run = "redis-server"
+    ready_cmd = "redis-cli ping"
+    ```
+  </Accordion>
+
+  <Accordion title="Node.js">
+    ```toml theme={null}
+    [daemons.api]
+    run = "npm run start"
+    ready_http = "http://localhost:3000/health"
+    ```
+  </Accordion>
+
+  <Accordion title="Python FastAPI">
+    ```toml theme={null}
+    [daemons.api]
+    run = "uvicorn main:app"
+    ready_http = "http://localhost:8000/health"
+    ```
+  </Accordion>
+
+  <Accordion title="File-based readiness">
+    For scripts that signal readiness by creating a file:
+
+    ```toml theme={null}
+    [daemons.worker]
+    run = "./start-worker.sh"
+    ready_cmd = "test -f /tmp/worker.ready"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+
+# Cron scheduling
+Source: https://www.mintlify.com/jdx/pitchfork/guides/scheduling
+
+Run daemons on a schedule using cron expressions.
+
+The `cron` option lets you run a daemon on a recurring schedule. This is useful for backups, data sync, health checks, and any other periodic task you'd otherwise manage with system cron or a separate scheduler.
+
+## Basic configuration
+
+```toml theme={null}
+[daemons.backup]
+run = "./scripts/backup.sh"
+cron = { schedule = "0 0 2 * * *", retrigger = "finish" }  # run at 2 AM daily
+```
+
+Start it like any other daemon:
+
+```bash theme={null}
+pitchfork start backup
+pitchfork start --all
+```
+
+Once started, the supervisor triggers the daemon according to its schedule. You can monitor it with:
+
+```bash theme={null}
+pitchfork list
+pitchfork logs backup
+```
+
+## Cron expression format
+
+Pitchfork uses a 6-field cron format, adding a **seconds** field at the start:
+
+```
+┌──────────── second (0-59)
+│ ┌────────── minute (0-59)
+│ │ ┌──────── hour (0-23)
+│ │ │ ┌────── day of month (1-31)
+│ │ │ │ ┌──── month (1-12)
+│ │ │ │ │ ┌── day of week (0-6, Sunday = 0)
+│ │ │ │ │ │
+* * * * * *
+```
+
+**Common examples:**
+
+| Expression       | Meaning                      |
+| ---------------- | ---------------------------- |
+| `0 0 * * * *`    | Every hour (on the hour)     |
+| `0 */5 * * * *`  | Every 5 minutes              |
+| `0 0 2 * * *`    | Daily at 2:00 AM             |
+| `0 0 0 * * 0`    | Weekly on Sunday at midnight |
+| `0 30 9 * * 1-5` | Weekdays at 9:30 AM          |
+
+## Retrigger modes
+
+The `retrigger` field controls what happens when the schedule fires while a previous run is still active.
+
+### `finish` (default)
+
+Only start a new run if the previous one has finished.
+
+```toml theme={null}
+[daemons.backup]
+run = "./backup.sh"
+cron = { schedule = "0 0 2 * * *", retrigger = "finish" }
+```
+
+**Use for:** Long-running tasks like database backups where overlapping runs would corrupt output or exhaust resources.
+
+### `always`
+
+Always start a new run, stopping the previous run if it is still active.
+
+```toml theme={null}
+[daemons.health-check]
+run = "curl -f http://localhost:8080/health"
+cron = { schedule = "0 */5 * * * *", retrigger = "always" }
+```
+
+**Use for:** Short health checks or monitoring tasks where you always want the freshest result.
+
+### `success`
+
+Only start a new run if the previous run succeeded (exited with code 0).
+
+```toml theme={null}
+[daemons.process-data]
+run = "./process.sh"
+cron = { schedule = "0 0 * * * *", retrigger = "success" }
+```
+
+**Use for:** Chained pipelines where a new run should only start if the previous one produced valid output.
+
+### `fail`
+
+Only start a new run if the previous run failed (non-zero exit code).
+
+```toml theme={null}
+[daemons.retry-task]
+run = "./flaky-task.sh"
+cron = { schedule = "0 */10 * * * *", retrigger = "fail" }
+```
+
+**Use for:** Built-in retry logic — keep re-running every 10 minutes until the task succeeds.
+
+## Examples
+
+**Hourly database sync:**
+
+```toml theme={null}
+[daemons.db-sync]
+run = "./scripts/sync-db.sh"
+cron = { schedule = "0 0 * * * *", retrigger = "finish" }
+```
+
+**Every 5 minutes metrics collection:**
+
+```toml theme={null}
+[daemons.metrics]
+run = "node scripts/collect-metrics.js"
+cron = { schedule = "0 */5 * * * *", retrigger = "always" }
+```
+
+**Weekday report at 9 AM:**
+
+```toml theme={null}
+[daemons.report]
+run = "python generate-report.py"
+cron = { schedule = "0 0 9 * * 1-5", retrigger = "success" }
+```
+
+## PATH and tool availability
+
+When running cron daemons via `pitchfork boot` (login daemon mode), tools managed by version managers like mise or pyenv may not be on `PATH` because interactive shell hooks haven't run.
+
+Use the `mise` option to wrap your command:
+
+```toml theme={null}
+[daemons.backup]
+run = "node scripts/backup.js"
+cron = { schedule = "0 0 2 * * *" }
+mise = true  # ensures Node is on PATH even in login daemon context
+```
+
+See the [mise integration guide](/guides/mise-integration) for details.
+
+
+# Shell hook
+Source: https://www.mintlify.com/jdx/pitchfork/guides/shell-hook
+
+Automatically start daemons when you enter a project directory and stop them when you leave.
+
+The shell hook watches your current directory and starts or stops daemons automatically as you navigate between projects. Once installed, running `cd ~/projects/myapp` is enough to bring your entire dev stack up.
+
+## Install the hook
+
+Add the shell hook to your shell's config file, then restart your shell.
+
+<Tabs>
+  <Tab title="Bash">
+    ```bash theme={null}
+    echo 'eval "$(pitchfork activate bash)"' >> ~/.bashrc
+    ```
+  </Tab>
+
+  <Tab title="Zsh">
+    ```bash theme={null}
+    echo 'eval "$(pitchfork activate zsh)"' >> ~/.zshrc
+    ```
+  </Tab>
+
+  <Tab title="Fish">
+    ```bash theme={null}
+    echo 'pitchfork activate fish | source' >> ~/.config/fish/config.fish
+    ```
+  </Tab>
+</Tabs>
+
+After adding the line, either restart your shell or source the config file:
+
+```bash theme={null}
+source ~/.bashrc   # or ~/.zshrc, or restart your terminal
+```
+
+## Configure daemons
+
+Add the `auto` option to any daemon in `pitchfork.toml` to enable auto start/stop for that daemon.
+
+```toml theme={null}
+[daemons.api]
+run = "npm run server:api"
+auto = ["start", "stop"]  # auto-start on enter, auto-stop on leave
+
+[daemons.database]
+run = "postgres -D /var/lib/pgsql/data"
+auto = ["start"]          # auto-start only, stays running when you leave
+
+[daemons.worker]
+run = "npm run worker"
+auto = ["stop"]           # manual start, auto-stops when you leave
+```
+
+### Auto options
+
+| Value               | Behavior                                           |
+| ------------------- | -------------------------------------------------- |
+| `["start"]`         | Daemon starts when you enter the project directory |
+| `["stop"]`          | Daemon stops when you leave the project directory  |
+| `["start", "stop"]` | Both auto-start and auto-stop                      |
+
+## How it works
+
+<Steps>
+  <Step title="You cd into a project">
+    The hook detects the directory change and finds a `pitchfork.toml` in the current or any parent directory. Any daemon with `auto = ["start", ...]` is started.
+  </Step>
+
+  <Step title="Pitchfork starts daemons">
+    Daemons start in the background. If you have ready checks configured, pitchfork waits until they pass before returning control to your prompt.
+  </Step>
+
+  <Step title="You cd away">
+    Daemons with `auto = [..., "stop"]` are marked for stopping. Pitchfork waits a few seconds before actually stopping them, in case you navigate back quickly.
+  </Step>
+
+  <Step title="Daemons stop">
+    If no terminal sessions remain inside the project directory, the daemons stop. Sessions in subdirectories of the project also count as "inside".
+  </Step>
+</Steps>
+
+<Tip>
+  You can still start daemons manually with `pitchfork start`. If they're configured with `auto = ["stop"]`, they'll auto-stop when you leave regardless of how they were started.
+</Tip>
+
+## Example workflow
+
+```bash theme={null}
+# Enter your project
+cd ~/projects/myapp
+# → api and worker start automatically
+
+# Do your work...
+
+# Leave the project
+cd ~
+# → after a short delay, api and worker stop
+#   (only if no other terminals are still in ~/projects/myapp)
+
+# Come back
+cd ~/projects/myapp
+# → api and worker start again
+```
+
+## Autostop delay
+
+Pitchfork waits before stopping daemons to handle cases where you briefly leave the directory (for example, running `cd /tmp && ls && cd -`). The delay is configurable in your settings:
+
+```toml theme={null}
+# ~/.config/pitchfork/config.toml
+[general]
+autostop_delay = 10  # seconds to wait before stopping (default: 3)
+```
+
+
+# Terminal UI (TUI)
+Source: https://www.mintlify.com/jdx/pitchfork/guides/tui
+
+Monitor and manage daemons from an interactive terminal dashboard with vim-style keybindings.
+
+Pitchfork includes a full-featured terminal UI for monitoring and managing daemons without leaving
+your terminal.
+
+## Launch the TUI
+
+```bash theme={null}
+pitchfork tui
+```
+
+The TUI connects to the supervisor automatically, starting it if it isn't already running.
+
+## Features
+
+### Dashboard view
+
+The main dashboard shows all your daemons at a glance:
+
+* Live status with color-coded states (running, stopped, failed)
+* CPU and memory usage per daemon
+* Fuzzy search to filter the list
+* Multi-select for batch operations
+* Sortable columns
+
+### Log viewer
+
+Select a daemon and press `l` or `Enter` to open its log viewer:
+
+* Real-time log streaming with auto-scroll (follow mode)
+* Search within logs
+* Expandable full-screen view
+* Vim-style navigation
+
+### Config editor
+
+Press `n` to create a new daemon or `E` to edit an existing one:
+
+* Form-based interface for all daemon options
+* Checkbox and dropdown fields for boolean/enum settings
+* Validation for required fields and formats
+* `Ctrl+s` to save, `D` to delete (in edit mode)
+
+## Keybindings
+
+### Dashboard
+
+| Key           | Action                             |
+| ------------- | ---------------------------------- |
+| `j` / `↓`     | Move down                          |
+| `k` / `↑`     | Move up                            |
+| `l` / `Enter` | View logs                          |
+| `i`           | View details                       |
+| `s`           | Start daemon                       |
+| `x`           | Stop daemon (with confirmation)    |
+| `r`           | Restart daemon                     |
+| `e`           | Enable daemon                      |
+| `d`           | Disable daemon (with confirmation) |
+| `/`           | Search/filter daemons              |
+| `Space`       | Toggle selection                   |
+| `Ctrl+a`      | Select all visible                 |
+| `c`           | Clear selection                    |
+| `a`           | Toggle showing available daemons   |
+| `S`           | Cycle sort column                  |
+| `o`           | Toggle sort order                  |
+| `R`           | Refresh                            |
+| `n`           | Create new daemon                  |
+| `E`           | Edit selected daemon config        |
+| `?`           | Show help                          |
+| `q` / `Esc`   | Quit                               |
+
+### Log viewer
+
+| Key         | Action                |
+| ----------- | --------------------- |
+| `j` / `↓`   | Scroll down           |
+| `k` / `↑`   | Scroll up             |
+| `Ctrl+d`    | Page down             |
+| `Ctrl+u`    | Page up               |
+| `g`         | Jump to top           |
+| `G`         | Jump to bottom        |
+| `f`         | Toggle follow mode    |
+| `e`         | Toggle expanded view  |
+| `/`         | Search in logs        |
+| `n`         | Next search match     |
+| `N`         | Previous search match |
+| `q` / `Esc` | Back to dashboard     |
+
+### Config editor
+
+| Key                     | Action                                        |
+| ----------------------- | --------------------------------------------- |
+| `Tab` / `j` / `↓`       | Next field                                    |
+| `Shift+Tab` / `k` / `↑` | Previous field                                |
+| `Enter`                 | Edit text field                               |
+| `Space`                 | Toggle checkbox / cycle option                |
+| `Ctrl+s`                | Save configuration                            |
+| `D`                     | Delete daemon (edit mode only)                |
+| `q` / `Esc`             | Cancel (prompts if there are unsaved changes) |
+
+## Multi-select operations
+
+Select multiple daemons with `Space`, then press `s`, `x`, `r`, `e`, or `d` to run that
+operation on all selected daemons at once. Use `Ctrl+a` to select everything visible or `c` to
+clear the selection.
+
+## Settings
+
+Adjust TUI behavior in your config file:
+
+```toml theme={null}
+# ~/.config/pitchfork/config.toml
+[settings.tui]
+refresh_rate = "2s"   # How often the daemon list updates (default: 2s)
+tick_rate   = "100ms" # Event loop / keyboard polling rate (default: 100ms)
+```
+
+| Setting            | Default | Description                                                                                                          |
+| ------------------ | ------- | -------------------------------------------------------------------------------------------------------------------- |
+| `refresh_rate`     | `2s`    | How often the daemon list and status are refreshed. Lower values are more responsive but use more CPU.               |
+| `tick_rate`        | `100ms` | How often the TUI checks for keyboard input and other events.                                                        |
+| `stat_history`     | `60`    | Number of CPU/memory samples to keep for graphs. At the default 2 s refresh rate, 60 samples ≈ 2 minutes of history. |
+| `message_duration` | `3s`    | How long status messages (e.g. "Daemon started") remain visible before clearing.                                     |
+
+<Tip>
+  If you have many daemons and notice the TUI using extra CPU, try increasing `refresh_rate` to
+  `"5s"` or `"10s"`.
+</Tip>
+
+
+# Web UI
+Source: https://www.mintlify.com/jdx/pitchfork/guides/web-ui
+
+Monitor and manage daemons from a browser with real-time log streaming and config editing.
+
+Pitchfork includes a built-in web interface for monitoring and managing daemons from any browser.
+
+## Enable the web UI
+
+The web UI is disabled by default. There are several ways to start it:
+
+<Tabs>
+  <Tab title="Settings file (persistent)">
+    Add this to `~/.config/pitchfork/config.toml` to start the web UI automatically every time
+    the supervisor starts:
+
+    ```toml theme={null}
+    [settings.web]
+    auto_start = true
+    bind_port  = 3120
+    ```
+
+    Then (re)start the supervisor in the background:
+
+    ```bash theme={null}
+    pitchfork supervisor run --force
+    ```
+  </Tab>
+
+  <Tab title="Environment variable (one-off)">
+    ```bash theme={null}
+    PITCHFORK_WEB_AUTO_START=true pitchfork supervisor run
+    ```
+  </Tab>
+
+  <Tab title="CLI flag">
+    ```bash theme={null}
+    pitchfork supervisor run --web-port 3120
+    ```
+  </Tab>
+</Tabs>
+
+Once the web UI is running, open it in your browser:
+
+```
+http://127.0.0.1:3120
+```
+
+If the configured port is already in use, pitchfork automatically tries the next 10 ports (e.g.
+3120, 3121, … up to 3129).
+
+## Features
+
+### Dashboard
+
+The dashboard gives you an overview of every daemon:
+
+* Name and current status (running, stopped, failed)
+* Process ID (PID)
+* Error messages for failed daemons
+
+### Daemon management
+
+Control daemons directly from your browser:
+
+* **Start** — launch a stopped daemon
+* **Stop** — gracefully stop a running daemon
+* **Restart** — stop and start a daemon
+* **Enable / Disable** — control whether a daemon can be started
+
+### Live logs
+
+Real-time log streaming for each daemon:
+
+* Select a daemon to view its log output
+* Logs update automatically as new lines arrive
+* Scroll through historical log entries
+
+### Config editing
+
+Edit `pitchfork.toml` files directly in the browser:
+
+* TOML syntax validation
+* Save changes without leaving the UI
+
+## Settings reference
+
+Configure the web UI in your settings file:
+
+```toml theme={null}
+# ~/.config/pitchfork/config.toml
+[settings.web]
+auto_start   = false        # start with supervisor (default: false)
+bind_address = "127.0.0.1"  # listen address (default: 127.0.0.1)
+bind_port    = 3120         # port (default: 3120)
+port_attempts = 10          # ports to try if default is taken (default: 10)
+log_lines    = 100          # initial log lines to show (default: 100)
+```
+
+| Setting         | Default     | Description                                                                         |
+| --------------- | ----------- | ----------------------------------------------------------------------------------- |
+| `auto_start`    | `false`     | Start the web UI automatically when the supervisor starts.                          |
+| `bind_address`  | `127.0.0.1` | IP address to listen on.                                                            |
+| `bind_port`     | `3120`      | Port for the web UI.                                                                |
+| `port_attempts` | `10`        | Number of consecutive ports to try if `bind_port` is in use.                        |
+| `log_lines`     | `100`       | Initial number of log lines to load when opening a daemon's logs.                   |
+| `base_path`     | `""`        | URL path prefix when serving behind a reverse proxy (e.g. `"ps"` serves at `/ps/`). |
+
+<Warning>
+  Changing `bind_address` to `0.0.0.0` exposes the web UI on all network interfaces. The web UI
+  has no authentication, so anyone on your network can view and control your daemons. Only change
+  this on trusted networks.
+</Warning>
+
+
+# Installation
+Source: https://www.mintlify.com/jdx/pitchfork/installation
+
+Install Pitchfork via mise, cargo, or a pre-built binary from GitHub Releases.
+
+## Install Pitchfork
+
+<CodeGroup>
+  ```bash mise (recommended) theme={null}
+  mise use -g pitchfork
+  ```
+
+  ```bash cargo theme={null}
+  cargo install pitchfork-cli
+  ```
+</CodeGroup>
+
+**mise** is the recommended installation method. It manages the binary for you and makes upgrades straightforward. If you don't have mise installed, see the [mise documentation](https://mise.jdx.dev).
+
+**cargo** installs from [crates.io](https://crates.io/crates/pitchfork-cli). You need the Rust toolchain installed.
+
+**GitHub Releases** — Download a pre-built binary for your platform directly from the [GitHub Releases page](https://github.com/jdx/pitchfork/releases). Extract the archive and place the `pitchfork` binary somewhere on your `PATH`.
+
+## Verify installation
+
+```bash theme={null}
+pitchfork --version
+```
+
+You should see output like:
+
+```
+pitchfork 2.3.0
+```
+
+## Shell completion
+
+Pitchfork provides tab completion for bash, zsh, and fish. Completion requires the [`usage`](https://usage.jdx.dev) CLI to be installed.
+
+<Steps>
+  <Step title="Install the usage CLI">
+    ```bash theme={null}
+    mise use -g usage
+    ```
+  </Step>
+
+  <Step title="Generate and install the completion script">
+    Choose the instructions for your shell:
+
+    **Bash**
+
+    ```bash theme={null}
+    mkdir -p ~/.local/share/bash-completion/completions
+    pitchfork completion bash > ~/.local/share/bash-completion/completions/pitchfork
+    ```
+
+    **Zsh**
+
+    ```bash theme={null}
+    mkdir -p ~/.zfunc
+    pitchfork completion zsh > ~/.zfunc/_pitchfork
+    ```
+
+    Then add the following line to your `~/.zshrc` if it isn't already there:
+
+    ```bash theme={null}
+    fpath=(~/.zfunc $fpath)
+    ```
+
+    **Fish**
+
+    ```bash theme={null}
+    pitchfork completion fish > ~/.config/fish/completions/pitchfork.fish
+    ```
+  </Step>
+
+  <Step title="Reload your shell">
+    Open a new terminal, or reload your shell configuration:
+
+    ```bash theme={null}
+    # bash
+    source ~/.bashrc
+
+    # zsh
+    source ~/.zshrc
+
+    # fish
+    source ~/.config/fish/config.fish
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Completion scripts are generated at install time. Re-run the generation command after upgrading Pitchfork to pick up any new commands or flags.
+</Note>
+
+## What's next
+
+<CardGroup>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Run your first daemon and learn the core commands.
+  </Card>
+
+  <Card title="Your first project" icon="folder-open" href="/first-daemon">
+    Set up a `pitchfork.toml` with multiple daemons.
+  </Card>
+</CardGroup>
+
+
+# Introduction
+Source: https://www.mintlify.com/jdx/pitchfork/introduction
+
+Pitchfork is a CLI for managing background daemons with a focus on developer experience.
+
+Pitchfork is a daemon manager built for developers. It handles the lifecycle of your background services — starting them once, waiting until they're ready, restarting them when they crash, and stopping them automatically when you leave your project directory.
+
+## Key features
+
+<CardGroup>
+  <Card title="Start once, use everywhere" icon="circle-check">
+    Pitchfork only starts a daemon if it's not already running — safe to call from any script or shell.
+  </Card>
+
+  <Card title="Auto start/stop" icon="arrows-rotate">
+    Shell hooks automatically start daemons when you `cd` into a project and stop them when you leave.
+  </Card>
+
+  <Card title="Ready checks" icon="heart-pulse">
+    Wait for a service to be truly ready via HTTP health check, port probe, output pattern, or a fixed delay.
+  </Card>
+
+  <Card title="Dependency ordering" icon="diagram-project">
+    Define dependencies between daemons and Pitchfork starts them in the correct order, in parallel where possible.
+  </Card>
+
+  <Card title="Restart on failure" icon="rotate">
+    Automatically restart daemons that crash, with configurable retry limits.
+  </Card>
+
+  <Card title="Cron scheduling" icon="clock">
+    Run recurring tasks on a cron schedule alongside your long-running services.
+  </Card>
+
+  <Card title="Project configuration" icon="file-code">
+    Define all your project's daemons in a single `pitchfork.toml` file at the project root.
+  </Card>
+
+  <Card title="Start on boot" icon="power-off">
+    Register daemons as system services that start automatically when your machine boots.
+  </Card>
+</CardGroup>
+
+## Use cases
+
+Pitchfork is designed for situations where you need background processes to stay out of your way:
+
+* **Development services** — Databases, API servers, and queue workers that need to run while you code.
+* **File synchronization** — Long-running `rsync` or `unison` processes that keep directories in sync.
+* **Background processes** — Any task you'd otherwise run with `mytask &` and then forget about.
+
+## How it works
+
+Pitchfork uses a client-server architecture. A lightweight supervisor process runs in the background and manages all your daemons. The `pitchfork` CLI communicates with the supervisor over a Unix socket. If the supervisor isn't running, the CLI starts it automatically.
+
+State is persisted to `~/.local/state/pitchfork/` so daemons survive terminal sessions. Logs are written to `~/.local/state/pitchfork/logs/`.
+
+## Get started
+
+<CardGroup>
+  <Card title="Installation" icon="download" href="/installation">
+    Install via mise, cargo, or a pre-built binary from GitHub Releases.
+  </Card>
+
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Launch your first daemon and explore the core commands in under 5 minutes.
+  </Card>
+
+  <Card title="Your first project" icon="folder-open" href="/first-daemon">
+    Set up a `pitchfork.toml` with multiple daemons for a realistic dev environment.
+  </Card>
+
+  <Card title="CLI reference" icon="terminal" href="/cli/index">
+    Every command, subcommand, and flag with examples.
+  </Card>
+</CardGroup>
+
+
+# Quick start
+Source: https://www.mintlify.com/jdx/pitchfork/quickstart
+
+Get Pitchfork running and launch your first daemon in under 5 minutes.
+
+<Steps>
+  <Step title="Install Pitchfork">
+    ```bash theme={null}
+    mise use -g pitchfork
+    ```
+
+    Or with cargo:
+
+    ```bash theme={null}
+    cargo install pitchfork-cli
+    ```
+
+    See [Installation](/installation) for all methods including pre-built binaries.
+  </Step>
+
+  <Step title="Run your first daemon">
+    Start a background process with a single command:
+
+    ```bash theme={null}
+    pitchfork run myserver -- python -m http.server 8000
+    ```
+
+    This starts a Python HTTP server in the background, labeled `myserver`. It's an alternative to shell job control (`python -m http.server 8000 &`) — the process keeps running even after you close the terminal.
+  </Step>
+
+  <Step title="Check status">
+    List all running daemons:
+
+    ```bash theme={null}
+    pitchfork list
+    ```
+
+    Output:
+
+    ```
+    NAME       PID    STATUS
+    myserver   12345  running
+    ```
+  </Step>
+
+  <Step title="View logs">
+    See what the daemon has printed:
+
+    ```bash theme={null}
+    pitchfork logs myserver
+    ```
+
+    Follow logs in real-time:
+
+    ```bash theme={null}
+    pitchfork logs myserver --tail
+    ```
+
+    Logs are saved to `~/.local/state/pitchfork/logs/`.
+  </Step>
+
+  <Step title="Stop the daemon">
+    ```bash theme={null}
+    pitchfork stop myserver
+    ```
+  </Step>
+</Steps>
+
+## Interactive TUI
+
+For a richer monitoring experience, open the terminal UI:
+
+```bash theme={null}
+pitchfork tui
+```
+
+The TUI shows live status and logs for all daemons, with vim-style keybindings, fuzzy search, and a built-in config editor. See the [TUI guide](/guides/tui) for details.
+
+## What's next
+
+<CardGroup>
+  <Card title="Your first project" icon="folder-open" href="/first-daemon">
+    Create a `pitchfork.toml` and manage multiple daemons as a group.
+  </Card>
+
+  <Card title="Shell hook" icon="hook" href="/guides/shell-hook">
+    Auto-start daemons when you enter a project directory.
+  </Card>
+
+  <Card title="Ready checks" icon="heart-pulse" href="/guides/ready-checks">
+    Make Pitchfork wait until a daemon is truly ready before continuing.
+  </Card>
+
+  <Card title="CLI reference" icon="terminal" href="/cli/index">
+    Full reference for every command and flag.
+  </Card>
+</CardGroup>
+
+
+# Configuration reference
+Source: https://www.mintlify.com/jdx/pitchfork/reference/configuration
+
+Complete reference for pitchfork.toml — daemon definitions, naming rules, namespace derivation, and all configuration options.
+
+## Configuration hierarchy
+
+Pitchfork loads configuration files in precedence order. Later files override earlier ones:
+
+| Priority    | File                                                    | Namespace                |
+| ----------- | ------------------------------------------------------- | ------------------------ |
+| 1 (lowest)  | `/etc/pitchfork/config.toml`                            | `global`                 |
+| 2           | `~/.config/pitchfork/config.toml`                       | `global`                 |
+| 3           | `.config/pitchfork.toml` (project `.config/` dir)       | derived from project dir |
+| 4           | `.config/pitchfork.local.toml` (project `.config/` dir) | derived from project dir |
+| 5           | `pitchfork.toml` (project root)                         | derived from project dir |
+| 6 (highest) | `pitchfork.local.toml` (project root)                   | derived from project dir |
+
+Project configs are searched from the filesystem root up to the current directory, so configs in parent directories apply to all subdirectories. Within each directory, the precedence from lowest to highest is:
+
+1. `.config/pitchfork.toml`
+2. `.config/pitchfork.local.toml`
+3. `pitchfork.toml`
+4. `pitchfork.local.toml`
+
+<Tip>
+  Add `pitchfork.local.toml` to your `.gitignore`. It is designed for local overrides that should not be committed to version control.
+</Tip>
+
+## JSON Schema
+
+A JSON Schema is available for editor autocompletion and validation.
+
+**URL:** `https://pitchfork.jdx.dev/schema.json`
+
+<Tabs>
+  <Tab title="VS Code">
+    Install the [Even Better TOML](https://marketplace.visualstudio.com/items?itemName=tamasfe.even-better-toml) extension, then add the schema comment at the top of your config file:
+
+    ```toml pitchfork.toml theme={null}
+    #:schema https://pitchfork.jdx.dev/schema.json
+
+    [daemons.api]
+    run = "npm run server"
+    ```
+  </Tab>
+
+  <Tab title="JetBrains IDEs">
+    Go to **Settings → Languages & Frameworks → Schemas and DTDs → JSON Schema Mappings** and add `https://pitchfork.jdx.dev/schema.json` mapped to `pitchfork.toml`.
+  </Tab>
+</Tabs>
+
+## File format
+
+Configuration files use TOML format. The top-level structure is:
+
+```toml pitchfork.toml theme={null}
+namespace = "my-project"   # optional — overrides derived namespace for this file
+
+[daemons.<daemon-name>]
+run = "command to execute"
+# ... additional options
+```
+
+### Daemon naming rules
+
+Daemon names must satisfy all of the following rules:
+
+| Rule                 | Valid      | Invalid            |
+| -------------------- | ---------- | ------------------ |
+| No double dashes     | `my-app`   | `my--app`          |
+| No slashes           | `api`      | `api/v2`           |
+| No spaces            | `my_app`   | `my app`           |
+| No parent references | `myapp`    | `..` or `foo..bar` |
+| ASCII only           | `myapp123` | `myäpp`            |
+
+The `--` sequence is reserved for internal namespace encoding. See the [Namespaces](/concepts/namespaces) concept page for details.
+
+### Namespace derivation
+
+The namespace assigned to daemons in a config file is determined as follows:
+
+* **Global config files** (`/etc/pitchfork/config.toml`, `~/.config/pitchfork/config.toml`) always use namespace `global`.
+* **Project config files** use the top-level `namespace = "..."` field if set; otherwise the parent directory name is used.
+* For `.config/pitchfork.toml` and `.config/pitchfork.local.toml`, the namespace derives from the `.config` directory's parent, not from `.config` itself.
+* If the derived directory name is invalid (contains `--`, spaces, non-ASCII characters, etc.) you must set a top-level `namespace`.
+* `pitchfork.local.toml` shares the namespace of its sibling `pitchfork.toml`. If both declare `namespace`, the values must match.
+
+```toml pitchfork.toml theme={null}
+# Explicitly override the namespace for all daemons in this file
+namespace = "frontend"
+
+[daemons.api]
+run = "npm run dev"
+```
+
+## Daemon options
+
+### `run`
+
+<ParamField type="string">
+  The shell command to execute for this daemon. Prepend with `exec` to avoid an extra shell process:
+
+  ```toml theme={null}
+  [daemons.api]
+  run = "exec node server.js"
+  ```
+</ParamField>
+
+### `dir`
+
+<ParamField type="string">
+  Working directory for the daemon process. Relative paths are resolved from the location of the `pitchfork.toml` file. When not set, defaults to the directory containing `pitchfork.toml`.
+
+  ```toml theme={null}
+  # Relative — resolved from pitchfork.toml location
+  [daemons.frontend]
+  run = "npm run dev"
+  dir = "frontend"
+
+  # Absolute
+  [daemons.api]
+  run = "npm run server"
+  dir = "/opt/myapp/api"
+  ```
+</ParamField>
+
+### `env`
+
+<ParamField type="object">
+  Environment variables to set for the daemon process. Values must be strings.
+
+  ```toml theme={null}
+  # Inline table
+  [daemons.api]
+  run = "npm run server"
+  env = { NODE_ENV = "development", PORT = "3000" }
+
+  # Section syntax (for many variables)
+  [daemons.worker.env]
+  DATABASE_URL = "postgres://localhost/mydb"
+  REDIS_URL = "redis://localhost:6379"
+  LOG_LEVEL = "debug"
+  ```
+</ParamField>
+
+### `retry`
+
+<ParamField type="number | boolean">
+  Number of times to retry the daemon after failure, or `true` for infinite retries.
+
+  * A number (e.g., `3`) retries that many times.
+  * `true` retries indefinitely.
+  * `false` or `0` disables retries.
+
+  ```toml theme={null}
+  [daemons.api]
+  run = "npm run server"
+  retry = 3       # retry up to 3 times
+
+  [daemons.critical]
+  run = "npm run worker"
+  retry = true    # retry forever
+  ```
+</ParamField>
+
+### `auto`
+
+<ParamField type="string[]">
+  Automatic start/stop behavior triggered by shell hook directory changes. Accepts an array containing `"start"`, `"stop"`, or both.
+
+  * `"start"` — start the daemon automatically when you enter the project directory.
+  * `"stop"` — stop the daemon automatically when you leave the project directory (respects `settings.general.autostop_delay`).
+
+  ```toml theme={null}
+  [daemons.api]
+  run = "npm run server"
+  auto = ["start", "stop"]
+  ```
+</ParamField>
+
+### `ready_delay`
+
+<ParamField type="number">
+  Number of seconds to wait after the process starts before marking it as ready. Use this as a simple fallback when no other readiness check is appropriate.
+
+  ```toml theme={null}
+  [daemons.api]
+  run = "npm run server"
+  ready_delay = 5
+  ```
+</ParamField>
+
+### `ready_output`
+
+<ParamField type="string">
+  A regex pattern to match against the daemon's stdout or stderr. The daemon is marked ready when a line matching the pattern is detected.
+
+  ```toml theme={null}
+  [daemons.postgres]
+  run = "postgres -D /var/lib/pgsql/data"
+  ready_output = "ready to accept connections"
+  ```
+</ParamField>
+
+### `ready_http`
+
+<ParamField type="string">
+  An HTTP URL to poll for readiness. The daemon is marked ready when the endpoint returns a 2xx response.
+
+  ```toml theme={null}
+  [daemons.api]
+  run = "npm run server"
+  ready_http = "http://localhost:3000/health"
+  ```
+</ParamField>
+
+### `ready_port`
+
+<ParamField type="number">
+  A TCP port to check for readiness. The daemon is marked ready when a connection to this port succeeds.
+
+  ```toml theme={null}
+  [daemons.api]
+  run = "npm run server"
+  ready_port = 3000
+  ```
+</ParamField>
+
+### `ready_cmd`
+
+<ParamField type="string">
+  A shell command to run periodically. The daemon is marked ready when the command exits with code `0`.
+
+  ```toml theme={null}
+  [daemons.postgres]
+  run = "postgres -D /var/lib/pgsql/data"
+  ready_cmd = "pg_isready -h localhost"
+
+  [daemons.redis]
+  run = "redis-server"
+  ready_cmd = "redis-cli ping"
+  ```
+</ParamField>
+
+### `depends`
+
+<ParamField type="string[]">
+  List of daemon names that must be started and ready before this daemon starts. Use short names for daemons in the same namespace, or qualified `namespace/name` IDs for cross-namespace dependencies.
+
+  ```toml theme={null}
+  [daemons.api]
+  run = "npm run server"
+  depends = ["postgres", "redis"]
+  ```
+
+  **Dependency behavior:**
+
+  * Running `pitchfork start api` automatically starts all dependencies first.
+  * Transitive dependencies are resolved (if `postgres` depends on `storage`, that starts too).
+  * Dependencies at the same level start in parallel.
+  * Already-running dependencies are skipped, not restarted.
+  * Circular dependencies are detected and reported as errors.
+  * Using `-f` only restarts the explicitly requested daemon, not its dependencies.
+</ParamField>
+
+### `watch`
+
+<ParamField type="string[]">
+  Glob patterns for files to watch. When a matching file changes, the daemon is automatically restarted. Patterns are resolved relative to the `pitchfork.toml` file. Only running daemons are restarted.
+
+  ```toml theme={null}
+  [daemons.api]
+  run = "npm run dev"
+  watch = ["src/**/*.ts", "package.json"]
+  ```
+
+  Changes are debounced (see `settings.supervisor.file_watch_debounce`) to avoid rapid restarts during bulk file operations like builds or checkouts.
+</ParamField>
+
+### `boot_start`
+
+<ParamField type="boolean">
+  Start this daemon automatically when the system boots (via the platform's native service manager). Set to `true` for daemons that should always be running, such as a shared database.
+
+  ```toml theme={null}
+  [daemons.postgres]
+  run = "postgres -D /var/lib/pgsql/data"
+  boot_start = true
+  ```
+</ParamField>
+
+### `hooks`
+
+<ParamField type="object">
+  Lifecycle hooks that run shell commands in response to daemon events. Hooks are fire-and-forget — they run in the background and do not block the daemon.
+
+  ```toml theme={null}
+  [daemons.api.hooks]
+  on_ready = "curl -X POST https://alerts.example.com/ready"
+  on_fail   = "./scripts/cleanup.sh"
+  on_retry  = "echo 'retrying...'"
+  on_stop   = "./scripts/notify-stop.sh"
+  on_exit   = "./scripts/record-exit.sh"
+  ```
+
+  | Hook       | When it runs                                                                           |
+  | ---------- | -------------------------------------------------------------------------------------- |
+  | `on_ready` | When the daemon passes its readiness check                                             |
+  | `on_fail`  | When the daemon fails and all retries are exhausted                                    |
+  | `on_retry` | Before each retry attempt                                                              |
+  | `on_stop`  | When the daemon is explicitly stopped by pitchfork                                     |
+  | `on_exit`  | On any termination: clean exit, crash, or stop (also fires during supervisor shutdown) |
+
+  Hook commands receive these environment variables: `PITCHFORK_DAEMON_ID`, `PITCHFORK_DAEMON_NAMESPACE`, `PITCHFORK_RETRY_COUNT`, `PITCHFORK_EXIT_CODE`, and (for `on_stop`/`on_exit`) `PITCHFORK_EXIT_REASON`. See [Lifecycle Hooks](/guides/lifecycle-hooks) for details.
+</ParamField>
+
+### `cron`
+
+<ParamField type="object">
+  Cron scheduling configuration for running the daemon on a schedule.
+
+  ```toml theme={null}
+  [daemons.backup]
+  run = "./backup.sh"
+  cron = { schedule = "0 0 2 * * *", retrigger = "finish" }
+  ```
+
+  | Field       | Type   | Description                                                              |
+  | ----------- | ------ | ------------------------------------------------------------------------ |
+  | `schedule`  | string | Cron expression with 6 fields: second, minute, hour, day, month, weekday |
+  | `retrigger` | string | What to do when the schedule fires while a previous run is active        |
+
+  **`retrigger` values:**
+
+  | Value                | Behavior                                                    |
+  | -------------------- | ----------------------------------------------------------- |
+  | `"finish"` (default) | Skip if previous run has not finished                       |
+  | `"always"`           | Always retrigger, stopping the previous run if still active |
+  | `"success"`          | Only retrigger if the previous run succeeded                |
+  | `"fail"`             | Only retrigger if the previous run failed                   |
+</ParamField>
+
+### `mise`
+
+<ParamField type="boolean">
+  When `true`, wraps this daemon's command with `mise x --` so that [mise](https://mise.jdx.dev) activates the correct tool versions, PATH entries, and environment variables before the daemon starts. When not set, falls back to the global `settings.general.mise` value.
+
+  ```toml theme={null}
+  [daemons.api]
+  run = "node server.js"
+  mise = true
+  ```
+
+  This is especially useful for daemons running via `pitchfork boot` (login daemon mode) where the interactive shell profile has not been sourced. See [mise Integration](/guides/mise-integration) for details.
+</ParamField>
+
+### `memory_limit`
+
+<ParamField type="string">
+  Maximum physical memory (RSS) for the daemon process. Accepts human-readable byte sizes. The supervisor monitors RSS at each interval tick and kills the process group if the limit is exceeded.
+
+  ```toml theme={null}
+  [daemons.worker]
+  run = "python worker.py"
+  memory_limit = "512MB"
+
+  [daemons.api]
+  run = "node server.js"
+  memory_limit = "2GiB"
+  ```
+
+  **Supported formats:** `"50MB"`, `"512MB"`, `"1GiB"`, `"256KiB"`. Both SI (MB, GB) and binary (MiB, GiB) units are accepted.
+
+  When the limit is exceeded, the process group is sent `SIGTERM` (then `SIGKILL` if unresponsive). The daemon is marked as `Errored`, so `retry` applies. For multi-process daemons (e.g. gunicorn, nginx workers), RSS is aggregated across the root process and all descendants.
+</ParamField>
+
+### `cpu_limit`
+
+<ParamField type="number">
+  Maximum CPU usage as a percentage of one CPU core. The supervisor monitors CPU at each interval tick. To avoid killing on transient spikes, the process is only killed after `settings.supervisor.cpu_violation_threshold` (default: `3`) consecutive samples exceed the limit.
+
+  ```toml theme={null}
+  [daemons.worker]
+  run = "python compute.py"
+  cpu_limit = 80     # 80% of one core
+
+  [daemons.batch]
+  run = "./run-batch.sh"
+  cpu_limit = 200    # up to 2 full cores (valid on multi-core systems)
+  ```
+
+  When the threshold is reached, the process group is sent `SIGTERM` (then `SIGKILL` if unresponsive). The daemon is marked as `Errored`, so `retry` applies. CPU usage is measured as a percentage of one core; for multi-process daemons, usage is aggregated across all descendants.
+</ParamField>
+
+## Complete example
+
+```toml pitchfork.toml theme={null}
+# Database — starts on boot, shared across the project
+[daemons.postgres]
+run = "postgres -D /var/lib/pgsql/data"
+ready_output = "ready to accept connections"
+boot_start = true
+retry = 3
+
+# Cache
+[daemons.redis]
+run = "redis-server"
+ready_output = "Ready to accept connections"
+
+# API server — depends on database and cache, hot reloads on changes
+[daemons.api]
+run = "npm run server"
+dir = "api"
+depends = ["postgres", "redis"]
+watch = ["src/**/*.ts", "package.json"]
+ready_http = "http://localhost:3000/health"
+auto = ["start", "stop"]
+retry = 5
+env = { NODE_ENV = "development", PORT = "3000" }
+memory_limit = "2GiB"
+cpu_limit = 200
+
+[daemons.api.hooks]
+on_ready = "curl -X POST https://alerts.example.com/ready"
+on_fail  = "./scripts/alert-failure.sh"
+
+# Frontend dev server in a subdirectory
+[daemons.frontend]
+run = "npm run dev"
+dir = "frontend"
+env = { PORT = "5173" }
+auto = ["start", "stop"]
+
+# Nightly backup via cron
+[daemons.backup]
+run = "./scripts/backup.sh"
+cron = { schedule = "0 0 2 * * *", retrigger = "finish" }
+```
+
+
+# Environment variables
+Source: https://www.mintlify.com/jdx/pitchfork/reference/environment-vars
+
+All environment variables that control pitchfork behavior. Environment variables override all file-based configuration.
+
+Environment variables have the highest configuration priority and override values from all `pitchfork.toml` and `config.toml` files.
+
+<Note>
+  The supervisor reads environment variables at startup. Changes take effect only after restarting the supervisor with `pitchfork supervisor run --force`.
+</Note>
+
+## Settings environment variables
+
+Every setting in `pitchfork.toml` has a corresponding environment variable. See the [Settings Reference](/reference/settings) for full descriptions of each setting.
+
+| Variable                            | Default           | Description                                                      |
+| ----------------------------------- | ----------------- | ---------------------------------------------------------------- |
+| `PITCHFORK_AUTOSTOP_DELAY`          | `1m`              | Delay before auto-stopping daemons when leaving a directory      |
+| `PITCHFORK_INTERVAL`                | `10s`             | Supervisor background task refresh interval                      |
+| `PITCHFORK_LOG`                     | `info`            | Console log level (`trace`, `debug`, `info`, `warn`, `error`)    |
+| `PITCHFORK_LOG_FILE_LEVEL`          | `info`            | Log file verbosity level                                         |
+| `PITCHFORK_MISE`                    | `false`           | Wrap all daemon commands with `mise x --` globally               |
+| `PITCHFORK_MISE_BIN`                | *(auto-detected)* | Explicit path to the `mise` binary                               |
+| `PITCHFORK_IPC_CONNECT_ATTEMPTS`    | `5`               | Number of connection retry attempts to the supervisor            |
+| `PITCHFORK_IPC_CONNECT_MIN_DELAY`   | `100ms`           | Minimum delay between connection retries                         |
+| `PITCHFORK_IPC_CONNECT_MAX_DELAY`   | `1s`              | Maximum delay between connection retries                         |
+| `PITCHFORK_IPC_REQUEST_TIMEOUT`     | `5s`              | Default timeout for IPC requests                                 |
+| `PITCHFORK_IPC_RATE_LIMIT`          | `100`             | Maximum IPC requests per second per connection                   |
+| `PITCHFORK_IPC_RATE_LIMIT_WINDOW`   | `1s`              | Rate limit sliding window duration                               |
+| `PITCHFORK_WEB_AUTO_START`          | `false`           | Automatically start web UI when supervisor starts                |
+| `PITCHFORK_WEB_BIND_ADDRESS`        | `127.0.0.1`       | Web server bind address                                          |
+| `PITCHFORK_WEB_BIND_PORT`           | `3120`            | Default web server port                                          |
+| `PITCHFORK_WEB_PORT_ATTEMPTS`       | `10`              | Number of ports to try if the default is in use                  |
+| `PITCHFORK_WEB_LOG_LINES`           | `100`             | Initial number of log lines shown in the web UI                  |
+| `PITCHFORK_WEB_PATH`                | *(none)*          | URL path prefix for the web UI                                   |
+| `PITCHFORK_WEB_SSE_POLL_INTERVAL`   | `500ms`           | Server-Sent Events poll interval for log streaming               |
+| `PITCHFORK_TUI_REFRESH_RATE`        | `2s`              | TUI daemon list refresh interval                                 |
+| `PITCHFORK_TUI_TICK_RATE`           | `100ms`           | TUI event loop tick rate                                         |
+| `PITCHFORK_TUI_STAT_HISTORY`        | `60`              | Number of stat samples to keep for TUI graphs                    |
+| `PITCHFORK_TUI_MESSAGE_DURATION`    | `3s`              | Duration to display status messages in the TUI                   |
+| `PITCHFORK_READY_CHECK_INTERVAL`    | `500ms`           | Interval between ready checks (HTTP, TCP, command)               |
+| `PITCHFORK_FILE_WATCH_DEBOUNCE`     | `1s`              | File watch debounce duration                                     |
+| `PITCHFORK_LOG_FLUSH_INTERVAL`      | `500ms`           | Daemon log buffer flush interval                                 |
+| `PITCHFORK_STOP_TIMEOUT`            | `5s`              | Maximum time to wait for a daemon to stop gracefully             |
+| `PITCHFORK_RESTART_DELAY`           | `100ms`           | Delay between stop and start during a restart                    |
+| `PITCHFORK_CRON_CHECK_INTERVAL`     | `10s`             | Interval for checking cron schedules                             |
+| `PITCHFORK_WATCH_INTERVAL`          | `10s`             | File watcher poll interval                                       |
+| `PITCHFORK_HTTP_CLIENT_TIMEOUT`     | `5s`              | Timeout for HTTP ready checks                                    |
+| `PITCHFORK_PORT_BUMP_ATTEMPTS`      | `10`              | Maximum port increment attempts when `auto_bump_port` is enabled |
+| `PITCHFORK_CONTAINER`               | `false`           | Enable container/PID 1 mode                                      |
+| `PITCHFORK_CPU_VIOLATION_THRESHOLD` | `3`               | Consecutive CPU-over-limit samples before killing a daemon       |
+
+## Web UI port shortcut
+
+In addition to the persistent `PITCHFORK_WEB_BIND_PORT` setting above, there is a one-shot variable for enabling the web UI on a specific port for a single invocation:
+
+| Variable             | Description                                                       |
+| -------------------- | ----------------------------------------------------------------- |
+| `PITCHFORK_WEB_PORT` | Enables the web UI on the specified port for this invocation only |
+
+```bash theme={null}
+# Enable web UI on port 19876 for this supervisor run only
+PITCHFORK_WEB_PORT=19876 pitchfork supervisor run --force
+```
+
+If the specified port is in use, pitchfork tries up to `web.port_attempts` consecutive ports.
+
+## Daemon process variables
+
+These variables are automatically set for every daemon process and its lifecycle hook commands. You do not configure them — pitchfork sets them for you.
+
+| Variable                     | Description                                                                               |
+| ---------------------------- | ----------------------------------------------------------------------------------------- |
+| `PITCHFORK_DAEMON_ID`        | Fully-qualified daemon identifier in `namespace/name` format (e.g., `my-project/api`)     |
+| `PITCHFORK_DAEMON_NAMESPACE` | The daemon's namespace component alone (e.g., `my-project`)                               |
+| `PITCHFORK_RETRY_COUNT`      | Current retry attempt number: `0` on the initial run, `1` on the first retry, etc.        |
+| `PITCHFORK_EXIT_CODE`        | Exit code from the daemon process. Available in `on_fail`, `on_stop`, and `on_exit` hooks |
+| `PITCHFORK_EXIT_REASON`      | Reason the daemon stopped. Available in `on_stop` and `on_exit` hooks                     |
+
+**`PITCHFORK_EXIT_REASON` values:**
+
+| Value  | Meaning                                                                                       |
+| ------ | --------------------------------------------------------------------------------------------- |
+| `stop` | Explicitly stopped by pitchfork (`pitchfork stop`, `auto = ["stop"]`, or supervisor shutdown) |
+| `exit` | Process exited on its own with exit code `0`                                                  |
+| `fail` | Process exited with a non-zero exit code                                                      |
+
+### Example usage in hooks
+
+```bash theme={null}
+# In a daemon script
+echo "I am daemon: $PITCHFORK_DAEMON_ID"
+
+if [ "$PITCHFORK_RETRY_COUNT" -gt 0 ]; then
+  echo "This is retry attempt $PITCHFORK_RETRY_COUNT"
+fi
+```
+
+```bash theme={null}
+# In an on_exit hook
+if [ "$PITCHFORK_EXIT_REASON" = "fail" ]; then
+  echo "Daemon $PITCHFORK_DAEMON_ID crashed with code $PITCHFORK_EXIT_CODE"
+fi
+```
+
+## Example: debug setup
+
+Start the supervisor with debug logging and the web UI enabled:
+
+```bash theme={null}
+PITCHFORK_LOG=debug PITCHFORK_WEB_PORT=19876 pitchfork supervisor run --force
+
+# View supervisor logs
+pitchfork logs pitchfork
+```
+
+
+# File locations
+Source: https://www.mintlify.com/jdx/pitchfork/reference/file-locations
+
+Where pitchfork stores configuration files, state, logs, and the IPC socket.
+
+## Configuration files
+
+Pitchfork searches for configuration in multiple locations and merges them in precedence order. Later files override earlier ones.
+
+| File                              | Purpose                                                             |
+| --------------------------------- | ------------------------------------------------------------------- |
+| `/etc/pitchfork/config.toml`      | System-wide configuration (namespace: `global`)                     |
+| `~/.config/pitchfork/config.toml` | User-wide configuration (namespace: `global`)                       |
+| `.config/pitchfork.toml`          | Project configuration (in project's `.config/` subdirectory)        |
+| `.config/pitchfork.local.toml`    | Project configuration (in project's `.config/` subdirectory)        |
+| `pitchfork.toml`                  | Project configuration (in project root)                             |
+| `pitchfork.local.toml`            | Local project overrides (highest precedence, typically git-ignored) |
+
+Project config files are searched from the filesystem root up to your current directory, so configs in parent directories apply to all subdirectories. Within each directory, precedence from lowest to highest is:
+
+1. `.config/pitchfork.toml`
+2. `.config/pitchfork.local.toml`
+3. `pitchfork.toml`
+4. `pitchfork.local.toml`
+
+<Tip>
+  The `.config/pitchfork.toml` placement mirrors [mise](https://mise.jdx.dev/configuration.html) behavior, letting you store project config in a centralized `.config/` directory if you prefer that layout.
+</Tip>
+
+## State directory
+
+Pitchfork stores all runtime data in `~/.local/state/pitchfork/`.
+
+| Path                                     | Purpose                                         |
+| ---------------------------------------- | ----------------------------------------------- |
+| `~/.local/state/pitchfork/state.toml`    | Persistent daemon state                         |
+| `~/.local/state/pitchfork/logs/`         | Daemon log files                                |
+| `~/.local/state/pitchfork/ipc/main.sock` | Unix socket for CLI-to-supervisor communication |
+
+### State file
+
+`~/.local/state/pitchfork/state.toml` tracks:
+
+* All known daemons and their current status
+* Enabled/disabled state for each daemon
+* Last run information
+
+The file is protected with file locking to allow safe concurrent access from multiple CLI commands.
+
+### Log files
+
+Each daemon writes logs to its own subdirectory. The path is derived from the daemon's qualified ID (`namespace/name`) by replacing the `/` with `--`:
+
+```
+~/.local/state/pitchfork/logs/<namespace>--<name>/<namespace>--<name>.log
+```
+
+**Examples:**
+
+| Daemon                          | Log path                                       |
+| ------------------------------- | ---------------------------------------------- |
+| `api` in project `myapp`        | `logs/myapp--api/myapp--api.log`               |
+| `postgres` in project `yourapp` | `logs/yourapp--postgres/yourapp--postgres.log` |
+| `postgres` in global config     | `logs/global--postgres/global--postgres.log`   |
+
+The `--` separator is the filesystem-safe encoding of the `/` in qualified daemon IDs. Because `--` is reserved for this encoding, project directory names that contain `--` (or other invalid namespace characters) require an explicit `namespace = "..."` override in `pitchfork.toml`. See [Namespaces](/concepts/namespaces) for details.
+
+### IPC socket
+
+`~/.local/state/pitchfork/ipc/main.sock`
+
+This Unix domain socket is how CLI commands communicate with the supervisor daemon. It is created when the supervisor starts and removed when it stops.
+
+## Boot start files
+
+When `boot_start = true` is set on a daemon, pitchfork registers with the platform's native service manager. The registration file location depends on your operating system:
+
+| Platform | Location                                                                          |
+| -------- | --------------------------------------------------------------------------------- |
+| macOS    | `~/Library/LaunchAgents/com.pitchfork.agent.plist`                                |
+| Linux    | `~/.config/systemd/user/pitchfork.service`                                        |
+| Windows  | Registry key at `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` |
+
+
+# Settings reference
+Source: https://www.mintlify.com/jdx/pitchfork/reference/settings
+
+All configurable settings for pitchfork, grouped by section. Set via pitchfork.toml, user config, or environment variables.
+
+Settings control the behavior of the pitchfork supervisor, web UI, TUI, and IPC. They can be configured in multiple places. Sources are applied in this order (later sources win):
+
+| Priority    | Source                                                            |
+| ----------- | ----------------------------------------------------------------- |
+| 1 (lowest)  | `/etc/pitchfork/config.toml` — `[settings]` section               |
+| 2           | `~/.config/pitchfork/config.toml` — `[settings]` section          |
+| 3           | `pitchfork.toml` or `pitchfork.local.toml` — `[settings]` section |
+| 4 (highest) | Environment variables                                             |
+
+## Configuring settings
+
+### In pitchfork.toml
+
+Add a `[settings]` section to any `pitchfork.toml` file:
+
+```toml pitchfork.toml theme={null}
+[daemons.myapp]
+run = "node server.js"
+
+[settings.general]
+autostop_delay = "5m"
+log_level = "debug"
+
+[settings.web]
+auto_start = true
+bind_address = "0.0.0.0"
+bind_port = 8080
+
+[settings.tui]
+refresh_rate = "1s"
+
+[settings.supervisor]
+file_watch_debounce = "2s"
+```
+
+### In user config
+
+For settings that apply to all projects, add a `[settings]` section to `~/.config/pitchfork/config.toml`:
+
+```toml ~/.config/pitchfork/config.toml theme={null}
+[settings.general]
+log_level = "info"
+
+[settings.web]
+auto_start = true
+```
+
+### Via environment variables
+
+Every setting has a corresponding environment variable that overrides all file configuration:
+
+```bash theme={null}
+export PITCHFORK_LOG=debug
+export PITCHFORK_WEB_AUTO_START=true
+export PITCHFORK_AUTOSTOP_DELAY=5m
+```
+
+## General settings
+
+<ParamField type="Duration">
+  How long to wait before stopping a daemon after you leave its directory (when using `auto = ["stop"]` with the shell hook).
+
+  This delay prevents unnecessary stop/start cycles when briefly switching directories.
+
+  **Env var:** `PITCHFORK_AUTOSTOP_DELAY`
+
+  ```toml theme={null}
+  [settings.general]
+  autostop_delay = "30s"   # wait 30 seconds before stopping
+  ```
+
+  Set to `"0s"` to stop daemons immediately when you leave the directory.
+</ParamField>
+
+<ParamField type="Duration">
+  How often the supervisor refreshes its internal state and checks daemon health, config file updates, and process synchronization.
+
+  **Env var:** `PITCHFORK_INTERVAL`
+
+  Lower values give more responsive status updates at the cost of more resource use.
+</ParamField>
+
+<ParamField type="string">
+  Verbosity of log output to the console. Accepted values: `trace`, `debug`, `info`, `warn`, `error`.
+
+  **Env var:** `PITCHFORK_LOG`
+
+  <Note>The supervisor reads this only at startup. Use `pitchfork supervisor run --force` to restart with new log settings.</Note>
+</ParamField>
+
+<ParamField type="string">
+  Verbosity of log output written to log files. Can be set independently from `log_level` to keep verbose logs on disk without cluttering the console.
+
+  **Env var:** `PITCHFORK_LOG_FILE_LEVEL`
+</ParamField>
+
+<ParamField type="boolean">
+  When `true`, wraps every daemon command globally with `mise x --` to activate mise-managed tool versions and environment variables.
+
+  **Env var:** `PITCHFORK_MISE`
+
+  Individual daemons can override this with `mise = true` or `mise = false` in their daemon configuration. Useful when pitchfork is started as a login item or boot daemon where the shell profile has not been sourced.
+</ParamField>
+
+<ParamField type="string">
+  Explicit path to the `mise` binary. When not set, pitchfork searches these locations in order:
+
+  * `~/.local/bin/mise`
+  * `~/.cargo/bin/mise`
+  * `/usr/local/bin/mise`
+  * `/opt/homebrew/bin/mise`
+
+  **Env var:** `PITCHFORK_MISE_BIN`
+</ParamField>
+
+## IPC settings
+
+Settings that control communication between the CLI and the supervisor daemon.
+
+<ParamField type="integer">
+  Number of times to retry connecting to the supervisor before giving up. Each attempt uses exponential backoff between `connect_min_delay` and `connect_max_delay`.
+
+  **Env var:** `PITCHFORK_IPC_CONNECT_ATTEMPTS`
+</ParamField>
+
+<ParamField type="Duration">
+  Initial delay between connection retry attempts. The actual delay increases exponentially up to `connect_max_delay`.
+
+  **Env var:** `PITCHFORK_IPC_CONNECT_MIN_DELAY`
+</ParamField>
+
+<ParamField type="Duration">
+  Maximum delay between connection retry attempts. Exponential backoff will not exceed this value.
+
+  **Env var:** `PITCHFORK_IPC_CONNECT_MAX_DELAY`
+</ParamField>
+
+<ParamField type="Duration">
+  Maximum time to wait for a response from the supervisor for most operations. Daemon start operations may use a longer timeout calculated from the daemon's `ready_delay` plus a buffer.
+
+  **Env var:** `PITCHFORK_IPC_REQUEST_TIMEOUT`
+</ParamField>
+
+<ParamField type="integer">
+  Maximum IPC requests per second per connection. Uses a sliding window algorithm to prevent local denial-of-service. Increase if you have automated tools making many rapid requests.
+
+  **Env var:** `PITCHFORK_IPC_RATE_LIMIT`
+</ParamField>
+
+<ParamField type="Duration">
+  The time window for rate limit calculations. `rate_limit` requests are allowed within each window.
+
+  **Env var:** `PITCHFORK_IPC_RATE_LIMIT_WINDOW`
+</ParamField>
+
+## Web settings
+
+Settings for the pitchfork web UI.
+
+<ParamField type="boolean">
+  When `true`, the web UI server starts automatically alongside the supervisor. By default the web UI must be started manually with `pitchfork web`.
+
+  **Env var:** `PITCHFORK_WEB_AUTO_START`
+</ParamField>
+
+<ParamField type="string">
+  IP address the web UI listens on.
+
+  **Env var:** `PITCHFORK_WEB_BIND_ADDRESS`
+
+  <Warning>
+    The default `127.0.0.1` allows only local connections. Setting this to `0.0.0.0` exposes the web UI to your entire network.
+  </Warning>
+</ParamField>
+
+<ParamField type="integer">
+  Port for the web UI. If this port is in use, pitchfork tries subsequent ports up to `port_attempts` times.
+
+  **Env var:** `PITCHFORK_WEB_BIND_PORT`
+</ParamField>
+
+<ParamField type="integer">
+  Number of consecutive ports to try if the configured port is occupied. With `bind_port = 3120` and `port_attempts = 10`, pitchfork tries 3120 through 3129.
+
+  **Env var:** `PITCHFORK_WEB_PORT_ATTEMPTS`
+</ParamField>
+
+<ParamField type="integer">
+  Number of log lines to display initially when viewing daemon logs in the web UI. More lines means more history visible but a slower initial load.
+
+  **Env var:** `PITCHFORK_WEB_LOG_LINES`
+</ParamField>
+
+<ParamField type="string">
+  URL path prefix for the web UI. Useful when running behind a reverse proxy that routes a path prefix to pitchfork.
+
+  **Env var:** `PITCHFORK_WEB_PATH`
+
+  For example, `base_path = "ps"` serves the web UI at `/ps/`. The `--web-path` CLI flag takes priority over this setting.
+</ParamField>
+
+<ParamField type="Duration">
+  How often the web UI polls for new log lines when streaming logs via Server-Sent Events. Lower values provide more real-time updates at the cost of more resource use.
+
+  **Env var:** `PITCHFORK_WEB_SSE_POLL_INTERVAL`
+</ParamField>
+
+## TUI settings
+
+Settings for the interactive terminal UI (`pitchfork tui`).
+
+<ParamField type="Duration">
+  How often the TUI refreshes the daemon list and status information.
+
+  **Env var:** `PITCHFORK_TUI_REFRESH_RATE`
+</ParamField>
+
+<ParamField type="Duration">
+  How often the TUI event loop checks for keyboard input and other events. Lower values improve input responsiveness but increase CPU use.
+
+  **Env var:** `PITCHFORK_TUI_TICK_RATE`
+</ParamField>
+
+<ParamField type="integer">
+  Number of CPU and memory stat samples to retain per daemon for graphs. With the default `refresh_rate` of `2s`, 60 samples represents approximately 2 minutes of history.
+
+  **Env var:** `PITCHFORK_TUI_STAT_HISTORY`
+</ParamField>
+
+<ParamField type="Duration">
+  How long status messages (such as "Daemon started") remain visible in the TUI before automatically clearing.
+
+  **Env var:** `PITCHFORK_TUI_MESSAGE_DURATION`
+</ParamField>
+
+## Supervisor settings
+
+Internal settings for the pitchfork supervisor daemon.
+
+<ParamField type="Duration">
+  How often to poll when checking if a daemon is ready using `ready_http`, `ready_port`, or `ready_cmd`. Lower values detect readiness faster at the cost of more resource use.
+
+  **Env var:** `PITCHFORK_READY_CHECK_INTERVAL`
+</ParamField>
+
+<ParamField type="Duration">
+  How long to wait after the last file change before triggering a daemon restart. This prevents rapid restart cycles when many files change at once (e.g., during a build or `git checkout`).
+
+  **Env var:** `PITCHFORK_FILE_WATCH_DEBOUNCE`
+</ParamField>
+
+<ParamField type="Duration">
+  How often daemon log output is flushed to disk. Lower values make logs appear faster in the UI.
+
+  **Env var:** `PITCHFORK_LOG_FLUSH_INTERVAL`
+</ParamField>
+
+<ParamField type="Duration">
+  Maximum time to wait for a daemon to exit gracefully after receiving `SIGTERM` before sending `SIGKILL`. Increase this for daemons that need time to flush data or close connections.
+
+  **Env var:** `PITCHFORK_STOP_TIMEOUT`
+</ParamField>
+
+<ParamField type="Duration">
+  Brief pause between stopping and starting a daemon during a restart. Helps ensure resources such as ports are fully released before the new process starts.
+
+  **Env var:** `PITCHFORK_RESTART_DELAY`
+</ParamField>
+
+<ParamField type="Duration">
+  How often the supervisor checks whether any cron-scheduled daemons should be triggered. The default of `10s` supports sub-minute cron schedules.
+
+  **Env var:** `PITCHFORK_CRON_CHECK_INTERVAL`
+</ParamField>
+
+<ParamField type="Duration">
+  How often the file watcher polls for filesystem changes when using `watch` patterns. Lower values detect changes faster but increase CPU and I/O use.
+
+  **Env var:** `PITCHFORK_WATCH_INTERVAL`
+</ParamField>
+
+<ParamField type="Duration">
+  Maximum time to wait for a response when polling `ready_http` endpoints during readiness checks. Increase if your services take a while to respond during startup.
+
+  **Env var:** `PITCHFORK_HTTP_CLIENT_TIMEOUT`
+</ParamField>
+
+<ParamField type="integer">
+  Maximum number of port increments to try when `auto_bump_port = true` is set on a daemon. With `port = [3000]` and `port_bump_attempts = 10`, pitchfork tries ports 3000 through 3009 before reporting failure.
+
+  **Env var:** `PITCHFORK_PORT_BUMP_ATTEMPTS`
+</ParamField>
+
+<ParamField type="boolean">
+  Enable container/PID 1 mode for running pitchfork inside Docker containers. When enabled, pitchfork installs a `SIGCHLD` handler to reap orphaned child processes and routes `SIGTERM`/`SIGINT` through the graceful shutdown sequence. Can also be set with the `--container` CLI flag on `pitchfork supervisor run`.
+
+  **Env var:** `PITCHFORK_CONTAINER`
+</ParamField>
+
+<ParamField type="integer">
+  Number of consecutive CPU-over-limit samples required before a daemon is killed. A single sample below the limit resets the counter. This prevents killing daemons during transient spikes (e.g., JIT warm-up).
+
+  **Env var:** `PITCHFORK_CPU_VIOLATION_THRESHOLD`
+
+  With the default `general.interval` of `10s`, a threshold of `3` means a daemon must exceed its `cpu_limit` for approximately 30 seconds before being killed.
+</ParamField>
+
+

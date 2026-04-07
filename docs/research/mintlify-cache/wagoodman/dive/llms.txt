@@ -1,0 +1,20 @@
+# dive
+
+## Docs
+
+- [CI integration](https://www.mintlify.com/wagoodman/dive/configuration/ci-integration.md): Run dive in CI pipelines to enforce image efficiency rules with pass/fail output.
+- [Configuration file](https://www.mintlify.com/wagoodman/dive/configuration/config-file.md): Customize dive behavior with a YAML configuration file.
+- [Keybindings](https://www.mintlify.com/wagoodman/dive/configuration/keybindings.md): Keyboard shortcuts for navigating dive, and how to customize them.
+- [Installation](https://www.mintlify.com/wagoodman/dive/installation.md): Install dive on Linux, macOS, Windows, or run it as a Docker container.
+- [Introduction](https://www.mintlify.com/wagoodman/dive/introduction.md): Explore Docker image layers, visualize file changes, and find wasted space with dive.
+- [Quick Start](https://www.mintlify.com/wagoodman/dive/quickstart.md): Analyze your first Docker image with dive in minutes.
+- [CI rules reference](https://www.mintlify.com/wagoodman/dive/reference/ci-rules.md): Complete reference for dive CI rules, configuration, and pass/fail behavior.
+- [CLI reference](https://www.mintlify.com/wagoodman/dive/reference/cli.md): Complete reference for all dive commands and flags.
+- [Troubleshooting](https://www.mintlify.com/wagoodman/dive/reference/troubleshooting.md): Solutions to common problems when running dive.
+- [Analyzing image efficiency](https://www.mintlify.com/wagoodman/dive/usage/analyzing-efficiency.md): Understand the efficiency score, wasted bytes metrics, and how to reduce image size.
+- [Exploring layers](https://www.mintlify.com/wagoodman/dive/usage/exploring-layers.md): Navigate the dive TUI to inspect image layers and file tree changes.
+- [Image sources](https://www.mintlify.com/wagoodman/dive/usage/image-sources.md): Pull images from Docker, Podman, or a local tar archive.
+- [JSON export](https://www.mintlify.com/wagoodman/dive/usage/json-export.md): Write layer analysis results to a JSON file for CI scripting and custom tooling.
+
+
+Built with [Mintlify](https://mintlify.com).

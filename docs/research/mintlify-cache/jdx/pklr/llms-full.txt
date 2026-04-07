@@ -1,0 +1,3135 @@
+# analyze_imports
+Source: https://www.mintlify.com/jdx/pklr/api/analyze-imports
+
+Extract all transitive local file dependencies from a Pkl file
+
+Statically analyze a `.pkl` file and return the paths of all local files it imports, including imports of those imports (transitive). This function does not evaluate the Pkl source — it only lexes it to extract import URIs.
+
+## `analyze_imports`
+
+```rust theme={null}
+pub fn analyze_imports(path: &Path) -> Result<Vec<std::path::PathBuf>>
+```
+
+<Note>
+  This function is synchronous. It does not require an async runtime.
+</Note>
+
+### Parameters
+
+<ParamField type="&Path">
+  Path to the root `.pkl` file to analyze. Import paths in the file are resolved relative to this
+  file's parent directory.
+</ParamField>
+
+### Return value
+
+Returns `Result<Vec<PathBuf>>` — a flat list of resolved absolute-or-relative `PathBuf`s for every local import found transitively. Each entry corresponds to an actual file on disk (or a glob-expanded match).
+
+***
+
+## Behavior
+
+### Handled import forms
+
+`analyze_imports` handles all import syntaxes that reference local files:
+
+| Import syntax                        | Behavior                                                          |
+| ------------------------------------ | ----------------------------------------------------------------- |
+| `import "relative/path.pkl"`         | Resolved relative to the importing file's directory               |
+| `import "file:///absolute/path.pkl"` | The `file://` prefix is stripped; path used as-is                 |
+| `import* "*.pkl"`                    | Glob pattern expanded to all matching files in the base directory |
+
+### What is NOT resolved
+
+<Warning>
+  `analyze_imports` only returns **local file** dependencies. The following import types are
+  silently ignored:
+
+  * `https://` and `http://` remote imports
+  * `package://` package imports
+
+  If your build system depends on remote assets, you must handle those separately.
+</Warning>
+
+### Use cases
+
+<CardGroup>
+  <Card title="Build system dependency tracking" icon="hammer">
+    Pass the returned paths as inputs to your build rule so it reruns whenever any transitive
+    dependency changes.
+  </Card>
+
+  <Card title="Hot-reload watching" icon="eye">
+    Watch the returned file list for changes and trigger re-evaluation when any dependency is
+    modified.
+  </Card>
+</CardGroup>
+
+***
+
+## Example
+
+```rust theme={null}
+use std::path::Path;
+use pklr::analyze_imports;
+
+fn main() -> pklr::Result<()> {
+    let path = Path::new("config/app.pkl");
+    let deps = analyze_imports(path)?;
+
+    println!("Dependencies of {}:", path.display());
+    for dep in &deps {
+        println!("  {}", dep.display());
+    }
+
+    Ok(())
+}
+```
+
+Example output for a file that imports two modules, one of which imports another:
+
+```
+Dependencies of config/app.pkl:
+  config/database.pkl
+  config/server.pkl
+  config/tls.pkl
+```
+
+***
+
+## Build system integration
+
+The following example shows how to use `analyze_imports` as the dependency discovery step in a simple build system or task runner:
+
+```rust theme={null}
+use std::path::{Path, PathBuf};
+use pklr::analyze_imports;
+
+/// Returns true if any dependency of `root` is newer than `output`.
+fn needs_rebuild(root: &Path, output: &Path) -> pklr::Result<bool> {
+    if !output.exists() {
+        return Ok(true);
+    }
+
+    let output_mtime = output.metadata()?.modified()?;
+
+    // Check the root file itself
+    let mut files: Vec<PathBuf> = vec![root.to_path_buf()];
+
+    // Add all transitive local dependencies
+    files.extend(analyze_imports(root)?);
+
+    for file in files {
+        if let Ok(meta) = file.metadata() {
+            if let Ok(mtime) = meta.modified() {
+                if mtime > output_mtime {
+                    return Ok(true);
+                }
+            }
+        }
+    }
+
+    Ok(false)
+}
+```
+
+<Tip>
+  To watch dependencies for hot-reload, call `analyze_imports` once at startup, register the
+  returned paths with a file watcher (such as `notify`), and re-call `analyze_imports` after each
+  change to pick up any newly added imports.
+</Tip>
+
+
+# Error
+Source: https://www.mintlify.com/jdx/pklr/api/error
+
+Error types returned by pklr
+
+All fallible pklr functions return `Result<T>`, which is a type alias for `std::result::Result<T, Error>`. The `Error` enum covers every failure mode from file I/O through lexing, parsing, evaluation, import resolution, and unsupported features.
+
+## `Result<T>`
+
+```rust theme={null}
+pub type Result<T> = std::result::Result<T, Error>;
+```
+
+***
+
+## `Error`
+
+```rust theme={null}
+#[derive(Debug, miette::Diagnostic, thiserror::Error)]
+pub enum Error {
+    Io(PathBuf, std::io::Error),
+    Lex { src: NamedSource<String>, span: miette::SourceOffset, message: String },
+    Parse { src: NamedSource<String>, span: miette::SourceOffset, message: String },
+    Eval(String),
+    ImportNotFound(String),
+    Unsupported(String),
+}
+```
+
+`Error` implements `miette::Diagnostic`, so `Lex` and `Parse` errors can be printed with full source context and highlighted spans when you use a miette-aware reporter.
+
+***
+
+## Variants
+
+<AccordionGroup>
+  <Accordion title="Error::Io(PathBuf, std::io::Error)">
+    A file could not be read from disk. The first field is the path that was attempted; the second
+    is the underlying `std::io::Error`.
+
+    **Display:** `IO error reading {path}: {io_error}`
+
+    ```rust theme={null}
+    // Returned by eval_to_json, eval_to_json_with_options, and analyze_imports
+    // when std::fs::read_to_string fails.
+    ```
+  </Accordion>
+
+  <Accordion title="Error::Lex { src, span, message }">
+    The lexer encountered a character or sequence it could not tokenize.
+
+    | Field     | Type                          | Description                                               |
+    | --------- | ----------------------------- | --------------------------------------------------------- |
+    | `src`     | `miette::NamedSource<String>` | Full source text with file name, for diagnostic rendering |
+    | `span`    | `miette::SourceOffset`        | Byte offset of the invalid token                          |
+    | `message` | `String`                      | Human-readable description of the problem                 |
+
+    **Display:** the `message` string
+
+    <Note>
+      `Lex` carries a `miette::NamedSource` so that tools using a miette error reporter (such as
+      `miette::GraphicalReportHandler`) can print the offending line with a caret pointing at the
+      exact character.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Error::Parse { src, span, message }">
+    The parser received a valid token sequence that does not form a legal Pkl construct.
+
+    | Field     | Type                          | Description                                               |
+    | --------- | ----------------------------- | --------------------------------------------------------- |
+    | `src`     | `miette::NamedSource<String>` | Full source text with file name, for diagnostic rendering |
+    | `span`    | `miette::SourceOffset`        | Byte offset of the unexpected token                       |
+    | `message` | `String`                      | Human-readable description of the problem                 |
+
+    **Display:** the `message` string
+
+    <Note>
+      Like `Lex`, `Parse` carries a `NamedSource` for pretty miette diagnostics. Both variants
+      implement `miette::Diagnostic` via the derive macro.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Error::Eval(String)">
+    A runtime error during evaluation: type mismatches, undefined variables, failed `read()`
+    calls, environment variable lookup failures, and similar runtime conditions.
+
+    **Display:** `Eval error: {message}`
+  </Accordion>
+
+  <Accordion title="Error::ImportNotFound(String)">
+    An `import` statement referenced a path or URI that could not be resolved to a module.
+
+    **Display:** `Import not found: {uri}`
+  </Accordion>
+
+  <Accordion title="Error::Unsupported(String)">
+    The Pkl source used a language feature that pklr does not yet implement.
+
+    **Display:** `Unsupported feature: {description}`
+  </Accordion>
+</AccordionGroup>
+
+***
+
+## Pattern matching example
+
+```rust theme={null}
+use std::path::Path;
+use pklr::{eval_to_json, Error};
+
+#[tokio::main]
+async fn main() {
+    match eval_to_json(Path::new("config.pkl")).await {
+        Ok(value) => {
+            println!("{}", serde_json::to_string_pretty(&value).unwrap());
+        }
+        Err(Error::Io(path, io_err)) => {
+            eprintln!("could not read {}: {}", path.display(), io_err);
+        }
+        Err(Error::Lex { message, .. }) => {
+            eprintln!("tokenization error: {message}");
+        }
+        Err(Error::Parse { message, .. }) => {
+            eprintln!("parse error: {message}");
+        }
+        Err(Error::Eval(msg)) => {
+            eprintln!("evaluation error: {msg}");
+        }
+        Err(Error::ImportNotFound(uri)) => {
+            eprintln!("import not found: {uri}");
+        }
+        Err(Error::Unsupported(feature)) => {
+            eprintln!("unsupported feature: {feature}");
+        }
+    }
+}
+```
+
+***
+
+## Pretty diagnostics with miette
+
+`Lex` and `Parse` errors implement `miette::Diagnostic`. Use `miette::GraphicalReportHandler` to render them with source context:
+
+```rust theme={null}
+use miette::GraphicalReportHandler;
+use pklr::Error;
+
+fn print_error(err: &Error) {
+    let mut out = String::new();
+    GraphicalReportHandler::new()
+        .render_report(&mut out, err)
+        .unwrap();
+    eprintln!("{out}");
+}
+```
+
+For `Io`, `Eval`, `ImportNotFound`, and `Unsupported` variants, standard `Display` formatting (`eprintln!("{err}")`) is sufficient.
+
+
+# EvalOptions
+Source: https://www.mintlify.com/jdx/pklr/api/eval-options
+
+Configuration options for the pkl evaluator
+
+`EvalOptions` is passed to [`eval_to_json_with_options`](/api/eval-to-json) to configure the HTTP client and URL rewrite rules used during evaluation. All fields are optional — use struct update syntax with `Default::default()` to set only what you need.
+
+## `EvalOptions`
+
+```rust theme={null}
+#[derive(Default)]
+pub struct EvalOptions {
+    pub client: Option<reqwest::Client>,
+    pub http_rewrites: Vec<String>,
+}
+```
+
+***
+
+## Fields
+
+<ParamField type="Option<reqwest::Client>">
+  Custom HTTP client used for all remote imports (`https://` and `http://` URIs). Useful for
+  configuring proxies, custom CA certificates, or connection timeouts. When `None`, a default
+  `reqwest::Client` is used.
+</ParamField>
+
+<ParamField type="Vec<String>">
+  HTTP URL rewrite rules in `"source_prefix=target_prefix"` format. Matches the behavior of the
+  `pkl` CLI's `--http-rewrite` flag: when a URL matches a source prefix, the prefix is replaced
+  with the corresponding target prefix. The longest matching prefix wins. An empty `Vec` means no
+  rewrites are applied.
+</ParamField>
+
+<Note>
+  `pklr` re-exports `reqwest` so you do not need a separate `reqwest` dependency in your
+  `Cargo.toml`. Use `pklr::reqwest::Client::builder()` to build a client.
+</Note>
+
+***
+
+## Rewrite rule format
+
+Each string in `http_rewrites` must contain exactly one `=` separating the source prefix from the target prefix:
+
+```
+https://example.com/modules=https://mirror.internal/modules
+```
+
+A request to `https://example.com/modules/config.pkl` is rewritten to `https://mirror.internal/modules/config.pkl`. Rules with a missing `=` or an empty source prefix are silently ignored with a message to stderr.
+
+<Tip>
+  When multiple rules could match the same URL, the rule with the longest source prefix wins.
+  This is consistent with the official `pkl` CLI behavior.
+</Tip>
+
+***
+
+## Examples
+
+### Default options
+
+Use `Default::default()` to pass zero configuration:
+
+```rust theme={null}
+use pklr::{eval_to_json_with_options, EvalOptions};
+use std::path::Path;
+
+#[tokio::main]
+async fn main() -> pklr::Result<()> {
+    let value = eval_to_json_with_options(
+        Path::new("config.pkl"),
+        EvalOptions::default(),
+    ).await?;
+    println!("{}", serde_json::to_string_pretty(&value)?);
+    Ok(())
+}
+```
+
+### Custom client with struct update syntax
+
+Set only the fields you care about and let `Default` fill in the rest:
+
+```rust theme={null}
+use pklr::{eval_to_json_with_options, EvalOptions, reqwest};
+use std::path::Path;
+use std::time::Duration;
+
+#[tokio::main]
+async fn main() -> pklr::Result<()> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .expect("failed to build HTTP client");
+
+    let options = EvalOptions {
+        client: Some(client),
+        ..Default::default()
+    };
+
+    let value = eval_to_json_with_options(Path::new("config.pkl"), options).await?;
+    println!("{}", serde_json::to_string_pretty(&value)?);
+    Ok(())
+}
+```
+
+### Custom CA certificate
+
+Load a PEM-encoded CA bundle and use it for all HTTPS imports:
+
+```rust theme={null}
+use pklr::{eval_to_json_with_options, EvalOptions, reqwest};
+use std::path::Path;
+
+#[tokio::main]
+async fn main() -> pklr::Result<()> {
+    let pem = std::fs::read("/etc/ssl/certs/internal-ca.pem")
+        .expect("failed to read CA bundle");
+    let cert = reqwest::Certificate::from_pem(&pem)
+        .expect("failed to parse CA certificate");
+
+    let client = reqwest::Client::builder()
+        .add_root_certificate(cert)
+        .build()
+        .expect("failed to build HTTP client");
+
+    let options = EvalOptions {
+        client: Some(client),
+        http_rewrites: vec![
+            "https://pkl-lang.org=https://pkl-mirror.internal".to_string(),
+        ],
+    };
+
+    let value = eval_to_json_with_options(Path::new("config.pkl"), options).await?;
+    println!("{}", serde_json::to_string_pretty(&value)?);
+    Ok(())
+}
+```
+
+
+# eval_to_json
+Source: https://www.mintlify.com/jdx/pklr/api/eval-to-json
+
+Evaluate a Pkl file and return its contents as serde_json::Value
+
+Evaluate a `.pkl` file to a `serde_json::Value`. Three variants are available depending on how much control you need over the HTTP client and rewrite rules.
+
+<Tabs>
+  <Tab title="eval_to_json">
+    ## `eval_to_json`
+
+    The primary entry point. Uses a default HTTP client with no rewrites.
+
+    ```rust theme={null}
+    pub async fn eval_to_json(path: &Path) -> Result<serde_json::Value>
+    ```
+
+    ### Parameters
+
+    <ParamField type="&Path">
+      Path to the `.pkl` file to evaluate.
+    </ParamField>
+
+    ### Example
+
+    ```rust theme={null}
+    use std::path::Path;
+    use pklr::eval_to_json;
+
+    #[tokio::main]
+    async fn main() -> pklr::Result<()> {
+        let value = eval_to_json(Path::new("config.pkl")).await?;
+        println!("{}", serde_json::to_string_pretty(&value)?);
+        Ok(())
+    }
+    ```
+  </Tab>
+
+  <Tab title="eval_to_json_with_client">
+    ## `eval_to_json_with_client`
+
+    Accepts a custom `reqwest::Client` for proxy configuration, custom CA certificates, or other transport-level settings. Pass `None` to use the default client.
+
+    ```rust theme={null}
+    pub async fn eval_to_json_with_client(
+        path: &Path,
+        client: Option<reqwest::Client>,
+    ) -> Result<serde_json::Value>
+    ```
+
+    ### Parameters
+
+    <ParamField type="&Path">
+      Path to the `.pkl` file to evaluate.
+    </ParamField>
+
+    <ParamField type="Option<reqwest::Client>">
+      Custom HTTP client. Pass `None` to use the default client.
+    </ParamField>
+
+    ### Example
+
+    ```rust theme={null}
+    use std::path::Path;
+    use pklr::{eval_to_json_with_client, reqwest};
+
+    #[tokio::main]
+    async fn main() -> pklr::Result<()> {
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(false)
+            .build()
+            .unwrap();
+
+        let value = eval_to_json_with_client(
+            Path::new("config.pkl"),
+            Some(client),
+        ).await?;
+
+        println!("{}", serde_json::to_string_pretty(&value)?);
+        Ok(())
+    }
+    ```
+
+    <Note>
+      `pklr` re-exports `reqwest` so you do not need a separate `reqwest` dependency in your `Cargo.toml`.
+    </Note>
+  </Tab>
+
+  <Tab title="eval_to_json_with_options">
+    ## `eval_to_json_with_options`
+
+    Full configuration via [`EvalOptions`](#evaloptions). Use this when you need both a custom HTTP client and HTTP URL rewrites.
+
+    ```rust theme={null}
+    pub async fn eval_to_json_with_options(
+        path: &Path,
+        options: EvalOptions,
+    ) -> Result<serde_json::Value>
+    ```
+
+    ### Parameters
+
+    <ParamField type="&Path">
+      Path to the `.pkl` file to evaluate.
+    </ParamField>
+
+    <ParamField type="EvalOptions">
+      Configuration struct. See [`EvalOptions`](#evaloptions) below.
+    </ParamField>
+
+    ### Example
+
+    ```rust theme={null}
+    use std::path::Path;
+    use pklr::{eval_to_json_with_options, EvalOptions, reqwest};
+
+    #[tokio::main]
+    async fn main() -> pklr::Result<()> {
+        let client = reqwest::Client::builder()
+            .build()
+            .unwrap();
+
+        let options = EvalOptions {
+            client: Some(client),
+            http_rewrites: vec![
+                "https://pkl.example.com=https://internal.mirror.example.com".to_string(),
+            ],
+        };
+
+        let value = eval_to_json_with_options(Path::new("config.pkl"), options).await?;
+        println!("{}", serde_json::to_string_pretty(&value)?);
+        Ok(())
+    }
+    ```
+  </Tab>
+</Tabs>
+
+***
+
+## EvalOptions
+
+Configuration struct passed to `eval_to_json_with_options`.
+
+```rust theme={null}
+#[derive(Default)]
+pub struct EvalOptions {
+    pub client: Option<reqwest::Client>,
+    pub http_rewrites: Vec<String>,
+}
+```
+
+<ParamField type="Option<reqwest::Client>">
+  Custom HTTP client used for all remote imports. Useful for proxy configuration, custom CA
+  certificates, or timeout settings. Defaults to `None`, which uses the default `reqwest` client.
+</ParamField>
+
+<ParamField type="Vec<String>">
+  HTTP URL rewrite rules in `"source_prefix=target_prefix"` format. Matches the behavior of the
+  `pkl` CLI's `--http-rewrite` flag: the longest matching prefix wins. Useful for redirecting
+  public Pkl module URLs to an internal mirror.
+</ParamField>
+
+### Rewrite rule format
+
+Each entry in `http_rewrites` must be a single string with exactly one `=` separating the source prefix from the target prefix:
+
+```
+https://example.com/modules=https://internal.mirror/modules
+```
+
+A request to `https://example.com/modules/foo.pkl` is rewritten to `https://internal.mirror/modules/foo.pkl`.
+
+<Tip>
+  When multiple rules could match, the longest source prefix wins. This mirrors the behavior of
+  the official `pkl` CLI.
+</Tip>
+
+***
+
+## Complete example
+
+The following shows a realistic setup with a custom HTTP client and URL rewrites:
+
+```rust theme={null}
+use std::path::Path;
+use std::time::Duration;
+use pklr::{eval_to_json_with_options, EvalOptions, reqwest};
+
+#[tokio::main]
+async fn main() -> pklr::Result<()> {
+    // Build a client with a custom timeout and CA bundle
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .expect("failed to build HTTP client");
+
+    let options = EvalOptions {
+        client: Some(client),
+        // Redirect public Pkl stdlib imports to an internal mirror
+        http_rewrites: vec![
+            "https://pkl-lang.org/package-docs=https://mirror.internal/pkl-docs".to_string(),
+            "https://raw.githubusercontent.com/apple/pkl=https://mirror.internal/pkl-github".to_string(),
+        ],
+    };
+
+    let path = Path::new("deploy/production.pkl");
+    let config = eval_to_json_with_options(path, options).await?;
+
+    println!("{}", serde_json::to_string_pretty(&config)?);
+    Ok(())
+}
+```
+
+<Warning>
+  `eval_to_json_with_options` reads the file at `path` synchronously before starting async
+  evaluation. Ensure the path exists and is readable before calling this function.
+</Warning>
+
+
+# Evaluator
+Source: https://www.mintlify.com/jdx/pklr/api/evaluator
+
+Low-level Pkl evaluator with full configuration control
+
+The `Evaluator` struct gives you direct control over every aspect of Pkl evaluation: the base path for local imports, the HTTP client used for remote imports, and URL rewrite rules. The top-level [`eval_to_json`](/api/eval-to-json) functions are convenience wrappers that construct and drive an `Evaluator` internally.
+
+## `Evaluator`
+
+```rust theme={null}
+pub struct Evaluator { /* private fields */ }
+```
+
+Use `Evaluator` directly when you need to reuse a single evaluator across multiple files, inspect the intermediate `Value` before converting to JSON, or apply `output.renderer.converters` transforms manually.
+
+***
+
+## Methods
+
+### `new`
+
+```rust theme={null}
+pub fn new() -> Self
+```
+
+Create a new `Evaluator` with default settings: base path set to `"."`, a default `reqwest::Client`, no HTTP rewrites, and a max import depth of 32.
+
+***
+
+### `set_base_path`
+
+```rust theme={null}
+pub fn set_base_path(&mut self, path: &Path)
+```
+
+Set the directory used to resolve relative imports. When you call [`eval_source`](#eval_source), any `import "relative/path.pkl"` in the source is resolved relative to this path.
+
+<ParamField type="&Path">
+  Directory to use as the base for relative import resolution. Typically the parent of the `.pkl`
+  file being evaluated.
+</ParamField>
+
+<Note>
+  `eval_to_json_with_options` automatically sets the base path to `path.parent()`. If you use
+  `Evaluator` directly, you must call `set_base_path` yourself before evaluating any file that
+  contains relative imports.
+</Note>
+
+***
+
+### `set_http_client`
+
+```rust theme={null}
+pub fn set_http_client(&mut self, client: reqwest::Client)
+```
+
+Replace the default HTTP client with a custom one. Use this to configure proxies, custom CA certificates, connection timeouts, or any other transport-level settings.
+
+<ParamField type="reqwest::Client">
+  A fully configured `reqwest::Client`. The evaluator takes ownership and uses this client for all
+  subsequent `https://` and `http://` import fetches.
+</ParamField>
+
+<Tip>
+  `pklr` re-exports `reqwest`, so you do not need a separate `reqwest` entry in your
+  `Cargo.toml`. Use `pklr::reqwest::Client::builder()` to build a client.
+</Tip>
+
+***
+
+### `set_http_rewrites`
+
+```rust theme={null}
+pub fn set_http_rewrites(&mut self, rules: &[String])
+```
+
+Install HTTP URL rewrite rules. When the evaluator fetches a remote URL, it checks each rule in order and replaces the longest matching source prefix with the corresponding target prefix. This mirrors the `--http-rewrite` flag of the `pkl` CLI.
+
+<ParamField type="&[String]">
+  Slice of rewrite rules. Each rule must be a string in `"source_prefix=target_prefix"` format.
+  Rules with a missing `=` or an empty source prefix are silently ignored with a warning to
+  stderr.
+</ParamField>
+
+Rules with a missing `=` or an empty source prefix are silently skipped with a message to stderr. When multiple rules match a URL, the one with the longest source prefix wins.
+
+***
+
+### `eval_source`
+
+```rust theme={null}
+pub async fn eval_source(&mut self, source: &str, path: &Path) -> Result<Value>
+```
+
+Lex, parse, and evaluate Pkl source text, returning the result as a [`Value`](/api/value).
+
+<ParamField type="&str">
+  The Pkl source text to evaluate.
+</ParamField>
+
+<ParamField type="&Path">
+  The path associated with this source. Used as the file name in error messages and as the key
+  in the import cache to prevent duplicate evaluation.
+</ParamField>
+
+**Returns** `Result<Value>` — the evaluated top-level object.
+
+<Warning>
+  Calling `eval_source` clears any previously registered `output.renderer.converters`. If the
+  evaluated module defines converters, call [`apply_converters`](#apply_converters) after
+  `eval_source` to apply them.
+</Warning>
+
+***
+
+### `apply_converters`
+
+```rust theme={null}
+pub async fn apply_converters(&mut self, value: Value) -> Result<Value>
+```
+
+Walk a `Value` tree and apply any `output.renderer.converters` that were registered during the most recent `eval_source` call. If no converters were defined, the value is returned unchanged.
+
+<ParamField type="Value">
+  The value tree to transform, typically the output of `eval_source`.
+</ParamField>
+
+**Returns** `Result<Value>` — the transformed value tree.
+
+***
+
+## Complete example
+
+The following example evaluates a Pkl file using `Evaluator` directly, applies any converters defined in the module, then converts the result to JSON.
+
+```rust theme={null}
+use std::path::Path;
+use std::time::Duration;
+use pklr::{Evaluator, reqwest};
+
+#[tokio::main]
+async fn main() -> pklr::Result<()> {
+    let path = Path::new("config/app.pkl");
+    let source = std::fs::read_to_string(path)
+        .map_err(|e| pklr::Error::Io(path.to_path_buf(), e))?;
+
+    // Build a client with a 10-second timeout
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .expect("failed to build HTTP client");
+
+    let mut evaluator = Evaluator::new();
+    evaluator.set_base_path(path.parent().unwrap_or(Path::new(".")));
+    evaluator.set_http_client(client);
+    evaluator.set_http_rewrites(&[
+        "https://pkl-lang.org=https://mirror.internal/pkl".to_string(),
+    ]);
+
+    // Evaluate source → Value
+    let value = evaluator.eval_source(&source, path).await?;
+
+    // Apply output.renderer.converters if present
+    let value = evaluator.apply_converters(value).await?;
+
+    // Convert to serde_json::Value
+    let json = value.to_json();
+    println!("{}", serde_json::to_string_pretty(&json)?);
+
+    Ok(())
+}
+```
+
+
+# Value
+Source: https://www.mintlify.com/jdx/pklr/api/value
+
+The pklr runtime value type
+
+`Value` is the runtime representation of any Pkl value produced by evaluation. It maps directly onto Pkl's type system and can be converted to `serde_json::Value` via [`to_json`](#to_json).
+
+## `Value`
+
+```rust theme={null}
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum Value {
+    #[default]
+    Null,
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    String(String),
+    Object(IndexMap<String, Value>, Option<Arc<ObjectSource>>),
+    List(Vec<Value>),
+    Lambda(Vec<String>, Expr, IndexMap<String, Value>),
+}
+```
+
+***
+
+## Variants
+
+<AccordionGroup>
+  <Accordion title="Value::Null">
+    Represents Pkl's `null`. The default variant.
+
+    ```rust theme={null}
+    let v = Value::Null;
+    assert_eq!(v.to_json(), serde_json::Value::Null);
+    ```
+  </Accordion>
+
+  <Accordion title="Value::Bool(bool)">
+    A boolean value.
+
+    ```rust theme={null}
+    let v = Value::Bool(true);
+    assert_eq!(v.to_json(), serde_json::json!(true));
+    ```
+  </Accordion>
+
+  <Accordion title="Value::Int(i64)">
+    A 64-bit signed integer. Pkl integers that fit in `i64` are represented here.
+
+    ```rust theme={null}
+    let v = Value::Int(42);
+    assert_eq!(v.to_json(), serde_json::json!(42));
+    ```
+  </Accordion>
+
+  <Accordion title="Value::Float(f64)">
+    A 64-bit floating-point number.
+
+    <Warning>
+      `NaN` and `Infinity` are not representable in JSON. Both serialize to `null` via
+      `to_json`, because `serde_json` maps non-finite floats to `null`.
+    </Warning>
+
+    ```rust theme={null}
+    let v = Value::Float(3.14);
+    assert_eq!(v.to_json(), serde_json::json!(3.14));
+    ```
+  </Accordion>
+
+  <Accordion title="Value::String(String)">
+    A UTF-8 string.
+
+    ```rust theme={null}
+    let v = Value::String("hello".to_string());
+    assert_eq!(v.as_str(), Some("hello"));
+    ```
+  </Accordion>
+
+  <Accordion title="Value::Object(IndexMap<String, Value>, Option<Arc<ObjectSource>>)">
+    An ordered string-keyed map. Represents both Pkl objects and string-keyed Mappings. Key
+    insertion order is preserved via `IndexMap`.
+
+    The second field, `Option<Arc<ObjectSource>>`, stores the original AST entries and scope
+    needed for late-binding amendment. It is `None` for objects created from `serde_json::Value`
+    or after merging.
+
+    ```rust theme={null}
+    use indexmap::IndexMap;
+
+    let mut map = IndexMap::new();
+    map.insert("host".to_string(), Value::String("localhost".to_string()));
+    map.insert("port".to_string(), Value::Int(5432));
+
+    let v = Value::Object(map, None);
+    ```
+  </Accordion>
+
+  <Accordion title="Value::List(Vec<Value>)">
+    An ordered list of values. Represents Pkl `Listing` values.
+
+    ```rust theme={null}
+    let v = Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+    assert_eq!(v.to_json(), serde_json::json!([1, 2, 3]));
+    ```
+  </Accordion>
+
+  <Accordion title="Value::Lambda(...)">
+    A first-class function value: captured parameter names, body expression, and lexical scope.
+    Lambdas are not directly representable in JSON.
+
+    <Note>
+      `Lambda` serializes as the string `"<lambda>"` when `to_json` is called. You will not
+      normally encounter this variant unless you inspect `output.renderer.converters` entries
+      before they are applied.
+    </Note>
+  </Accordion>
+</AccordionGroup>
+
+***
+
+## Methods
+
+### `to_json`
+
+```rust theme={null}
+pub fn to_json(&self) -> serde_json::Value
+```
+
+Recursively convert this `Value` to a `serde_json::Value`.
+
+| `Value` variant  | JSON output                        |
+| ---------------- | ---------------------------------- |
+| `Null`           | `null`                             |
+| `Bool(b)`        | `true` / `false`                   |
+| `Int(n)`         | number                             |
+| `Float(f)`       | number (`NaN`/`Infinity` → `null`) |
+| `String(s)`      | string                             |
+| `Object(map, _)` | object (key order preserved)       |
+| `List(items)`    | array                              |
+| `Lambda(..)`     | `"<lambda>"`                       |
+
+***
+
+### `as_str`
+
+```rust theme={null}
+pub fn as_str(&self) -> Option<&str>
+```
+
+Return the inner string slice if the value is `Value::String`, otherwise `None`.
+
+```rust theme={null}
+let v = Value::String("world".to_string());
+assert_eq!(v.as_str(), Some("world"));
+
+let n = Value::Int(1);
+assert_eq!(n.as_str(), None);
+```
+
+***
+
+### `as_object_mut`
+
+```rust theme={null}
+pub fn as_object_mut(&mut self) -> Option<&mut IndexMap<String, Value>>
+```
+
+Return a mutable reference to the inner map if the value is `Value::Object`, otherwise `None`. Use this to add, remove, or update keys on an object in place.
+
+```rust theme={null}
+let mut v = Value::Object(indexmap::IndexMap::new(), None);
+if let Some(map) = v.as_object_mut() {
+    map.insert("injected".to_string(), Value::Bool(true));
+}
+```
+
+***
+
+### `merge`
+
+```rust theme={null}
+pub fn merge(&mut self, other: Value)
+```
+
+Merge `other` into `self`. For two `Object` values, keys from `other` are inserted into `self`, overwriting any existing keys with the same name. For all other combinations, `self` is replaced entirely by `other`.
+
+<ParamField type="Value">
+  The value to merge in. For objects, its keys win over existing keys in `self`.
+</ParamField>
+
+```rust theme={null}
+let mut base = Value::from(serde_json::json!({ "a": 1, "b": 2 }));
+let overlay = Value::from(serde_json::json!({ "b": 99, "c": 3 }));
+base.merge(overlay);
+// base is now { "a": 1, "b": 99, "c": 3 }
+```
+
+***
+
+## `From<serde_json::Value>`
+
+`Value` implements `From<serde_json::Value>`, so you can convert JSON values into the pklr
+runtime representation:
+
+```rust theme={null}
+impl From<serde_json::Value> for Value
+```
+
+| `serde_json::Value` | `Value`              |
+| ------------------- | -------------------- |
+| `Null`              | `Value::Null`        |
+| `Bool(b)`           | `Value::Bool(b)`     |
+| `Number` (integer)  | `Value::Int(i64)`    |
+| `Number` (other)    | `Value::Float(f64)`  |
+| `String(s)`         | `Value::String(s)`   |
+| `Array(a)`          | `Value::List(...)`   |
+| `Object(o)`         | `Value::Object(...)` |
+
+***
+
+## Pattern matching example
+
+Match on `Value` before converting to JSON to handle specific cases:
+
+```rust theme={null}
+use pklr::Value;
+
+fn describe(value: &Value) -> String {
+    match value {
+        Value::Null => "null".to_string(),
+        Value::Bool(b) => format!("bool: {b}"),
+        Value::Int(n) => format!("int: {n}"),
+        Value::Float(f) => format!("float: {f}"),
+        Value::String(s) => format!("string: {s:?}"),
+        Value::Object(map, _) => format!("object with {} keys", map.len()),
+        Value::List(items) => format!("list of {} items", items.len()),
+        Value::Lambda(..) => "<lambda>".to_string(),
+    }
+}
+
+// Convert to JSON only after inspecting the value
+let json = value.to_json();
+println!("{}", serde_json::to_string_pretty(&json)?);
+```
+
+
+# Error handling
+Source: https://www.mintlify.com/jdx/pklr/guides/error-handling
+
+Understanding and handling pklr errors
+
+All fallible pklr functions return `pklr::Result<T>`, a type alias for `std::result::Result<T, pklr::Error>`. The `Error` enum has one variant per failure category, each carrying enough context to diagnose the problem.
+
+## The `pklr::Result` type alias
+
+```rust theme={null}
+pub type Result<T> = std::result::Result<T, Error>;
+```
+
+Use `?` to propagate errors up the call stack, or match on the variant when you need to handle specific cases:
+
+```rust theme={null}
+async fn load_config(path: &Path) -> pklr::Result<serde_json::Value> {
+    let json = pklr::eval_to_json(path).await?;
+    Ok(json)
+}
+```
+
+## Error variants
+
+```rust theme={null}
+pub enum Error {
+    Io(PathBuf, std::io::Error),
+    Lex    { src: NamedSource<String>, span: SourceOffset, message: String },
+    Parse  { src: NamedSource<String>, span: SourceOffset, message: String },
+    Eval(String),
+    ImportNotFound(String),
+    Unsupported(String),
+}
+```
+
+<Accordion title="Error::Io — file read failures">
+  Returned when pklr cannot read a file from disk. The first field is the path that was attempted; the second is the underlying `std::io::Error`.
+
+  ```rust theme={null}
+  pklr::Error::Io(PathBuf, std::io::Error)
+  ```
+
+  Common causes: the file does not exist, the process lacks read permission, or the path is a directory.
+</Accordion>
+
+<Accordion title="Error::Lex — tokenization errors">
+  Returned when the Pkl source contains a character sequence that the lexer cannot tokenize — for example, an unclosed string literal or an invalid numeric literal.
+
+  ```rust theme={null}
+  pklr::Error::Lex { src, span, message }
+  ```
+
+  `src` is a `miette::NamedSource` containing the full source text and file name. `span` points to the byte offset of the problematic token. `message` describes the error in plain text.
+</Accordion>
+
+<Accordion title="Error::Parse — parsing errors">
+  Returned when the token stream is syntactically invalid — for example, a missing closing brace or an unexpected keyword.
+
+  ```rust theme={null}
+  pklr::Error::Parse { src, span, message }
+  ```
+
+  The fields are identical in shape to `Lex` and carry the same diagnostic context.
+</Accordion>
+
+<Accordion title="Error::Eval — evaluation errors">
+  Returned for runtime failures: type mismatches, division by zero, circular references that exceed the maximum import depth (32), failed HTTP requests, and similar conditions.
+
+  ```rust theme={null}
+  pklr::Error::Eval(String)
+  ```
+
+  The string contains a human-readable description of what went wrong.
+</Accordion>
+
+<Accordion title="Error::ImportNotFound — import resolution failures">
+  Returned when a local `import` or `amends` URI refers to a file that does not exist on disk.
+
+  ```rust theme={null}
+  pklr::Error::ImportNotFound(String)
+  ```
+
+  The string is the resolved absolute or relative path that was not found.
+</Accordion>
+
+<Accordion title="Error::Unsupported — unimplemented Pkl features">
+  Returned when the source uses a Pkl feature that pklr does not yet implement.
+
+  ```rust theme={null}
+  pklr::Error::Unsupported(String)
+  ```
+
+  The string names the unsupported feature.
+</Accordion>
+
+## Pattern matching on errors
+
+Match exhaustively to handle each variant:
+
+```rust theme={null}
+use pklr::Error;
+use std::path::Path;
+
+async fn evaluate(path: &Path) {
+    match pklr::eval_to_json(path).await {
+        Ok(json) => {
+            println!("{}", serde_json::to_string_pretty(&json).unwrap());
+        }
+        Err(Error::Io(path, e)) => {
+            eprintln!("could not read {}: {e}", path.display());
+        }
+        Err(Error::Lex { message, .. }) => {
+            eprintln!("tokenization error: {message}");
+        }
+        Err(Error::Parse { message, .. }) => {
+            eprintln!("parse error: {message}");
+        }
+        Err(Error::Eval(msg)) => {
+            eprintln!("evaluation error: {msg}");
+        }
+        Err(Error::ImportNotFound(uri)) => {
+            eprintln!("import not found: {uri}");
+        }
+        Err(Error::Unsupported(feature)) => {
+            eprintln!("unsupported feature: {feature}");
+        }
+    }
+}
+```
+
+## Handling missing files gracefully
+
+Check for `Error::Io` or `Error::ImportNotFound` when the file might not exist and a default is acceptable:
+
+```rust theme={null}
+use pklr::Error;
+use std::path::Path;
+
+async fn load_optional_config(path: &Path) -> pklr::Result<serde_json::Value> {
+    match pklr::eval_to_json(path).await {
+        Ok(json) => Ok(json),
+        Err(Error::Io(_, ref e)) if e.kind() == std::io::ErrorKind::NotFound => {
+            // File is absent — return an empty object as the default.
+            Ok(serde_json::Value::Object(Default::default()))
+        }
+        Err(e) => Err(e),
+    }
+}
+```
+
+## Pretty diagnostic output with miette
+
+`Error::Lex` and `Error::Parse` implement `miette::Diagnostic`. Printing them with the `{:?}` format activates miette's source-context rendering, which shows the relevant source snippet with a caret pointing at the error location:
+
+```rust theme={null}
+match pklr::eval_to_json(Path::new("config.pkl")).await {
+    Ok(json) => println!("{json}"),
+    Err(e)   => eprintln!("{e:?}"),  // miette pretty-print with source context
+}
+```
+
+Use `{}` (the `Display` format) for a single-line message without source context:
+
+```rust theme={null}
+Err(e) => eprintln!("pklr error: {e}"),
+```
+
+<Tip>
+  In binaries that use `miette`'s `fancy` feature, set the panic/error hook with `miette::set_hook` to get rich terminal output automatically for all reported errors.
+</Tip>
+
+## Propagating errors with `?`
+
+`pklr::Result` is a standard `std::result::Result`, so `?` works anywhere the enclosing function returns a compatible result type:
+
+```rust theme={null}
+use std::path::Path;
+
+async fn run() -> pklr::Result<()> {
+    let json = pklr::eval_to_json(Path::new("hk.pkl")).await?;
+    let branch = json["default_branch"]
+        .as_str()
+        .unwrap_or("main");
+    println!("branch: {branch}");
+    Ok(())
+}
+```
+
+To convert `pklr::Error` into `Box<dyn std::error::Error>` or `anyhow::Error`, pklr's `Error` type implements `std::error::Error`, so both conversions work with standard `From`/`Into` machinery.
+
+
+# Evaluating Pkl files
+Source: https://www.mintlify.com/jdx/pklr/guides/evaluating-files
+
+How to load and evaluate .pkl configuration files
+
+The primary output of pklr is a `serde_json::Value` produced by evaluating a `.pkl` source file. There are several entry points depending on how much control you need.
+
+## Simple path evaluation
+
+`eval_to_json` is the one-call entry point. Pass a `&Path` and get back a `serde_json::Value`:
+
+```rust theme={null}
+use pklr::eval_to_json;
+use std::path::Path;
+
+#[tokio::main]
+async fn main() -> pklr::Result<()> {
+    let json = eval_to_json(Path::new("config.pkl")).await?;
+    println!("{}", json);
+    Ok(())
+}
+```
+
+The function reads the file, resolves all imports relative to its parent directory, evaluates every expression, and returns the top-level object as JSON.
+
+### Accessing values
+
+`serde_json::Value` supports indexing by string key and by integer position:
+
+```rust theme={null}
+let json = eval_to_json(Path::new("config.pkl")).await?;
+
+// String field
+let host = json["host"].as_str().unwrap_or("localhost");
+
+// Nested object
+let db_url = json["database"]["url"].as_str().unwrap_or("");
+
+// List element
+let first_tag = json["tags"][0].as_str().unwrap_or("");
+
+// Numeric field
+let port = json["port"].as_u64().unwrap_or(8080);
+```
+
+When a key is missing, `serde_json::Value` returns `Value::Null` rather than panicking.
+
+## Using `Evaluator` directly
+
+For more control — setting a custom base path, reusing connection state across multiple files, or post-processing values before serializing to JSON — construct an `Evaluator` directly:
+
+```rust theme={null}
+use pklr::Evaluator;
+use std::path::Path;
+
+#[tokio::main]
+async fn main() -> pklr::Result<()> {
+    let mut evaluator = Evaluator::new();
+
+    // All relative imports in the source resolve against this directory.
+    evaluator.set_base_path(Path::new("/etc/myapp"));
+
+    let source = std::fs::read_to_string("config.pkl")?;
+    let value = evaluator.eval_source(&source, Path::new("config.pkl")).await?;
+
+    // value is pklr::Value — convert to serde_json::Value when ready.
+    let json = value.to_json();
+    println!("{}", json);
+
+    Ok(())
+}
+```
+
+### `set_base_path`
+
+`set_base_path` controls the directory used to resolve relative `import` and `amends` URIs. If you call `eval_to_json`, the base path is set automatically to the parent directory of the file you pass in. When calling `eval_source` manually, set it yourself so imports resolve correctly.
+
+```rust theme={null}
+// Resolve imports relative to /etc/myapp even if the source string
+// was read from elsewhere.
+evaluator.set_base_path(Path::new("/etc/myapp"));
+```
+
+## The `Value` enum
+
+`eval_source` returns `pklr::Value`, not `serde_json::Value`. `Value` is an enum with one variant per Pkl type:
+
+```rust theme={null}
+pub enum Value {
+    Null,
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    String(String),
+    Object(IndexMap<String, Value>, Option<Arc<ObjectSource>>),
+    List(Vec<Value>),
+    Lambda(Vec<String>, Expr, IndexMap<String, Value>),
+}
+```
+
+You can inspect the intermediate `Value` before converting:
+
+```rust theme={null}
+use pklr::{Value, Evaluator};
+use std::path::Path;
+
+async fn print_keys(path: &Path) -> pklr::Result<()> {
+    let source = std::fs::read_to_string(path)?;
+    let mut evaluator = Evaluator::new();
+    evaluator.set_base_path(path.parent().unwrap_or(Path::new(".")));
+
+    let value = evaluator.eval_source(&source, path).await?;
+
+    if let Value::Object(map, _) = &value {
+        for key in map.keys() {
+            println!("{key}");
+        }
+    }
+
+    Ok(())
+}
+```
+
+`Object` preserves insertion order via `IndexMap`, matching the order properties appear in the `.pkl` source.
+
+## Two-step: `eval_source` then `to_json`
+
+`eval_to_json` is implemented as a three-step pipeline you can replicate manually when you need an intermediate step:
+
+```rust theme={null}
+use pklr::Evaluator;
+use std::path::Path;
+
+#[tokio::main]
+async fn main() -> pklr::Result<()> {
+    let path = Path::new("config.pkl");
+    let source = std::fs::read_to_string(path)
+        .map_err(|e| pklr::Error::Io(path.to_path_buf(), e))?;
+
+    let mut evaluator = Evaluator::new();
+    evaluator.set_base_path(path.parent().unwrap_or(Path::new(".")));
+
+    // Step 1 — parse and evaluate to pklr::Value
+    let value = evaluator.eval_source(&source, path).await?;
+
+    // Step 2 — apply output.renderer.converters declared in the Pkl source
+    let value = evaluator.apply_converters(value).await?;
+
+    // Step 3 — serialize to serde_json::Value
+    let json = value.to_json();
+
+    println!("{}", serde_json::to_string_pretty(&json)?);
+    Ok(())
+}
+```
+
+## `apply_converters`
+
+`apply_converters` runs any converter lambdas declared in the Pkl source under `output.renderer.converters`. Converters map a Pkl class name to a transformation function, allowing type-specific post-processing before the value is serialized.
+
+<Note>
+  `eval_to_json` and `eval_to_json_with_options` call `apply_converters` for you. You only need to call it manually when using `eval_source` directly and the Pkl file may declare converters.
+</Note>
+
+```rust theme={null}
+// After eval_source, before to_json:
+let value = evaluator.apply_converters(value).await?;
+let json = value.to_json();
+```
+
+If no converters are declared in the source, `apply_converters` is a no-op and returns the value unchanged.
+
+## Complete example
+
+The following mirrors what the integration tests do — evaluate a source string with `amends`, local variables, and a nested object:
+
+```rust theme={null}
+use pklr::Evaluator;
+use std::path::Path;
+
+#[tokio::main]
+async fn main() -> pklr::Result<()> {
+    let mut ev = Evaluator::new();
+    let path = Path::new("hk.pkl");
+    let val = ev.eval_source(src, path).await?;
+    let json = val.to_json();
+
+    assert_eq!(json["default_branch"], "hello");
+    assert_eq!(json["hooks"]["pre-commit"]["fix"], true);
+    assert_eq!(json["warnings"][0], "missing-profiles");
+
+    Ok(())
+}
+```
+
+
+# HTTP and remote imports
+Source: https://www.mintlify.com/jdx/pklr/guides/http-remote-imports
+
+Fetching remote Pkl modules via HTTP, HTTPS, and package:// URIs
+
+pklr fetches remote Pkl modules over HTTP and HTTPS and resolves versioned release packages via `package://` URIs — no separate Pkl CLI binary required.
+
+## HTTP and HTTPS imports
+
+Any `import` or `amends` URI starting with `http://` or `https://` is fetched at evaluation time:
+
+```pkl theme={null}
+import "https://example.com/shared/config.pkl"
+```
+
+pklr sends a GET request, parses the response body as Pkl source, and evaluates it in the same way as a local file. The result is bound to the import alias (or the file stem of the URL if no `as` clause is given).
+
+## Package imports
+
+`package://` URIs reference a specific file inside a versioned release archive. The format is:
+
+```
+package://<host>/<owner>/<repo>/releases/download/<tag>/<name>@<version>#/<path>
+```
+
+For example, the integration tests use:
+
+```pkl theme={null}
+amends "pkg://github.com/jdx/hk/releases/download/v1.0.0/hk@1.0.0#/Config.pkl"
+```
+
+### How packages work
+
+When pklr encounters a `package://` URI it:
+
+<Steps>
+  <Step title="Derives the zip URL">
+    Constructs the download URL for the release zip from the URI. For GitHub releases this is the `.zip` asset attached to the tag.
+  </Step>
+
+  <Step title="Downloads and extracts the zip">
+    Fetches the zip archive via HTTP, extracts it to a temporary directory, and caches the extracted path keyed by zip URL. Subsequent imports from the same package reuse the already-extracted directory.
+  </Step>
+
+  <Step title="Evaluates the fragment path">
+    The fragment (`#/Config.pkl`) identifies the file inside the zip to evaluate. pklr reads that file from the temp directory and evaluates it as a local file.
+  </Step>
+</Steps>
+
+<Note>
+  Package extraction is per-`Evaluator` instance. Each new evaluator downloads and extracts packages fresh. Reuse an `Evaluator` across multiple evaluations to benefit from the extraction cache.
+</Note>
+
+## Using a custom HTTP client
+
+By default pklr creates a `reqwest::Client` with default settings. Pass a custom client to control proxy settings, CA certificates, timeouts, and connection pool behavior.
+
+pklr re-exports `reqwest` so you can build a client without adding it as a direct dependency:
+
+```rust theme={null}
+use pklr::{eval_to_json_with_client, reqwest};
+use std::path::Path;
+
+#[tokio::main]
+async fn main() -> pklr::Result<()> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap();
+
+    let json = eval_to_json_with_client(Path::new("config.pkl"), Some(client)).await?;
+    println!("{}", json);
+    Ok(())
+}
+```
+
+For proxy or custom CA certificate configuration, build the client with `reqwest::ClientBuilder` using `rustls-tls`:
+
+```toml Cargo.toml theme={null}
+[dependencies]
+pklr  = "0.4"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+```
+
+```rust theme={null}
+use pklr::{eval_to_json_with_options, EvalOptions, reqwest};
+use std::path::Path;
+
+#[tokio::main]
+async fn main() -> pklr::Result<()> {
+    let cert_pem = std::fs::read("internal-ca.pem")?;
+    let cert = reqwest::Certificate::from_pem(&cert_pem).unwrap();
+
+    let client = reqwest::Client::builder()
+        .add_root_certificate(cert)
+        .https_only(true)
+        .build()
+        .unwrap();
+
+    let options = EvalOptions {
+        client: Some(client),
+        ..Default::default()
+    };
+
+    let json = eval_to_json_with_options(Path::new("config.pkl"), options).await?;
+    println!("{}", json);
+    Ok(())
+}
+```
+
+### Setting the client on `Evaluator`
+
+When using `Evaluator` directly, call `set_http_client`:
+
+```rust theme={null}
+use pklr::{Evaluator, reqwest};
+use std::path::Path;
+
+let client = reqwest::Client::builder()
+    .timeout(std::time::Duration::from_secs(10))
+    .build()
+    .unwrap();
+
+let mut ev = Evaluator::new();
+ev.set_http_client(client);
+ev.set_base_path(Path::new("."));
+
+let source = std::fs::read_to_string("config.pkl")?;
+let value = ev.eval_source(&source, Path::new("config.pkl")).await?;
+```
+
+## HTTP URL rewrite rules
+
+Rewrite rules redirect HTTP requests from one URL prefix to another. The primary use case is routing package downloads through an internal mirror so builds work in air-gapped or proxy-restricted environments.
+
+### Rule format
+
+Each rule is a `"source_prefix=target_prefix"` string, matching the format of the Pkl CLI's `--http-rewrite` flag:
+
+```
+https://github.com/=https://mirror.internal.example.com/github/
+```
+
+When pklr fetches a URL that starts with `source_prefix`, the prefix is replaced with `target_prefix`. If multiple rules match, the **longest matching prefix wins**.
+
+### Setting rewrites via `EvalOptions`
+
+```rust theme={null}
+use pklr::{eval_to_json_with_options, EvalOptions};
+use std::path::Path;
+
+#[tokio::main]
+async fn main() -> pklr::Result<()> {
+    let options = EvalOptions {
+        http_rewrites: vec![
+            // Route all GitHub downloads to an internal mirror.
+            "https://github.com/=https://mirror.internal.example.com/github/".to_string(),
+            // A more specific rule for a particular org takes precedence.
+            "https://github.com/jdx/=https://artifacts.internal.example.com/jdx/".to_string(),
+        ],
+        ..Default::default()
+    };
+
+    // package:// imports in config.pkl will be fetched from the internal mirror.
+    let json = eval_to_json_with_options(Path::new("config.pkl"), options).await?;
+    println!("{}", json);
+    Ok(())
+}
+```
+
+### Setting rewrites on `Evaluator`
+
+```rust theme={null}
+use pklr::eval::Evaluator;
+use std::path::Path;
+
+let mut ev = Evaluator::new();
+ev.set_http_rewrites(&[
+    "https://github.com/=https://mirror.internal.example.com/github/".to_string(),
+]);
+```
+
+<Warning>
+  Malformed rules (missing `=`) and rules with an empty source prefix are logged to stderr and ignored. A rule like `"=https://mirror.example.com"` has an empty source prefix and will be discarded.
+</Warning>
+
+## HTTP caching
+
+Each `Evaluator` instance maintains an in-memory cache of fetched HTTP sources, keyed by the (possibly rewritten) URL. Within a single evaluation, the same URL is never fetched twice. This cache covers both plain HTTP imports and the package zip downloads.
+
+The cache is not shared across `Evaluator` instances. Create a single `Evaluator` and reuse it across multiple `eval_source` calls to maximize cache hits when evaluating several files that share remote dependencies.
+
+
+# Imports and amends
+Source: https://www.mintlify.com/jdx/pklr/guides/imports-and-amends
+
+Resolving imports, amends, and extends in Pkl files
+
+Pkl files can pull in other modules using `import`, `amends`, and `extends`. pklr resolves all three automatically during evaluation.
+
+## How `import` works
+
+An `import` statement binds a module to a name in the current scope. After evaluation the bound name holds the imported module's top-level object as a `pklr::Value`:
+
+```pkl imports.pkl theme={null}
+import "pkl/Builtins.pkl"
+import "shared/steps.pkl" as SharedSteps
+```
+
+pklr binds `Builtins` to the value of `pkl/Builtins.pkl` and `SharedSteps` to the value of `shared/steps.pkl`. The binding name is either the explicit alias (the `as` clause) or the file stem of the imported path.
+
+### Local file imports
+
+Relative paths resolve against the evaluator's base path. The base path is set automatically by `eval_to_json` (parent of the file you pass) and can be set manually with `set_base_path` when using `Evaluator` directly:
+
+```pkl theme={null}
+// hk.pkl — both imports resolve relative to the directory that contains hk.pkl
+import "pkl/Builtins.pkl"
+import "shared/lint-steps.pkl"
+```
+
+```rust theme={null}
+use pklr::Evaluator;
+use std::path::Path;
+
+let mut ev = Evaluator::new();
+ev.set_base_path(Path::new("/home/user/project"));
+
+let source = std::fs::read_to_string("hk.pkl")?;
+let value = ev.eval_source(&source, Path::new("hk.pkl")).await?;
+```
+
+If the imported file does not exist on disk, pklr returns `Error::ImportNotFound`.
+
+### Glob imports
+
+The `import*` syntax imports every file that matches a pattern and binds them as an object keyed by relative path:
+
+```pkl theme={null}
+import* "steps/*.pkl" as AllSteps
+```
+
+pklr expands the glob against the base path and evaluates each matching file. Each entry in `AllSteps` is keyed by the relative path of the matched file (e.g., `"steps/lint.pkl"`).
+
+<Note>
+  Glob patterns using the `://` scheme (HTTP, package) bind an empty mapping — only local file globs are expanded.
+</Note>
+
+## How `amends` works
+
+`amends` loads a base module and merges the current module's properties on top of it. The result is a single object containing all properties from the base, overridden by any properties declared in the amending file:
+
+```pkl config.pkl theme={null}
+amends "base/Config.pkl"
+
+// Override a single field — all other fields come from base/Config.pkl.
+fail_fast = false
+```
+
+`amends` also injects the class definitions from the base module into the current scope, so you can instantiate types like `Step` or `Group` declared in the base:
+
+```pkl hk.pkl theme={null}
+amends "pkl/Config.pkl"
+import "pkl/Builtins.pkl"
+
+local linters = new Mapping<String, Step | Group> {
+    ["dbg"] = new Step {
+        glob = "**/*.rs"
+        check = "! rg -e 'dbg!' {{files}}"
+    }
+}
+```
+
+Here `Step` is defined in `pkl/Config.pkl` and is available because `hk.pkl` amends it.
+
+### `amends` with package URIs
+
+`amends` accepts the same URI schemes as `import` including `package://`:
+
+```pkl theme={null}
+// amends a module from a versioned GitHub release package
+amends "package://github.com/jdx/hk/releases/download/v1.39.0/hk@1.39.0#/Config.pkl"
+```
+
+pklr downloads the release zip, extracts it to a temporary directory, and evaluates the specified entry file as the base module.
+
+## How `extends` works
+
+`extends` is similar to `amends` but is used on class bodies rather than modules. When pklr encounters an `extends` clause it loads the named class as the prototype and merges the current class definition on top of it.
+
+## The `analyze_imports` function
+
+`analyze_imports` extracts all transitive local file dependencies from a Pkl file without evaluating it. This is useful for build systems and watch tools that need to know which files to invalidate when a dependency changes:
+
+```rust theme={null}
+use pklr::analyze_imports;
+use std::path::Path;
+
+fn main() -> pklr::Result<()> {
+    let deps = analyze_imports(Path::new("hk.pkl"))?;
+    for dep in deps {
+        println!("{}", dep.display());
+    }
+    Ok(())
+}
+```
+
+`analyze_imports` uses the lexer and the fast `collect_imports` parser pass — it does not evaluate any expressions. It expands glob patterns to real files on disk and returns the results as `Vec<PathBuf>`.
+
+<Note>
+  `analyze_imports` only returns **local file** dependencies. HTTP, package, and `pkl:` standard-library imports are skipped.
+</Note>
+
+The underlying `collect_imports` function is also available directly from the parser if you already have tokens:
+
+```rust theme={null}
+use pklr::lexer::lex;
+use pklr::parser::collect_imports;
+
+let src = r#"
+amends "pkl/Config.pkl"
+import "pkl/Builtins.pkl"
+"#;
+
+let tokens = lex(src)?;
+let imports = collect_imports(&tokens);
+// imports == ["pkl/Config.pkl", "pkl/Builtins.pkl"]
+```
+
+`collect_imports` includes both `import` and `amends` URIs.
+
+## Import caching
+
+Each `Evaluator` instance keeps an in-memory cache of evaluated files keyed by canonical path. When the same file is imported from multiple places in the graph, it is evaluated exactly once:
+
+```
+hk.pkl
+  imports pkl/Builtins.pkl   ← evaluated, cached
+  imports shared/steps.pkl   ← evaluated, cached
+    imports pkl/Builtins.pkl ← cache hit, no re-evaluation
+```
+
+Before a file begins evaluating, pklr inserts an empty-object placeholder into the cache. If a circular import is encountered, the placeholder is returned instead of looping infinitely. The placeholder is replaced with the real value once evaluation completes.
+
+## Real-world example: the hk.pkl fixture
+
+The project's own `hk.pkl` config demonstrates `amends`, `import`, spread (`...`), and local variables together:
+
+```pkl tests/fixtures/hk.pkl theme={null}
+// amends "package://github.com/jdx/hk/releases/download/v1.39.0/hk@1.39.0#/Config.pkl"
+amends "pkl/Config.pkl"
+import "pkl/Builtins.pkl"
+
+local linters = new Mapping<String, Step | Group> {
+    ["actionlint"] = Builtins.actionlint
+    ["cargo-fmt"]  = Builtins.cargo_fmt
+    ["dbg"] = new Step {
+        glob  = "**/*.rs"
+        check = "! rg -e 'dbg!' {{files}}"
+    }
+}
+
+hooks = new {
+    ["pre-commit"] {
+        fix   = true
+        stash = "git"
+        steps = new {
+            ["prelint"] {
+                check     = "mise run prelint"
+                exclusive = true
+            }
+            ...linters
+        }
+    }
+    ["pre-push"] {
+        steps = linters
+    }
+}
+
+warnings = List("missing-profiles")
+```
+
+The `...linters` spread inlines all entries from the `linters` mapping into the `steps` object.
+
+
+# Installation
+Source: https://www.mintlify.com/jdx/pklr/installation
+
+Add pklr to your Rust project
+
+## Add to Cargo.toml
+
+Add pklr and Tokio to your `[dependencies]`:
+
+```toml Cargo.toml theme={null}
+[dependencies]
+pklr  = "0.4"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+```
+
+If you only need the single-threaded Tokio runtime, `rt` is sufficient instead of `rt-multi-thread`. The `macros` feature enables `#[tokio::main]`.
+
+<Note>
+  The current release is **0.4.0**. Check [crates.io/crates/pklr](https://crates.io/crates/pklr) for the latest version.
+</Note>
+
+## MSRV
+
+pklr requires **Rust 1.88** or later. To enforce this in your own project, set `rust-version` in your `Cargo.toml`:
+
+```toml Cargo.toml theme={null}
+[package]
+name         = "my-app"
+version      = "0.1.0"
+edition      = "2024"
+rust-version = "1.88"
+```
+
+## Runtime requirement
+
+All public evaluation functions in pklr are `async`. You must run them inside a Tokio runtime. The simplest setup is the `#[tokio::main]` macro:
+
+```rust src/main.rs theme={null}
+#[tokio::main]
+async fn main() -> pklr::Result<()> {
+    let json = pklr::eval_to_json(std::path::Path::new("config.pkl")).await?;
+    println!("{}", json);
+    Ok(())
+}
+```
+
+If you are calling pklr from a synchronous context, create a runtime manually:
+
+```rust theme={null}
+let rt  = tokio::runtime::Runtime::new().unwrap();
+let json = rt.block_on(pklr::eval_to_json(std::path::Path::new("config.pkl")))?;
+```
+
+## Dependencies
+
+pklr brings in the following crates:
+
+| Crate             | Purpose                                            |
+| ----------------- | -------------------------------------------------- |
+| `indexmap`        | Ordered map for preserving Pkl object key order    |
+| `miette`          | Rich error diagnostics with source context         |
+| `serde_json`      | JSON output type (`serde_json::Value`)             |
+| `thiserror`       | Error type derive macros                           |
+| `async-recursion` | Recursive async evaluation support                 |
+| `reqwest`         | HTTP/HTTPS and `package://` remote import fetching |
+| `tokio`           | Async runtime                                      |
+| `zip`             | Extracting Pkl package archives                    |
+
+### reqwest re-export
+
+pklr re-exports `reqwest` as `pklr::reqwest`. If you need to build a custom HTTP client (for proxy settings, CA certificates, or timeouts) you can use it directly without adding `reqwest` as a separate dependency:
+
+```toml Cargo.toml theme={null}
+[dependencies]
+pklr  = "0.4"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+# No separate reqwest needed — use pklr::reqwest
+```
+
+```rust theme={null}
+let client = pklr::reqwest::Client::builder()
+    .timeout(std::time::Duration::from_secs(30))
+    .build()
+    .unwrap();
+
+let options = pklr::EvalOptions {
+    client: Some(client),
+    ..Default::default()
+};
+
+let json = pklr::eval_to_json_with_options(
+    std::path::Path::new("config.pkl"),
+    options,
+).await?;
+```
+
+## Feature flags
+
+pklr has no optional Cargo feature flags. All capabilities are included by default.
+
+## Verify the installation
+
+Add a smoke test to confirm everything compiles and links:
+
+```rust src/main.rs theme={null}
+#[tokio::main]
+async fn main() {
+    println!("pklr ready");
+}
+```
+
+```bash theme={null}
+cargo build
+```
+
+If the build succeeds, pklr is installed correctly.
+
+
+# Introduction
+Source: https://www.mintlify.com/jdx/pklr/introduction
+
+What pklr is and why you'd use it
+
+pklr is a pure Rust parser and evaluator for [Apple's Pkl configuration language](https://pkl-lang.org/). It reads `.pkl` files and produces `serde_json::Value` output — no external binary, no CLI, no subprocess.
+
+## What pklr does
+
+Pkl is a programmable configuration language with types, classes, imports, and expressions. pklr brings that evaluation capability directly into your Rust process. You call an async function, pass a file path, and get back JSON.
+
+```rust theme={null}
+use pklr::eval_to_json;
+
+let json = eval_to_json(std::path::Path::new("config.pkl")).await?;
+println!("{}", json["host"]);
+```
+
+## Architecture
+
+pklr is a classic three-stage interpreter written entirely in Rust:
+
+```
+Source (.pkl) → lexer.rs → parser.rs → eval.rs → value.rs → serde_json::Value
+```
+
+* **Lexer** (`src/lexer.rs`) — Tokenizes source text. Handles 80+ token kinds including string literals (double-quoted, triple-quoted multiline, custom delimiters like `#"..."#`), number formats (decimal, hex, octal, binary), and all Pkl operators.
+* **Parser** (`src/parser.rs`) — Builds an AST from tokens. Key types are `Module` (top-level file), `Entry` (property, generator, spread), and `Expr` (all expression forms).
+* **Evaluator** (`src/eval.rs`) — Walks the AST with a scope chain. Two-pass: collects `local` variables first, then evaluates non-local entries. Max recursion depth of 32.
+* **Value** (`src/value.rs`) — The `Value` enum (`Null`, `Bool`, `Int`, `Float`, `String`, `Object`, `List`). Uses `IndexMap` for ordered object keys. Converts to `serde_json::Value`.
+
+## Supported features
+
+* String interpolation, lambdas, and higher-order methods (`map`, `filter`, `fold`)
+* Local variables (`local x = ...`)
+* Object literals, amendment, and spread (`...`)
+* `import` and `amends` resolution for local files
+* HTTP, HTTPS, and `package://` remote imports
+* `read()` and `read?()` resource readers (`file://`, `env:`, `http://`)
+* Class definitions, `extends`, and `super`
+* Type aliases (`typealias`) and type expressions (`is`, `as`)
+* Built-in functions: `List()`, `Map()`, `Set()`
+* `output.renderer.converters` support
+* Property modifiers: `local`, `hidden`, `const`, `abstract`, `fixed`
+* Rich error diagnostics with source context via [miette](https://crates.io/crates/miette)
+
+## When to use pklr
+
+Use pklr when you want to evaluate Pkl configuration files from within a Rust application without shelling out to the `pkl` CLI. Common use cases include:
+
+* Build tools and task runners that read `.pkl` config files
+* Applications that ship Pkl as their configuration format
+* Any context where spawning a subprocess is undesirable or impossible
+
+## Requirements
+
+<Note>
+  pklr requires **Rust 1.88** (MSRV) and the **Tokio** async runtime. All public evaluation functions are `async`.
+</Note>
+
+## Next steps
+
+<CardGroup>
+  <Card title="Quickstart" icon="bolt" href="/quickstart">
+    Evaluate your first Pkl file in minutes.
+  </Card>
+
+  <Card title="Installation" icon="box" href="/installation">
+    Add pklr to your Cargo project.
+  </Card>
+
+  <Card title="Evaluating files" icon="file" href="/guides/evaluating-files">
+    Learn the full evaluation API.
+  </Card>
+
+  <Card title="API reference" icon="code" href="/api/eval-to-json">
+    Browse all public functions and types.
+  </Card>
+</CardGroup>
+
+
+# Classes and modules
+Source: https://www.mintlify.com/jdx/pklr/language/classes-and-modules
+
+Defining classes and working with modules
+
+## Class definitions
+
+Define a class with `class Name { }`. Each property has a type annotation and an optional default value:
+
+```pkl theme={null}
+class Person {
+    name: String
+    age:  Int = 0
+}
+```
+
+Instantiate a class with `new ClassName { }`. Properties without defaults must be supplied; properties with defaults can be omitted:
+
+```pkl theme={null}
+x = new Person {
+    name = "Alice"
+}
+```
+
+```json theme={null}
+{ "x": { "name": "Alice", "age": 0 } }
+```
+
+## Instantiation with `new`
+
+Instantiate with any combination of overrides:
+
+```pkl theme={null}
+class Config {
+    debug: Boolean = false
+    port:  Int     = 8080
+    host:  String  = "localhost"
+}
+
+x = new Config {
+    debug = true
+}
+```
+
+```json theme={null}
+{ "x": { "debug": true, "port": 8080, "host": "localhost" } }
+```
+
+## Open classes
+
+By default, a class rejects any property not declared in its definition. Mark it `open` to allow extra properties:
+
+```pkl theme={null}
+open class Config {
+    port: Int = 8080
+}
+
+x = new Config {
+    port = 9090
+    host = "localhost"
+}
+```
+
+```json theme={null}
+{ "x": { "port": 9090, "host": "localhost" } }
+```
+
+A non-`open` class produces a runtime error if you add an undeclared property:
+
+```pkl theme={null}
+class Config { port: Int = 8080 }
+
+// Fails: "non-open class Config does not allow property 'host'"
+x = new Config { port = 9090, host = "localhost" }
+```
+
+## Class inheritance with `extends`
+
+Use `extends` to inherit all properties and defaults from a parent class:
+
+```pkl theme={null}
+class Animal {
+    name: String = "unknown"
+    legs: Int    = 4
+}
+
+class Dog extends Animal {
+    breed: String = "mixed"
+}
+
+x = new Dog { name = "Rex" }
+```
+
+```json theme={null}
+{ "x": { "name": "Rex", "legs": 4, "breed": "mixed" } }
+```
+
+A child class can override a parent's default:
+
+```pkl theme={null}
+class Base       { port: Int = 8080; host: String = "localhost" }
+class Production extends Base { port: Int = 443; tls: Boolean = true }
+
+x = new Production {}
+```
+
+```json theme={null}
+{ "x": { "port": 443, "host": "localhost", "tls": true } }
+```
+
+## Type annotations
+
+Property types are declared with `: TypeName`. Use `?` for nullable types and `|` for union types:
+
+```pkl theme={null}
+class Step {
+    name:    String
+    timeout: Int?                    = null
+    glob:    String | List<String>   = List()
+}
+```
+
+## Modifiers
+
+Modifiers appear before the property name or type annotation:
+
+| Modifier   | Effect                                                           |
+| ---------- | ---------------------------------------------------------------- |
+| `local`    | Not serialized; available only within the current scope          |
+| `hidden`   | Not serialized; accessible to other properties in the same scope |
+| `const`    | Cannot be overridden in an `amends` file                         |
+| `fixed`    | Signals semantic immutability; evaluated normally                |
+| `abstract` | Parses without error; may have a default value                   |
+| `open`     | On a class: allows extra properties when instantiated            |
+| `external` | Must be assigned a value before the module is evaluated          |
+
+```pkl theme={null}
+hidden  secret  = "abc123"
+const   version = 1
+fixed   build   = 42
+
+derived = secret + "-derived"
+```
+
+```json theme={null}
+{ "derived": "abc123-derived", "version": 1, "build": 42 }
+```
+
+## Module amends
+
+`amends "path.pkl"` at the top of a file applies the current file's properties on top of the base module:
+
+```pkl theme={null}
+amends "base.pkl"
+
+name = "override"
+// version and enabled are inherited from base.pkl
+```
+
+<Note>
+  `const` properties in the base file cannot be overridden by an amending file.
+</Note>
+
+## Module extends
+
+`extends "path.pkl"` is similar to `amends` but also makes the base module's class definitions available as constructors in the child module:
+
+```pkl theme={null}
+extends "base_module.pkl"
+
+default_name = "extended"
+extra        = "new property"
+x = new Config { debug = true }
+```
+
+## `this` and `outer`
+
+`this` refers to the current object. In a nested object, `this` refers to the inner object:
+
+```pkl theme={null}
+data {
+    x = 1
+    y = this.x + 1
+}
+```
+
+```json theme={null}
+{ "data": { "x": 1, "y": 2 } }
+```
+
+`outer` accesses the enclosing object's scope from a nested body:
+
+```pkl theme={null}
+local prefix = "test"
+
+data {
+    local before = "\(prefix)-data"
+    inner {
+        name = outer.before
+    }
+}
+```
+
+```json theme={null}
+{ "data": { "inner": { "name": "test-data" } } }
+```
+
+## `super`
+
+Inside a child class, `super.field` reads the parent class's default for that field:
+
+```pkl theme={null}
+class Base  { greeting: String = "hello" }
+class Child extends Base {
+    greeting: String = super.greeting + " world"
+}
+
+x = new Child {}
+```
+
+```json theme={null}
+{ "x": { "greeting": "hello world" } }
+```
+
+## Type aliases
+
+`typealias` defines an alias for an existing type. When the alias resolves to a class, it acts as an alternative constructor:
+
+```pkl theme={null}
+class Server { host: String = "localhost"; port: Int = 8080 }
+
+typealias Srv = Server
+
+x = new Srv { port = 3000 }
+```
+
+```json theme={null}
+{ "x": { "host": "localhost", "port": 3000 } }
+```
+
+Type aliases can include constraints (evaluated with `is` / `as`):
+
+```pkl theme={null}
+typealias PositiveInt = Int(this > 0)
+
+a = 42 is PositiveInt   // true
+b = -1 is PositiveInt   // false
+```
+
+## Type constraints with `is` / `as`
+
+Use inline constraints with a predicate in parentheses after the type name. Inside the constraint `this` refers to the value being tested:
+
+```pkl theme={null}
+local x = 8080
+local s = "hi"
+
+a = x is Int(this >= 1 && this <= 65535)   // true
+b = s is String(length <= 5)               // true
+c = s is String(!isEmpty)                  // true
+```
+
+`as` casts the value or fails:
+
+```pkl theme={null}
+result = 42 as Int(this > 0)   // 42
+// -1 as Int(this > 0) fails: "cannot cast"
+```
+
+
+# Expressions
+Source: https://www.mintlify.com/jdx/pklr/language/expressions
+
+Operators, control flow, and lambdas in Pkl
+
+## Arithmetic
+
+| Operator | Name             | Example   | Result                                     |
+| -------- | ---------------- | --------- | ------------------------------------------ |
+| `+`      | addition         | `2 + 3`   | `5`                                        |
+| `-`      | subtraction      | `10 - 3`  | `7`                                        |
+| `*`      | multiplication   | `4 * 5`   | `20`                                       |
+| `/`      | division         | `10 / 3`  | `3` (integer when both operands are `Int`) |
+| `~/`     | integer division | `7 ~/ 2`  | `3`                                        |
+| `**`     | exponentiation   | `2 ** 10` | `1024`                                     |
+| `%`      | modulo           | `10 % 3`  | `1`                                        |
+
+```pkl theme={null}
+intDiv = 7 ~/ 2
+power  = 2 ** 10
+mod    = 10 % 3
+```
+
+```json theme={null}
+{ "intDiv": 3, "power": 1024, "mod": 1 }
+```
+
+Standard precedence applies: `**` binds tightest, then `*`/`/`/`~/`/`%`, then `+`/`-`. `**` is right-associative:
+
+```pkl theme={null}
+a = 2 + 3 * 4     // 14
+b = (2 + 3) * 4   // 20
+c = 2 ** 3 ** 2   // 512  (right-associative: 2 ** 9)
+```
+
+<Warning>
+  Integer division by zero (`1 / 0`, `7 ~/ 0`, `1 % 0`) is a runtime error. Integer exponentiation with a negative exponent (`2 ** -1`) is also an error; use float operands (`2.0 ** -1.0`) instead.
+</Warning>
+
+## Comparison
+
+```pkl theme={null}
+a = 1 == 1   // true
+b = 1 != 2   // true
+c = 1 < 2    // true
+d = 2 > 1    // true
+```
+
+All six comparison operators are supported: `==`, `!=`, `<`, `<=`, `>`, `>=`.
+
+## Logical
+
+```pkl theme={null}
+a = true && false   // false
+b = true || false   // true
+c = !false          // true
+```
+
+## Null-safe operators
+
+### `??` — null coalescing
+
+Returns the left side if it is not `null`; otherwise returns the right side:
+
+```pkl theme={null}
+a = "hello" ?? "default"
+b = null    ?? "default"
+```
+
+```json theme={null}
+{ "a": "hello", "b": "default" }
+```
+
+### `?.` — null-safe access
+
+Accesses a field only when the receiver is not `null`. Returns `null` if the receiver is `null`:
+
+```pkl theme={null}
+local x = null
+result = x?.name ?? "default"
+```
+
+```json theme={null}
+{ "result": "default" }
+```
+
+### `!!` — non-null assertion
+
+Asserts the value is not `null`. Fails with "non-null assertion failed" if it is:
+
+```pkl theme={null}
+local x = 42
+y = x!!   // 42
+```
+
+## Pipe operator `|>`
+
+`|>` passes a value as the sole argument to a single-parameter function:
+
+```pkl theme={null}
+local double = (x) -> x * 2
+local addOne = (x) -> x + 1
+
+result = 5 |> double |> addOne
+```
+
+```json theme={null}
+{ "result": 11 }
+```
+
+<Note>
+  The pipe operator only works with single-parameter lambdas. Using it with a multi-parameter function is a runtime error.
+</Note>
+
+## If-else expressions
+
+`if`/`else` is an expression, not a statement:
+
+```pkl theme={null}
+local n = 10
+x = if (n > 5) "big" else "small"
+```
+
+```json theme={null}
+{ "x": "big" }
+```
+
+## Let expressions
+
+`let` binds a name to a value within a scoped expression:
+
+```pkl theme={null}
+x = let (a = 1) let (b = 2) a + b
+```
+
+```json theme={null}
+{ "x": 3 }
+```
+
+## Lambda expressions
+
+Write lambdas as `(params) -> body`. Call them with `.apply(…)` or pass them to higher-order methods:
+
+```pkl theme={null}
+local double = (x) -> x * 2
+local add    = (a, b) -> a + b
+
+r1 = double.apply(5)
+r2 = add.apply(3, 4)
+```
+
+```json theme={null}
+{ "r1": 10, "r2": 7 }
+```
+
+Lambdas capture their enclosing scope (closure):
+
+```pkl theme={null}
+local multiplier = 3
+local mul        = (x) -> x * multiplier
+
+result = mul.apply(5)
+```
+
+```json theme={null}
+{ "result": 15 }
+```
+
+Lambdas are commonly used with list methods:
+
+```pkl theme={null}
+local items = List(1, 2, 3, 4, 5)
+
+doubled = items.map((n) -> n * 2)
+evens   = items.filter((n) -> n > 2)
+sum     = items.fold(0, (acc, n) -> acc + n)
+```
+
+```json theme={null}
+{
+  "doubled": [2, 4, 6, 8, 10],
+  "evens":   [3, 4, 5],
+  "sum":     15
+}
+```
+
+## `read()` and `read?()`
+
+`read("uri")` reads a resource and returns it as a string. `read?("uri")` returns `null` instead of failing when the resource is unavailable.
+
+```pkl theme={null}
+x = read("env:PKLR_TEST_VAR")
+```
+
+```json theme={null}
+{ "x": "hello_pklr" }
+```
+
+`read?` is useful for optional configuration:
+
+```pkl theme={null}
+host = read?("env:DEFINITELY_NOT_SET") ?? "localhost"
+```
+
+```json theme={null}
+{ "host": "localhost" }
+```
+
+Use `read()` inside string interpolation:
+
+```pkl theme={null}
+x = "hello \(read("env:PKLR_NAME"))"
+```
+
+## `is` / `as` type operators
+
+`expr is Type` checks whether the value matches the type:
+
+```pkl theme={null}
+local x = 42
+
+a = x is Int       // true
+b = x is Number    // true (Int is a subtype of Number)
+c = x is String    // false
+d = x is Any       // true
+```
+
+Nullable and union types:
+
+```pkl theme={null}
+local n = null
+
+a = n is Null      // true
+b = n is String?   // true
+c = n is String    // false
+
+local y = 42
+d = y is String|Int   // true
+```
+
+`expr as Type` returns the value if it matches or fails with "cannot cast":
+
+```pkl theme={null}
+result = 42 as Int      // 42
+// "hello" as Int fails: "cannot cast"
+
+local x = null
+safe = x as String?     // null — nullable cast never fails
+```
+
+### Constrained types
+
+Both `is` and `as` accept inline constraints. Inside a constraint, `this` refers to the value being tested and value-properties like `length` are in scope:
+
+```pkl theme={null}
+local x = 8080
+local s = "hi"
+
+a = x is Int(this >= 1 && this <= 65535)   // true
+b = s is String(length <= 5)               // true
+c = s is String(!isEmpty)                  // true
+```
+
+Type aliases can encapsulate constraints:
+
+```pkl theme={null}
+typealias PositiveInt = Int(this > 0)
+
+a = 42 is PositiveInt    // true
+b = -1 is PositiveInt    // false
+```
+
+
+# Objects and mappings
+Source: https://www.mintlify.com/jdx/pklr/language/objects-and-mappings
+
+Pkl objects, mappings, lists, and sets
+
+## Property assignment
+
+Assign named properties with `=` inside a block:
+
+```pkl theme={null}
+server {
+    host  = "localhost"
+    port  = 8080
+    debug = false
+}
+```
+
+```json theme={null}
+{
+  "server": { "host": "localhost", "port": 8080, "debug": false }
+}
+```
+
+## Nested objects
+
+Objects can nest arbitrarily:
+
+```pkl theme={null}
+outer {
+    inner {
+        value = 42
+    }
+}
+```
+
+```json theme={null}
+{ "outer": { "inner": { "value": 42 } } }
+```
+
+## Dynamic string keys
+
+Use bracket notation for keys that are not valid identifiers or are computed at runtime:
+
+```pkl theme={null}
+data {
+    ["my-key"] = "value"
+}
+```
+
+```json theme={null}
+{ "data": { "my-key": "value" } }
+```
+
+A bracket entry can have a nested body instead of a `=` value:
+
+```pkl theme={null}
+data {
+    ["my-key"] {
+        nested = true
+    }
+}
+```
+
+```json theme={null}
+{ "data": { "my-key": { "nested": true } } }
+```
+
+## `new Mapping {}`
+
+Use `new Mapping` to create an explicit mapping:
+
+```pkl theme={null}
+x = new Mapping {
+    ["a"] = 1
+    ["b"] = 2
+}
+```
+
+```json theme={null}
+{ "x": { "a": 1, "b": 2 } }
+```
+
+`Mapping` and `Listing` accept optional generic type parameters:
+
+```pkl theme={null}
+x = new Mapping<String, String> {
+    ["a"] = "hello"
+    ["b"] = "world"
+}
+```
+
+## Lists
+
+Create a list with `List()` or a `new Listing {}` body:
+
+```pkl theme={null}
+nums    = List(1, 2, 3)
+strings = new Listing {
+    "a"
+    "b"
+    "c"
+}
+```
+
+```json theme={null}
+{
+  "nums": [1, 2, 3],
+  "strings": ["a", "b", "c"]
+}
+```
+
+Concatenate two lists with `+`:
+
+```pkl theme={null}
+combined = List(1, 2) + List(3, 4)
+```
+
+```json theme={null}
+{ "combined": [1, 2, 3, 4] }
+```
+
+## Sets
+
+`Set()` deduplicates its arguments, preserving the order of first occurrence:
+
+```pkl theme={null}
+nums    = Set(1, 2, 3, 2, 1)
+letters = Set("b", "a", "c", "a")
+```
+
+```json theme={null}
+{
+  "nums": [1, 2, 3],
+  "letters": ["b", "a", "c"]
+}
+```
+
+<Note>
+  Sets serialize as JSON arrays. There is no dedicated JSON set type.
+</Note>
+
+## Spread operator
+
+Use `...expr` to merge all entries from another object or mapping into the current body:
+
+```pkl theme={null}
+local base = new Mapping {
+    ["a"] = 1
+    ["b"] = 2
+}
+
+x {
+    ...base
+    ["c"] = 3
+}
+```
+
+```json theme={null}
+{ "x": { "a": 1, "b": 2, "c": 3 } }
+```
+
+## Local variables
+
+`local` variables are scoped to the current module or object and are never written to the output:
+
+```pkl theme={null}
+local greeting = "hello"
+local message  = greeting + " world"
+
+x = message
+```
+
+```json theme={null}
+{ "x": "hello world" }
+```
+
+<Tip>
+  Use `local` for intermediate values. Use `hidden` when you want a property that belongs to an object's structure but should not appear in the serialized output.
+</Tip>
+
+## Object amendment
+
+Amend an existing object with `(base) { … }`. Properties in the body override matching keys; all others are inherited. Dependent properties are re-evaluated (late binding).
+
+```pkl theme={null}
+local base = new Mapping {
+    ["check"] = "echo hello"
+    ["fix"]   = "echo fix"
+}
+
+x = (base) {
+    ["check"] = "echo override"
+}
+```
+
+```json theme={null}
+{ "x": { "check": "echo override", "fix": "echo fix" } }
+```
+
+Late binding works for named properties too:
+
+```pkl theme={null}
+local base = new {
+    name     = "world"
+    greeting = "Hello, \(name)!"
+}
+
+result = (base) {
+    name = "Pkl"
+}
+```
+
+```json theme={null}
+{ "result": { "name": "Pkl", "greeting": "Hello, Pkl!" } }
+```
+
+
+# Primitives
+Source: https://www.mintlify.com/jdx/pklr/language/primitives
+
+Pkl primitive types supported by pklr
+
+## Integers
+
+Pkl integers are 64-bit signed values. You can write them in decimal, hexadecimal, octal, or binary. Use underscores anywhere as a readability separator.
+
+```pkl theme={null}
+decimal     = 42
+negative    = -7
+hex         = 0xFF
+octal       = 0o77
+binary      = 0b1010
+underscored = 1_000_000
+```
+
+```json theme={null}
+{
+  "decimal": 42,
+  "negative": -7,
+  "hex": 255,
+  "octal": 63,
+  "binary": 10,
+  "underscored": 1000000
+}
+```
+
+## Floats
+
+Floats support a decimal point and scientific notation (`e` exponent).
+
+```pkl theme={null}
+basic      = 1.5
+scientific = 1e3
+```
+
+```json theme={null}
+{
+  "basic": 1.5,
+  "scientific": 1000.0
+}
+```
+
+## NaN and Infinity
+
+Pkl provides `NaN`, `Infinity`, and `-Infinity` as built-in identifiers.
+
+```pkl theme={null}
+notANumber = NaN
+positive   = Infinity
+negative   = -Infinity
+```
+
+```json theme={null}
+{
+  "notANumber": null,
+  "positive": null,
+  "negative": null
+}
+```
+
+<Warning>
+  JSON has no representation for `NaN` or `Infinity`. pklr serializes all three as `null` when converting to JSON.
+</Warning>
+
+`NaN` follows IEEE 754 semantics — it is not equal to itself:
+
+```pkl theme={null}
+check = NaN == NaN
+```
+
+```json theme={null}
+{ "check": false }
+```
+
+## Booleans
+
+```pkl theme={null}
+yes = true
+no  = false
+```
+
+```json theme={null}
+{ "yes": true, "no": false }
+```
+
+## Null
+
+```pkl theme={null}
+x = null
+```
+
+```json theme={null}
+{ "x": null }
+```
+
+## Strings
+
+### Basic strings
+
+Strings are double-quoted and support standard escape sequences (`\n`, `\t`, `\\`, `\"`) and Unicode escapes (`\u{…}`).
+
+```pkl theme={null}
+greeting = "hello world"
+escaped  = "a\nb\tc"
+unicode  = "\u{26} \u{E9} \u{1F600}"
+```
+
+```json theme={null}
+{
+  "greeting": "hello world",
+  "escaped": "a\nb\tc",
+  "unicode": "& é 😀"
+}
+```
+
+<Warning>
+  Unicode escapes require curly braces: `\u{41}` is valid, `\u0041` is not.
+</Warning>
+
+### Multiline strings
+
+Triple-quoted strings (`"""…"""`) strip the indentation that aligns the closing `"""`.
+
+```pkl theme={null}
+x = """
+  hello
+  world
+  """
+```
+
+```json theme={null}
+{ "x": "hello\nworld\n" }
+```
+
+### String interpolation
+
+Embed any expression inside `\(…)`:
+
+```pkl theme={null}
+local name = "world"
+greeting   = "hello \(name)"
+math       = "2 + 2 = \(2 + 2)"
+```
+
+```json theme={null}
+{
+  "greeting": "hello world",
+  "math": "2 + 2 = 4"
+}
+```
+
+### String concatenation
+
+Use `+` to join strings:
+
+```pkl theme={null}
+full = "hello" + " " + "world"
+```
+
+```json theme={null}
+{ "full": "hello world" }
+```
+
+
+# Quickstart
+Source: https://www.mintlify.com/jdx/pklr/quickstart
+
+Evaluate your first Pkl file in minutes
+
+<Steps>
+  <Step title="Add pklr to Cargo.toml">
+    Open your project's `Cargo.toml` and add pklr and Tokio:
+
+    ```toml Cargo.toml theme={null}
+    [dependencies]
+    pklr  = "0.4"
+    tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+    ```
+  </Step>
+
+  <Step title="Create a Pkl config file">
+    Create a file called `config.pkl` in your project root:
+
+    ```pkl config.pkl theme={null}
+    host = "localhost"
+    port = 8080
+    tags = List("web", "api", "production")
+    database {
+      url      = "postgres://localhost/myapp"
+      poolSize = 10
+    }
+    ```
+  </Step>
+
+  <Step title="Evaluate the file from Rust">
+    In `src/main.rs`, call `eval_to_json` and print the result:
+
+    ```rust src/main.rs theme={null}
+    use pklr::eval_to_json;
+    use std::path::Path;
+
+    #[tokio::main]
+    async fn main() -> pklr::Result<()> {
+        let json = eval_to_json(Path::new("config.pkl")).await?;
+
+        println!("host: {}", json["host"]);
+        println!("port: {}", json["port"]);
+        println!("tags: {}", json["tags"]);
+        println!("db:   {}", json["database"]["url"]);
+
+        Ok(())
+    }
+    ```
+
+    Run it:
+
+    ```bash theme={null}
+    cargo run
+    ```
+  </Step>
+
+  <Step title="Check the output">
+    You should see:
+
+    ```
+    host: "localhost"
+    port: 8080
+    tags: ["web","api","production"]
+    db:   "postgres://localhost/myapp"
+    ```
+
+    The full JSON value from `eval_to_json` looks like this:
+
+    ```json theme={null}
+    {
+      "host": "localhost",
+      "port": 8080,
+      "tags": ["web", "api", "production"],
+      "database": {
+        "url": "postgres://localhost/myapp",
+        "poolSize": 10
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Handle errors">
+    `eval_to_json` returns `pklr::Result<serde_json::Value>`. The `?` operator propagates any parse or evaluation error. pklr errors include source context from [miette](https://crates.io/crates/miette), so they print with the relevant source snippet.
+
+    To handle errors explicitly:
+
+    ```rust theme={null}
+    match eval_to_json(Path::new("config.pkl")).await {
+        Ok(json) => println!("{}", json),
+        Err(e)   => eprintln!("failed to evaluate config: {e}"),
+    }
+    ```
+  </Step>
+</Steps>
+
+## Advanced: configure the evaluator
+
+For proxy support, custom CA certificates, or HTTP URL rewrites, use `eval_to_json_with_options` with an `EvalOptions` value.
+
+```rust theme={null}
+use pklr::{eval_to_json_with_options, EvalOptions};
+use std::path::Path;
+
+#[tokio::main]
+async fn main() -> pklr::Result<()> {
+    // Build a custom reqwest client — pklr re-exports reqwest so you don't
+    // need a separate dependency.
+    let client = pklr::reqwest::Client::builder()
+        .danger_accept_invalid_certs(false)
+        .build()
+        .unwrap();
+
+    let options = EvalOptions {
+        client: Some(client),
+        // Rewrite internal registry URLs — longest matching prefix wins.
+        http_rewrites: vec![
+            "https://registry.example.com=https://mirror.internal.example.com".to_string(),
+        ],
+    };
+
+    let json = eval_to_json_with_options(Path::new("config.pkl"), options).await?;
+    println!("{}", json);
+
+    Ok(())
+}
+```
+
+<Tip>
+  `pklr::reqwest` is a re-export of the `reqwest` crate. You can use it to build a custom `Client` without adding `reqwest` as a direct dependency in your `Cargo.toml`.
+</Tip>
+
+## Next steps
+
+<CardGroup>
+  <Card title="Installation" icon="box" href="/installation">
+    Dependency details, MSRV, and feature flags.
+  </Card>
+
+  <Card title="Evaluating files" icon="file" href="/guides/evaluating-files">
+    Full evaluation API and advanced usage.
+  </Card>
+
+  <Card title="Imports and amends" icon="link" href="/guides/imports-and-amends">
+    Resolve local file imports and module amendment.
+  </Card>
+
+  <Card title="Error handling" icon="triangle-alert" href="/guides/error-handling">
+    Work with pklr's error types and diagnostics.
+  </Card>
+</CardGroup>
+
+

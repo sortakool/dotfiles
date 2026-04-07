@@ -1,0 +1,28 @@
+# Starship
+
+## Docs
+
+- [Custom commands and hooks](https://www.mintlify.com/starship/starship/advanced/custom-commands.md): Run code before the prompt renders, configure continuation prompts, add a right-side prompt, and switch between prompt profiles.
+- [Performance tuning](https://www.mintlify.com/starship/starship/advanced/performance.md): Diagnose slow prompts and configure timeouts, disabled modules, and logging to keep Starship fast.
+- [Transient prompt](https://www.mintlify.com/starship/starship/advanced/transient-prompt.md): Replace previous prompts with a simpler version after each command, keeping your scrollback clean.
+- [Custom modules](https://www.mintlify.com/starship/starship/config/custom-modules.md): Create your own prompt modules that run shell commands, detect files, and display any information you want.
+- [Format strings](https://www.mintlify.com/starship/starship/config/format-strings.md): Understand how Starship's format string syntax works—variables, text groups, style strings, conditional rendering, and TOML string types.
+- [Built-in modules](https://www.mintlify.com/starship/starship/config/modules.md): Browse Starship's 100+ built-in modules organized by category, with configuration examples and common options.
+- [Configuration overview](https://www.mintlify.com/starship/starship/config/overview.md): Learn where Starship stores its config file, how to create it, and the top-level options that control global prompt behavior.
+- [FAQ](https://www.mintlify.com/starship/starship/faq.md): Answers to common questions about Starship configuration, debugging, and compatibility.
+- [Installation](https://www.mintlify.com/starship/starship/installation.md): Install Starship on Linux, macOS, Windows, Android, or BSD, then configure your shell.
+- [Introduction](https://www.mintlify.com/starship/starship/introduction.md): Starship is the minimal, blazing-fast, and infinitely customizable prompt for any shell.
+- [Minimal presets](https://www.mintlify.com/starship/starship/presets/minimal.md): Starship presets that reduce visual clutter: plain text, no runtime versions, no empty icons, and Pure-style prompts.
+- [Nerd Font Symbols preset](https://www.mintlify.com/starship/starship/presets/nerd-font.md): Apply rich Nerd Font icons to every Starship module in one command.
+- [No Nerd Font preset](https://www.mintlify.com/starship/starship/presets/no-nerd-font.md): A Starship preset that uses only emoji and powerline symbols — no Nerd Font required.
+- [Presets](https://www.mintlify.com/starship/starship/presets/overview.md): Pre-built Starship configurations you can apply in one command.
+- [Quickstart](https://www.mintlify.com/starship/starship/quickstart.md): Get a working Starship prompt running in minutes.
+- [CLI reference](https://www.mintlify.com/starship/starship/reference/commands.md): Complete reference for all Starship commands and flags.
+- [Environment variables](https://www.mintlify.com/starship/starship/reference/environment-variables.md): Environment variables that control Starship's behavior, config location, cache, and logging.
+
+## OpenAPI Specs
+
+- [openapi](https://www.mintlify.com/starship/starship/api-reference/openapi.json)
+
+
+Built with [Mintlify](https://mintlify.com).

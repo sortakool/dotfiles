@@ -1,0 +1,29 @@
+# mcp2cli
+
+## Docs
+
+- [Authentication](https://www.mintlify.com/knowsuchagency/mcp2cli/features/authentication.md): Static headers, OAuth PKCE, and client credentials — all modes supported
+- [Bake mode](https://www.mintlify.com/knowsuchagency/mcp2cli/features/bake-mode.md): Save connection settings as named tools — no more repeated flags
+- [Caching](https://www.mintlify.com/knowsuchagency/mcp2cli/features/caching.md): Specs and tool lists are cached locally to speed up repeated calls
+- [Output control](https://www.mintlify.com/knowsuchagency/mcp2cli/features/output-control.md): Filter, format, and truncate output for humans and LLM agents
+- [Usage tracking](https://www.mintlify.com/knowsuchagency/mcp2cli/features/usage-tracking.md): mcp2cli tracks tool invocations to rank --list output and reduce tokens
+- [AI agent skill](https://www.mintlify.com/knowsuchagency/mcp2cli/guides/ai-agent-skill.md): Teach Claude Code, Cursor, and Codex to use mcp2cli with a single install command
+- [Secrets management](https://www.mintlify.com/knowsuchagency/mcp2cli/guides/secrets-management.md): Pass credentials securely using env: and file: prefixes
+- [Token efficiency](https://www.mintlify.com/knowsuchagency/mcp2cli/guides/token-efficiency.md): How mcp2cli saves 96–99% of tokens wasted on tool schemas
+- [Installation](https://www.mintlify.com/knowsuchagency/mcp2cli/installation.md): Install mcp2cli using uv or run it directly with uvx
+- [Introduction](https://www.mintlify.com/knowsuchagency/mcp2cli/introduction.md): What mcp2cli is and why it exists
+- [GraphQL](https://www.mintlify.com/knowsuchagency/mcp2cli/modes/graphql.md): Introspect and call any GraphQL endpoint — queries and mutations
+- [MCP HTTP/SSE](https://www.mintlify.com/knowsuchagency/mcp2cli/modes/mcp-http.md): Connect to MCP servers over HTTP or Server-Sent Events
+- [MCP stdio](https://www.mintlify.com/knowsuchagency/mcp2cli/modes/mcp-stdio.md): Spawn and talk to local MCP servers over stdin/stdout
+- [OpenAPI](https://www.mintlify.com/knowsuchagency/mcp2cli/modes/openapi.md): Turn any OpenAPI 3.x spec into a CLI — local or remote, JSON or YAML
+- [Quickstart](https://www.mintlify.com/knowsuchagency/mcp2cli/quickstart.md): Call your first API in under 60 seconds
+- [Bake commands](https://www.mintlify.com/knowsuchagency/mcp2cli/reference/bake-commands.md): Save and manage named connection configurations
+- [Environment variables](https://www.mintlify.com/knowsuchagency/mcp2cli/reference/environment-variables.md): Environment variables that control mcp2cli behavior
+- [Global options](https://www.mintlify.com/knowsuchagency/mcp2cli/reference/global-options.md): All global flags for mcp2cli — source selection, auth, output, and more
+
+## OpenAPI Specs
+
+- [openapi](https://www.mintlify.com/knowsuchagency/mcp2cli/api-reference/openapi.json)
+
+
+Built with [Mintlify](https://mintlify.com).
