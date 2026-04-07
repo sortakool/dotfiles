@@ -96,6 +96,16 @@ jobs:
       - name: Check for outdated tools
         run: mise outdated || true
 
+      - name: Reshim mise tools
+        # Explicit reshim to handle the cache-restored-from-fallback case:
+        # when mise.lock changes (e.g., a new tool like pipx:mcp2cli is added)
+        # the exact cache key misses and restore-keys hydrates an older cache.
+        # In that state mise does not re-run install, so the postinstall
+        # hook's reshim does not fire, and `mise doctor` reports stale
+        # shims. Running reshim explicitly here resynchronises the shim
+        # index against the actual installs/ directory.
+        run: mise reshim
+
       - name: Run mise doctor
         run: |
           mise doctor
