@@ -44,8 +44,9 @@ were already in the dispatch).
 | devcontainers/spec      | 200      | 307 | 2026-04-06 | ok     |
 | devcontainers/images    | 200      | 307 | 2026-04-06 | ok     |
 | knowsuchagency/mcp2cli  | 200      | 307 | 2026-04-06 | ok     |
+| yeachan-heo/oh-my-claudecode | 200 | 307 | 2026-04-06 | ok     |
 
-**Row count: 15.** Spike confirmed (via `curl -L`) that the 307 from
+**Row count: 16.** Spike confirmed (via `curl -L`) that the 307 from
 `mintlify.com/<repo>/mcp` redirects to `www.mintlify.com/<repo>/mcp`
 with a 200 final response. `mcp2cli` handles the redirect
 transparently — the 307 column is informational, not a defect.
@@ -136,3 +137,4 @@ for the canonical script) whenever:
 - [devcontainers/spec](https://github.com/devcontainers/spec) — probed for mintlify endpoint status.
 - [devcontainers/images](https://github.com/devcontainers/images) — probed for mintlify endpoint status.
 - [knowsuchagency/mcp2cli](https://github.com/knowsuchagency/mcp2cli) — probed for mintlify endpoint status; upstream project for the mcp2cli reference skill.
+- [yeachan-heo/oh-my-claudecode](https://github.com/yeachan-heo/oh-my-claudecode) — probed for mintlify endpoint status; upstream project for the OMC plugin powering this repo's workflow.
