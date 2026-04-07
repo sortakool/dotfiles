@@ -59,7 +59,12 @@ hooks {
       // Covers: ruff `noqa`, mypy `type: ignore`, ty `ty: ignore`, pylint, bandit `nosec`
       ["no_lint_skip"] {
         glob = List("python/src/**/*.py", "tests/**/*.py")
-        check = "! grep -rn 'noqa\\|type: ignore\\|ty: ignore\\|pylint: disable\\|nosec' python/src/ tests/"
+        // --include='*.py' aligns the check with the trigger glob.
+        // Without it, `grep -rn` matches markdown docs (e.g.,
+        // tests/AGENTS.md) that legitimately quote the suppression
+        // tokens while documenting the policy. The intent is to
+        // catch suppressions in Python source, not in prose.
+        check = "! grep -rn --include='*.py' 'noqa\\|type: ignore\\|ty: ignore\\|pylint: disable\\|nosec' python/src/ tests/"
       }
 
       // --- Dockerfile & Bake ---
