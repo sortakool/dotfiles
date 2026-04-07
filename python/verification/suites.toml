@@ -98,13 +98,13 @@ paths = [".devcontainer/Dockerfile"]
 tokens = ["openssh-server"]
 
 [[suite]]
-name = "build.openssh-in-overlay"
-description = "openssh-server must be installed in host-user overlay"
+name = "build.sshd-feature-in-devcontainer"
+description = "SSH must be wired via official ghcr.io/devcontainers/features/sshd feature in devcontainer.json (replaced overlay openssh-server install in PR-2 commit B)"
 category = "build"
 check_type = "static"
 handler = "require_tokens"
-paths = [".devcontainer/Dockerfile.host-user"]
-tokens = ["openssh-server"]
+paths = [".devcontainer/devcontainer.json"]
+tokens = ["ghcr.io/devcontainers/features/sshd"]
 
 [[suite]]
 name = "build.uv-link-mode-not-global"
@@ -154,23 +154,25 @@ tokens = [".local/share/mise/shims"]
 
 [[suite]]
 name = "build.no-custom-cargo-home"
-description = "Base image should rely on default cargo locations instead of custom CARGO_HOME"
+description = "Base image must not pin standard CARGO_HOME (runtime users get ~/.cargo via named volume per rust cookbook). MISE_CARGO_HOME for build-time isolation is allowed."
 category = "build"
 check_type = "static"
 handler = "forbid_tokens"
 paths = [".devcontainer/Dockerfile"]
-tokens = ["CARGO_HOME="]
-allowlist = ["CARGO_HOME=/opt/cargo"]
+# Leading space anchors the token to a fresh ENV line, so MISE_CARGO_HOME=
+# (preceded by `MISE_`, not whitespace) does NOT false-positive.
+tokens = [" CARGO_HOME="]
 
 [[suite]]
 name = "build.no-custom-rustup-home"
-description = "Base image should rely on default rustup locations instead of custom RUSTUP_HOME"
+description = "Base image must not pin standard RUSTUP_HOME (runtime users get ~/.rustup via named volume per rust cookbook). MISE_RUSTUP_HOME for build-time isolation is allowed."
 category = "build"
 check_type = "static"
 handler = "forbid_tokens"
 paths = [".devcontainer/Dockerfile"]
-tokens = ["RUSTUP_HOME="]
-allowlist = ["RUSTUP_HOME=/opt/rustup"]
+# Leading space anchors the token to a fresh ENV line, so MISE_RUSTUP_HOME=
+# (preceded by `MISE_`, not whitespace) does NOT false-positive.
+tokens = [" RUSTUP_HOME="]
 
 [[suite]]
 name = "build.no-custom-gopath"

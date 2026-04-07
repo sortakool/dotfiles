@@ -1,5 +1,32 @@
+// Two-layer build hierarchy:
+//
+//   .devcontainer/Dockerfile            ← base image (CI-only per
+//                                         feedback_base_image_ci_only.md).
+//                                         Published to
+//                                         ghcr.io/ray-manaloto/dotfiles-devcontainer:dev
+//                                         by .github/workflows/ci.yml on
+//                                         merges to main. Never build
+//                                         locally.
+//        │
+//        ▼ (FROM ${BASE_IMAGE})
+//
+//   .devcontainer/Dockerfile.host-user  ← thin overlay (local build on
+//                                         every `mise run up`). Adds
+//                                         host-user rename + home staging.
+//                                         ≤89 lines enforced by
+//                                         hk.pkl:dockerfile_host_user_thin_overlay.
+//
+// BASE_IMAGE default comes from mise.toml [tasks.up].env. Override
+// per-clone via mise.local.toml (see mise.local.toml.example).
+//
+// DEVCONTAINER_SSH_PORT default also comes from mise.toml [tasks.up].env
+// (default 4444). Override per-clone via mise.local.toml. Only the
+// host-side port mapping is dynamic; the internal sshd port stays
+// literal 4444 (spec Constraint 12) so the mise-user / cargo-user /
+// rustup-user named volumes (which do NOT include port in their
+// names) survive port-collision recovery without losing user installs.
 {
-  "name": "dotfiles-refactor-fresh",
+  "name": "dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-${localEnv:DEVCONTAINER_SSH_PORT}",
   "build": {
     "dockerfile": "Dockerfile.host-user",
     "options": [
@@ -10,6 +37,10 @@
       "BASE_IMAGE": "${localEnv:BASE_IMAGE}"
     }
   },
+  "runArgs": [
+    "--name",
+    "dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-${localEnv:DEVCONTAINER_SSH_PORT}"
+  ],
   "remoteUser": "${localEnv:USER}",
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},type=bind,consistency=cached",
@@ -18,7 +49,10 @@
     "source=${localEnv:HOME}/.claude,target=/home/${localEnv:USER}/.claude,type=bind",
     "source=${localEnv:HOME}/.codex,target=/home/${localEnv:USER}/.codex,type=bind",
     "source=${localEnv:HOME}/.gemini,target=/home/${localEnv:USER}/.gemini,type=bind",
-    "source=${localEnv:HOME}/.local/state/dotfiles,target=/tmp/dotfiles-host-state,type=bind"
+    "source=${localEnv:HOME}/.local/state/dotfiles,target=/tmp/dotfiles-host-state,type=bind",
+    "source=dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-mise-user,target=/home/${localEnv:USER}/.local/share/mise,type=volume",
+    "source=dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-cargo-user,target=/home/${localEnv:USER}/.cargo,type=volume",
+    "source=dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-rustup-user,target=/home/${localEnv:USER}/.rustup,type=volume"
   ],
   "containerEnv": {
     "MISE_ARCH": "x64",
@@ -28,7 +62,19 @@
   },
   "forwardAgent": true,
   "updateRemoteUserUID": false,
-  "postCreateCommand": "./install.sh",
+  "init": true,
+  "initializeCommand": "mkdir -p ~/.ssh ~/.claude ~/.codex ~/.gemini ~/.local/state/dotfiles && touch ~/.ssh/config ~/.ssh/known_hosts ~/.ssh/authorized_keys",
+  "features": {
+    "ghcr.io/devcontainers/features/sshd:1": {
+      "username": "${localEnv:USER}",
+      "port": "4444",
+      "startNow": true
+    }
+  },
+  "appPort": ["${localEnv:DEVCONTAINER_SSH_PORT}:4444"],
+  "forwardPorts": [4444],
+  "onCreateCommand": "chezmoi init --apply --source=/workspaces/${localWorkspaceFolderBasename} --no-tty --force && sudo chown -R ${localEnv:USER}:${localEnv:USER} /home/${localEnv:USER}/.local/share/mise /home/${localEnv:USER}/.cargo /home/${localEnv:USER}/.rustup",
+  "postCreateCommand": "scripts/devcontainer-smoke.sh",
   "customizations": {
     "vscode": {
       "extensions": [

@@ -26,7 +26,6 @@ the official `@devcontainers/cli` (pinned in `mise.toml`).
 - `.devcontainer/Dockerfile` — Multi-stage devcontainer (mise bootstrap, known cosmetic warnings documented in comment block)
 - `.devcontainer/mise-system.toml` — Dedicated Docker system-wide mise config (installed to `/etc/mise/config.toml`); not derived from chezmoi templates; includes postinstall hook for Claude Code CLI
 - `docker-bake.hcl` — BuildKit bake config (dev, cpp, dev-load, cpp-load targets); `IMAGE_REF` consolidates registry+image; `docker-metadata-action` target for CI tag inheritance; secret mount in `_common`; `validate` (dry-run) and `help` (list targets) bake targets
-- `install.sh` — Single bootstrap entry point used by Dockerfile
 - `home/` — Chezmoi-managed dotfiles (shell, git, editor config). Multi-machine differences use the **built-in `chezmoi.os` fact** (`darwin` = Mac host, `linux` = devcontainer) per the canonical chezmoi pattern, NOT custom env-var detection. See `.claude/rules/use-tool-builtins.md`. `chezmoi apply` on the Mac host is blocked by `.claude/settings.json` until Mac integration ships
 - `python/` — Python package (`dotfiles_setup`) for orchestration; requires Python 3.14; `[tool.ty]` section for ty type checker; `DotfilesConfig(BaseSettings)` centralizes 16 env vars via Pydantic config DI
 - `hk.pkl` — Git hook config (pre-commit via hk v1.41.0); imports `hk-common.pkl` shared checks; includes `no_lint_skip` step enforcing zero inline suppressions
@@ -82,3 +81,137 @@ See `rules/` under the Claude config directory for enforced policies:
 - `clean-git-state.md` — Verify git state before validation
 - `notepad-enforcement.md` — Agents write findings to notepad during work
 - `omc-directory-conventions.md` — Use standard `.omc/` paths, no ad-hoc directories
+
+## Devcontainer Lifecycle
+
+The devcontainer uses declarative lifecycle hooks (per containers.dev spec),
+not a bootstrap shell wrapper:
+
+- `initializeCommand` (host side): pre-creates `~/.ssh`, `~/.claude`, etc.
+  and touches `~/.ssh/{config,known_hosts,authorized_keys}` so bind mounts
+  land cleanly on first create.
+- `onCreateCommand` (inside container, once): runs `chezmoi init --apply`
+  against `/workspaces/${localWorkspaceFolderBasename}`, then chowns the
+  mise-user, cargo-user, and rustup-user named volume mountpoints to
+  `${USER}:${USER}`.
+- `postCreateCommand` (inside container, once): runs
+  `scripts/devcontainer-smoke.sh` tier 1/2/3 checks. Exit 0 required.
+- No `postStartCommand`. SSH startup is handled by the `sshd` feature's
+  `startNow: true`, not by a bespoke start hook.
+
+## Devcontainer Dynamic Naming
+
+Container name and the named volumes are templated so multiple projects
+on this Mac can run devcontainers side-by-side:
+
+- Container name: `dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-${localEnv:DEVCONTAINER_SSH_PORT}`
+- mise-user volume: `dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-mise-user`
+- cargo-user volume: `dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-cargo-user`
+- rustup-user volume: `dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-rustup-user`
+- Volume names intentionally have **no port** so port-collision recovery
+  doesn't lose user mise/cargo/rustup installs.
+- Host-side SSH port: `${localEnv:DEVCONTAINER_SSH_PORT}` (default 4444).
+- Internal sshd port: literal 4444 inside the container, not templated.
+
+## Devcontainer Override Model
+
+- `mise.toml [tasks.up].env` holds the defaults: `BASE_IMAGE`,
+  `DOCKER_DEFAULT_PLATFORM=linux/amd64`, `DEVCONTAINER_SSH_PORT=4444`.
+- `mise.local.toml` (gitignored, see `mise.local.toml.example`) overrides
+  per-clone. Typical use: bump `DEVCONTAINER_SSH_PORT` on port collision.
+- No `.env.devcontainer`, no `.miserc.toml` multi-env layering. Cloud/GHA
+  portability is an explicitly deferred future spec.
+
+## Devcontainer IDE workflow
+
+Bringing the container up is always a terminal action:
+
+```bash
+mise run up     # start (binds SSH on ${DEVCONTAINER_SSH_PORT:-4444})
+mise run down   # stop
+```
+
+Attaching an IDE to the running container:
+
+- **VS Code:** Command Palette → `Dev Containers: Attach to Running
+  Container…` → pick the templated container name.
+- **CLion:** `Remote Development` → `Dev Containers` → `Connect to Dev
+  Container` → select the running container. **CLion caveat:** the first
+  attach invokes `initializeCommand`, so launch CLion from a terminal
+  (`open -a CLion` from shell, or `clion .` via the JetBrains Toolbox
+  shell wrapper) to ensure it inherits `DEVCONTAINER_SSH_PORT`.
+
+Never use `Reopen in Container` (VS Code) or the "create new dev
+container" CLion flow from a dock-launched IDE. macOS GUI processes
+don't inherit terminal env, so `${localEnv:DEVCONTAINER_SSH_PORT}` is
+empty, devcontainer-spec substitution fails with a port-parse error
+on `appPort: [":4444"]`, and the container refuses to start.
+`initializeCommand` cannot fix this — spec substitution runs before
+any lifecycle command.
+
+The `mise run up` + attach-to-running pattern preserves per-worktree
+container naming (Constraint 10), per-worktree SSH ports (Constraint 12),
+and the named mise-user / cargo-user / rustup-user volumes (Constraint 11)
+without regression.
+
+## Devcontainer Mise Cookbook Paths
+
+The base image (`.devcontainer/Dockerfile`) follows the mise docker
+cookbook canonical layout:
+
+- System mise install: `/usr/local/share/mise/installs/` (baked by
+  `mise install` at image build time, with `MISE_DATA_DIR` and
+  `MISE_CONFIG_DIR` both set so mise discovers the system config and
+  writes to the system path — see PRs #58/#59/#60/#61 for the rot the
+  cookbook prevents).
+- System mise config: `/usr/local/share/mise/config.toml` (copied from
+  `.devcontainer/mise-system.toml`).
+- System cargo home: `/usr/local/share/cargo` (via `MISE_CARGO_HOME`
+  per the rust cookbook at <https://mise.jdx.dev/lang/rust.html>).
+- System rustup home: `/usr/local/share/rustup` (via `MISE_RUSTUP_HOME`).
+- User mise install: `/home/${USER}/.local/share/mise/installs/` on a
+  named Docker volume, shadows the system install at runtime.
+- User cargo + rustup: `/home/${USER}/.cargo` + `/home/${USER}/.rustup`
+  on named Docker volumes (standard `CARGO_HOME` / `RUSTUP_HOME`
+  intentionally unset at runtime so users get XDG defaults).
+- `mise run stop && mise run up` preserves user installs via the volumes.
+
+No custom `/opt/mise`, `/opt/cargo`, or `/opt/rustup` paths — all removed
+in the cookbook refactor.
+
+## Devcontainer Tool Persistence Matrix
+
+| Tool family | System install (baked) | User overlay (named volume) | How to add a new system tool |
+|---|---|---|---|
+| mise tools | `/usr/local/share/mise/installs/` | `~/.local/share/mise/installs/` (mise-user) | Add to `.devcontainer/mise-system.toml` `[tools]` + base image PR |
+| cargo crates | `/usr/local/share/cargo/{bin,registry}` | `~/.cargo/{bin,registry}` (cargo-user) | Bake via mise rust + base image PR; runtime users `cargo install` themselves |
+| rust toolchains | `/usr/local/share/rustup/toolchains/` | `~/.rustup/toolchains/` (rustup-user) | Add to mise-system.toml `rust = "..."`; runtime users `rustup install` themselves |
+| pipx tools | `/usr/local/share/mise/installs/pipx-*` | shadowed by user's mise overlay | Add `"pipx:<name>"` to mise-system.toml |
+| apt packages | `/usr/{bin,lib,share}/...` | **none — not persistable** | Add to `.devcontainer/Dockerfile` apt list + base image PR |
+
+**Apt packages have no runtime persistence story.** If a system package
+is needed, it must be added to the base `.devcontainer/Dockerfile` apt
+list and shipped via a base-image PR. Do NOT rely on `sudo apt install`
+at runtime — it works but the install is lost on container recreate.
+This is the standard devcontainer idiom, not a project-specific gap.
+
+## Devcontainer PR Blast Radius (reference for future reverts)
+
+The devcontainer lifecycle restoration shipped as PR-1 (#58 + hotfixes
+#59/#60/#61) followed by PR-2 (this PR). Within PR-2 the commits are:
+
+- A: imperative bootstrap script → declarative onCreateCommand chezmoi (no base image change)
+- B: sshd feature replaces apt block (overlay only, 79→72)
+- C: dynamic naming + mise-user volume + chown (overlay 72→73)
+- D: init/initializeCommand/postCreateCommand smoke (overlay 73)
+- F: rust cookbook + cargo/rustup volumes (BASE IMAGE change, overlay 73→75)
+- G: two-layer build hierarchy comment (overlay 75)
+- E: this docs append (no code change)
+
+Commit F is the only PR-2 commit that mutates the published `:dev`
+ghcr base image. Commits A/B/C/D/G/E affect only local devcontainer
+wiring, the thin host-user overlay (never published), or docs. If a
+post-merge revert is needed for everything except the rust cookbook,
+`git revert <shaA>..<shaD>` is safe and leaves F's base image change
+intact. If F itself needs revert, that triggers another `:dev`
+republish on merge (same blast radius as PR-1's hotfix cycle).

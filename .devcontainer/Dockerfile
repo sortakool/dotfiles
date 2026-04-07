@@ -30,13 +30,22 @@ ARG MISE_VERSION
 #     ~/.local/share/mise (devcontainer feature mount), so the system
 #     path remains the canonical baked location while users get mutable
 #     overlays at runtime.
+#
+# Rust cookbook (https://mise.jdx.dev/lang/rust.html):
+#   - MISE_CARGO_HOME / MISE_RUSTUP_HOME are mise-specific build-time
+#     vars that isolate mise's bundled rust install from the standard
+#     CARGO_HOME / RUSTUP_HOME a user might set at runtime.
+#   - Standard CARGO_HOME / RUSTUP_HOME are intentionally UNSET so
+#     runtime users fall back to ~/.cargo / ~/.rustup defaults; PR-2
+#     mounts named volumes there for per-clone persistence and
+#     cookbook shadow-priority semantics.
 ENV MISE_DATA_DIR=/usr/local/share/mise \
     MISE_CONFIG_DIR=/usr/local/share/mise \
     MISE_INSTALL_PATH=/usr/local/bin/mise \
     MISE_TRUSTED_CONFIG_PATHS=/usr/local/share/mise:/workspaces/dotfiles \
-    CARGO_HOME=/opt/cargo \
-    RUSTUP_HOME=/opt/rustup \
-    PATH="/usr/local/bin:/usr/local/share/mise/shims:/opt/cargo/bin:${PATH}"
+    MISE_CARGO_HOME=/usr/local/share/cargo \
+    MISE_RUSTUP_HOME=/usr/local/share/rustup \
+    PATH="/usr/local/bin:/usr/local/share/mise/shims:/usr/local/share/cargo/bin:${PATH}"
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -68,9 +77,9 @@ RUN curl -fsSL "https://mise.jdx.dev/${MISE_VERSION}/mise-${MISE_VERSION}-linux-
 
 # System-wide mise config and data structure (cookbook canonical paths).
 RUN groupadd --gid 2000 mise && \
-    mkdir -p /usr/local/share/mise /opt/cargo /opt/rustup && \
-    chown -R :mise /usr/local/share/mise /opt/cargo /opt/rustup && \
-    chmod -R 775 /usr/local/share/mise /opt/cargo /opt/rustup
+    mkdir -p /usr/local/share/mise /usr/local/share/cargo /usr/local/share/rustup && \
+    chown -R :mise /usr/local/share/mise /usr/local/share/cargo /usr/local/share/rustup && \
+    chmod -R 775 /usr/local/share/mise /usr/local/share/cargo /usr/local/share/rustup
 
 # Copy dedicated system config — no chezmoi dependency, no sed stripping
 COPY .devcontainer/mise-system.toml /usr/local/share/mise/config.toml
@@ -104,7 +113,9 @@ RUN --mount=type=cache,id=mise-cache,target=/usr/local/share/mise/cache,sharing=
       export MISE_GITHUB_TOKEN="$GITHUB_TOKEN"; \
     fi && \
     mise install -y && \
-    chmod -R 777 /usr/local/share/mise /opt/cargo /opt/rustup
+    test -d /usr/local/share/cargo/bin || { echo "ERROR: MISE_CARGO_HOME not honored — /usr/local/share/cargo/bin missing after mise install (rust cookbook regression)"; exit 1; } && \
+    test -d /usr/local/share/rustup/toolchains || { echo "ERROR: MISE_RUSTUP_HOME not honored — /usr/local/share/rustup/toolchains missing after mise install (rust cookbook regression)"; exit 1; } && \
+    chmod -R 777 /usr/local/share/mise /usr/local/share/cargo /usr/local/share/rustup
 
 # Reshim to ensure all shims are present (aqua tools may include doc-file
 # shims like LICENSE, README — these are harmless and must not be deleted
@@ -112,7 +123,7 @@ RUN --mount=type=cache,id=mise-cache,target=/usr/local/share/mise/cache,sharing=
 RUN mise reshim -f
 
 # Final global permissions check
-RUN chmod -R 777 /usr/local/share/mise /opt/cargo /opt/rustup
+RUN chmod -R 777 /usr/local/share/mise /usr/local/share/cargo /usr/local/share/rustup
 
 # Copy image-specific hk config + shared checks for smoke-test validation.
 # hk-image.pkl imports hk-common.pkl — both must be in /etc/hk/ for pkl
