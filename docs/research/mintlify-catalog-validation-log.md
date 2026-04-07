@@ -42,6 +42,31 @@ to prove the protocol endpoint actually serves query results.
 
 ---
 
+## Headline conclusion
+
+**`mcp2cli` is not a useful access path for mintlify-hosted per-repo
+docs.** Probe evidence (below) demonstrates three independent failure
+modes that together eliminate every `mcp2cli`-against-mintlify
+invocation from the preference chain:
+
+1. **Per-repo `/mcp` URLs are GET-only descriptors**, not live MCP
+   servers. POST returns 404.
+2. **The central MCP at `https://mintlify.com/docs/mcp` is a live
+   MCP server, but its scope is Mintlify's own platform docs only**
+   (how to configure a mintlify site, how to write mdx, how auth
+   works). It does not search per-repo customer sites like `jdx/mise`
+   or `devcontainers/cli`. Verified by real queries — see "Finding
+   #4" below.
+3. **The only reliable mintlify-per-repo access paths are `curl
+   llms.txt` and `curl <page>.md`.** These are plain HTTP GETs with
+   no `mcp2cli` involvement.
+
+The `mintlify` skill file's earlier value proposition — "fuzzy search
+across all mintlify-hosted docs via mcp2cli" — **does not hold**.
+The skill should be demoted to a `curl llms.txt` + `curl .md` how-to,
+with `mcp2cli` mentioned only as an option for Mintlify's own
+platform docs (rarely useful in this repo).
+
 ## Headline findings (apply to every per-repo entry)
 
 **All 16 per-repo sites show identical behavior.** Rather than repeat
@@ -59,34 +84,74 @@ sha256). The common behavior is:
   - Streamable transport → `mcp.shared.exceptions.McpError: Session terminated`
   - SSE fallback → `httpx.HTTPStatusError: Client error '404 Not Found' for url 'https://www.mintlify.com/<repo>/mcp'`
 
-**Why the per-repo MCP protocol endpoint is unreachable:** a real
-`search-mintlify` query against the central MCP (see "Central Mintlify
-MCP" below) returned Mintlify's own **Feature availability** docs
-page, which states verbatim:
+**Why the per-repo MCP protocol endpoint is unreachable** _(revised
+2026-04-07 after user pushback on the "auth-gating" hypothesis — the
+original quote applied only to private/paid sites, not to public
+repos like `jdx/mise`)_:
 
-> **MCP server:** Full support / **Requires authentication to
-> connect** / Available without authentication for public pages and
-> with authentication for protected pages
+The per-repo `/mcp` URL is a **GET-only descriptor endpoint**, not a
+live MCP server. Evidence:
 
-We do not pass credentials on any of the 16 probes, so the per-repo
-protocol endpoints all reject the connection. The `/mcp` descriptor
-URL stays public (that's how we retrieved tool names), but the
-live MCP server behind it is auth-gated. The central MCP at
-`https://mintlify.com/docs/mcp` is the one public MCP server we have.
+- `curl GET https://www.mintlify.com/jdx/mise/mcp` → HTTP 200 with the
+  JSON descriptor body (tool schemas).
+- `curl -X POST ... https://www.mintlify.com/jdx/mise/mcp` with a
+  proper MCP `initialize` JSON-RPC body and
+  `Accept: application/json, text/event-stream` → HTTP 404 with
+  plain-text `Not found` (9 bytes). Verbose verification:
+  `cf-ray` + `x-vercel-id` confirm the request hit Mintlify's
+  infrastructure, and `x-matched-path: /_mintlify/mcp/[subdomain]/[transport]`
+  confirms Next.js matched a route — it just rejected POST. Same URL,
+  different HTTP method, different handler, different status code.
+- The central MCP `https://mintlify.com/docs/mcp` DOES accept POST:
+  the exact same initialize body returns an SSE event stream with
+  the full tool list.
 
-**Tool-name convention mismatch (skill-file bug caught by this log):**
+So per-repo `/mcp` URLs are **advertisements of tool schemas**
+(descriptor-only), not live protocol endpoints. The single central
+MCP at `https://mintlify.com/docs/mcp` is the only live MCP server
+exposed by Mintlify, and it serves queries across all public sites
+via `search-mintlify`/`get-page-mintlify`. Per-repo MCP protocol
+endpoints do not exist as separately addressable servers.
 
-- **Central MCP** (`https://mintlify.com/docs/mcp`) uses **hyphenated**
-  tool names: `search-mintlify`, `get-page-mintlify`.
-- **Per-repo MCP descriptors** (`https://mintlify.com/<repo>/mcp`)
-  use **underscored** tool names: `search_mise`, `get_page_pklr`,
-  `search_dev_container_features`, etc.
+The earlier `search-mintlify` query against the central MCP *did*
+return Mintlify's `deploy/authentication-setup` page saying "MCP
+server: Requires authentication to connect" — but that applies to
+**authenticated mintlify sites** (paid/private docs). For public
+sites, the same row says "Available without authentication for
+public pages", which is about fetching doc pages, not about the MCP
+server being an auth-gated sibling of the descriptor. The
+authentication-setup page is genuinely tangential to the per-repo
+MCP mystery; the real explanation is the GET/POST split above.
 
-The `.claude/skills/mintlify/SKILL.md` file originally documented
-`search_mintlify` and `get_page_mintlify` (underscored) for the
-central MCP — that was wrong on both counts: the *central* one uses
-hyphens, and no invocation against per-repo MCPs works without auth
-regardless of naming.
+**Tool-name hyphen/underscore normalization (mcp2cli UX artifact,
+not a Mintlify choice)** _(revised 2026-04-07 — this section was
+originally wrong in both directions before the user pushed back)_:
+
+- **Wire-format tool names are always underscored** on both central
+  and per-repo sites. Raw `curl GET` of the JSON descriptor returns
+  `search_mintlify`/`get_page_mintlify` (central) and `search_mise`/
+  `get_page_mise` (per-repo). Underscores everywhere over the wire.
+- **`mcp2cli --list` displays them with hyphens**
+  (`search-mintlify`, `get-page-mintlify`) because `argparse`
+  subcommand names cannot legally contain `_` when registered from
+  a server-provided list. `mcp2cli` normalizes `_` → `-` at its CLI
+  layer and translates back to the original form when it sends the
+  JSON-RPC `tools/call` request to the server.
+- **Invocation must use the hyphen form.** Trying
+  `mcp2cli --mcp <url> search_mintlify --query "..."` fails with:
+  ```
+  mcp2cli: error: argument _command: invalid choice:
+  'search_mintlify' (choose from search-mintlify, get-page-mintlify)
+  ```
+  Use `search-mintlify` instead and mcp2cli will correctly call the
+  underscored name over the wire.
+
+The original `.claude/skills/mintlify/SKILL.md` used hyphens for the
+central MCP example — that is **correct** for mcp2cli invocation
+(even though the wire format is underscore). An earlier revision of
+this validation log called it wrong; that was an over-correction.
+The skill file still needs a one-line note explaining the mcp2cli
+normalization so future readers don't trip over the error message.
 
 **mcp2cli flag-order gotcha:** `--head`, `--jq`, `--pretty`, `--toon`
 are **pre-subcommand flags**. They must appear BEFORE `--mcp <url>`
@@ -106,10 +171,51 @@ mcp2cli --head 5 --mcp <url> search-mintlify --query "..."
 16 per-repo descriptors returns `"version": "1.0.0"`. Mintlify's MCP
 descriptor template hardcodes this constant. It is therefore **not**
 usable as a "version/git sha of the mintlify doc site" per the
-original ask. The best drift indicator available is the **llms.txt
-content sha256** recorded below — re-running the probe and comparing
-sha256 values will detect doc updates even though neither
-`Last-Modified` nor `ETag` headers are served by the mintlify CDN.
+original ask.
+
+**Finding #4 — central `search-mintlify` scope is Mintlify's own
+platform docs, NOT per-repo content.** Two real queries:
+
+```bash
+mcp2cli --head 5 --mcp https://mintlify.com/docs/mcp \
+        search-mintlify --query "mise shell_alias"
+# Returned: api-playground/overview, agent/workflows, ai/assistant,
+# organize/settings-reference. Nothing about mise.
+
+mcp2cli --head 5 --mcp https://mintlify.com/docs/mcp \
+        search-mintlify --query "devcontainer down verb"
+# Returned: ai/markdown-export, organize/navigation, organize/settings.
+# Nothing about @devcontainers/cli.
+```
+
+Both queries returned only `mintlify.com/docs/*` pages. The central
+`search-mintlify` indexes Mintlify's own documentation (how to build
+a mintlify site, MDX syntax, auth setup, CI, agent workflows, etc.),
+not the customer sites hosted on the platform. This means:
+
+- **The central MCP is not a cross-repo fuzzy search** as the skill
+  file originally claimed. It is Mintlify's own docs search.
+- **For querying per-repo content** (`jdx/mise`, `devcontainers/cli`,
+  `twpayne/chezmoi`, etc.), `mcp2cli` provides no access at all —
+  neither per-repo (GET-only descriptor) nor central (out of scope).
+- **The only reliable per-repo access path is `curl llms.txt` +
+  `curl <page>.md`** — no MCP protocol involvement needed.
+
+**Drift indicators that DO work:**
+
+- **Central MCP (`https://mintlify.com/docs/mcp`) returns a
+  `Last-Modified` header** on GET: observed `last-modified: Tue,
+  07 Apr 2026 00:29:33 GMT`. This is a usable drift signal for
+  central-MCP content only.
+- **Per-repo `llms.txt` content sha256** (first 16 hex chars recorded
+  per row below) is the only usable drift indicator for per-repo
+  sites. Mintlify's CDN does not serve `Last-Modified` or `ETag`
+  headers on per-repo `llms.txt` responses. Re-run the probe and
+  compare sha256 values to detect doc updates.
+- **Per-repo `/mcp` descriptor content** does change when a repo adds
+  or removes tools, but mintlify's descriptor template rarely
+  changes tool lists (always `get_page_<repo>` + `search_<repo>`
+  today). Low-signal drift indicator.
 
 ---
 
@@ -186,8 +292,8 @@ confirmed.**
 - **llms.txt content sha256 (first 16 chars):** `30488441e3d035a6`
 - **`/mcp` descriptor status:** HTTP `200`
 - **`/mcp` declared tools:** `get_page_pklr`, `search_pklr`
-- **`mcp2cli --list` exit code:** `1` (expected — auth gating)
-- **Verdict:** ✅ `llms.txt` and `/mcp` descriptor work; ❌ MCP protocol endpoint unreachable
+- **`mcp2cli --list` exit code:** `1` (expected — per-repo `/mcp` is GET-only descriptor; POST from mcp2cli hits 404)
+- **Verdict:** ✅ `llms.txt` and `/mcp` descriptor work; ❌ MCP protocol endpoint does not exist (per-repo `/mcp` is descriptor-only)
 - **Commands run:**
   ```bash
   curl -sSI  https://www.mintlify.com/jdx/pklr/llms.txt
@@ -208,7 +314,7 @@ confirmed.**
 - **Server version:** `1.0.0`
 - **llms.txt:** HTTP 200, sha256 `4cb75ddae00e81a0`, no LM / ETag
 - **`/mcp` descriptor:** HTTP 200; tools: `get_page_dive`, `search_dive`
-- **`mcp2cli --list`:** exit 1 (auth gating)
+- **`mcp2cli --list`:** exit 1 (per-repo `/mcp` is GET-only descriptor; POST from mcp2cli returns 404)
 - **Verdict:** ✅ llms.txt + descriptor; ❌ protocol endpoint
 
 ### jdx/pitchfork
@@ -219,7 +325,7 @@ confirmed.**
 - **Server version:** `1.0.0`
 - **llms.txt:** HTTP 200, sha256 `e3b8703d5f3597da`, no LM / ETag
 - **`/mcp` descriptor:** HTTP 200; tools: `get_page_pitchfork`, `search_pitchfork`
-- **`mcp2cli --list`:** exit 1 (auth gating)
+- **`mcp2cli --list`:** exit 1 (per-repo `/mcp` is GET-only descriptor; POST from mcp2cli returns 404)
 - **Verdict:** ✅ llms.txt + descriptor; ❌ protocol endpoint
 
 ### jdx/mise-env-fnox
@@ -230,7 +336,7 @@ confirmed.**
 - **Server version:** `1.0.0`
 - **llms.txt:** HTTP 200, sha256 `2c73c9d134b5c6db`, no LM / ETag
 - **`/mcp` descriptor:** HTTP 200; tools: `get_page_mise_env_fnox`, `search_mise_env_fnox`
-- **`mcp2cli --list`:** exit 1 (auth gating)
+- **`mcp2cli --list`:** exit 1 (per-repo `/mcp` is GET-only descriptor; POST from mcp2cli returns 404)
 - **Verdict:** ✅ llms.txt + descriptor; ❌ protocol endpoint
 
 ### jdx/mise-action
@@ -241,7 +347,7 @@ confirmed.**
 - **Server version:** `1.0.0`
 - **llms.txt:** HTTP 200, sha256 `b88709f8abba6675`, no LM / ETag
 - **`/mcp` descriptor:** HTTP 200; tools: `get_page_mise_action`, `search_mise_action`
-- **`mcp2cli --list`:** exit 1 (auth gating)
+- **`mcp2cli --list`:** exit 1 (per-repo `/mcp` is GET-only descriptor; POST from mcp2cli returns 404)
 - **Verdict:** ✅ llms.txt + descriptor; ❌ protocol endpoint
 
 ### devcontainers/features
@@ -252,7 +358,7 @@ confirmed.**
 - **Server version:** `1.0.0`
 - **llms.txt:** HTTP 200, sha256 `3f19a5b8494c4748`, no LM / ETag
 - **`/mcp` descriptor:** HTTP 200; tools: `get_page_dev_container_features`, `search_dev_container_features`
-- **`mcp2cli --list`:** exit 1 (auth gating)
+- **`mcp2cli --list`:** exit 1 (per-repo `/mcp` is GET-only descriptor; POST from mcp2cli returns 404)
 - **Verdict:** ✅ llms.txt + descriptor; ❌ protocol endpoint
 
 ### jdx/hk
@@ -263,7 +369,7 @@ confirmed.**
 - **Server version:** `1.0.0`
 - **llms.txt:** HTTP 200, sha256 `da608a21a7448f79`, no LM / ETag
 - **`/mcp` descriptor:** HTTP 200; tools: `get_page_hk`, `search_hk`
-- **`mcp2cli --list`:** exit 1 (auth gating)
+- **`mcp2cli --list`:** exit 1 (per-repo `/mcp` is GET-only descriptor; POST from mcp2cli returns 404)
 - **Verdict:** ✅ llms.txt + descriptor; ❌ protocol endpoint
 - **Note:** probe wall time was ~8s vs the usual ~2.5s. Probably
   network jitter, not a real difference — the per-repo path is the
@@ -277,7 +383,7 @@ confirmed.**
 - **Server version:** `1.0.0`
 - **llms.txt:** HTTP 200, sha256 `288e5cf27808fb5f`, no LM / ETag
 - **`/mcp` descriptor:** HTTP 200; tools: `get_page_mise`, `search_mise`
-- **`mcp2cli --list`:** exit 1 (auth gating)
+- **`mcp2cli --list`:** exit 1 (per-repo `/mcp` is GET-only descriptor; POST from mcp2cli returns 404)
 - **Verdict:** ✅ llms.txt + descriptor; ❌ protocol endpoint
 - **Note:** this is the "pilot probe" site — the first where the
   `mcp2cli --list` failure was observed in this session. The
@@ -295,7 +401,7 @@ confirmed.**
 - **Server version:** `1.0.0`
 - **llms.txt:** HTTP 200, sha256 `659e415ea372d761`, no LM / ETag
 - **`/mcp` descriptor:** HTTP 200; tools: `get_page_fnox`, `search_fnox`
-- **`mcp2cli --list`:** exit 1 (auth gating)
+- **`mcp2cli --list`:** exit 1 (per-repo `/mcp` is GET-only descriptor; POST from mcp2cli returns 404)
 - **Verdict:** ✅ llms.txt + descriptor; ❌ protocol endpoint
 
 ### twpayne/chezmoi
@@ -306,7 +412,7 @@ confirmed.**
 - **Server version:** `1.0.0`
 - **llms.txt:** HTTP 200, sha256 `69dbf2ca466f602a`, no LM / ETag
 - **`/mcp` descriptor:** HTTP 200; tools: `get_page_chezmoi`, `search_chezmoi`
-- **`mcp2cli --list`:** exit 1 (auth gating)
+- **`mcp2cli --list`:** exit 1 (per-repo `/mcp` is GET-only descriptor; POST from mcp2cli returns 404)
 - **Verdict:** ✅ llms.txt + descriptor; ❌ protocol endpoint
 - **Note:** the llms.txt of this site is cited by
   `.claude/rules/use-tool-builtins.md` for the canonical `chezmoi.os`
@@ -321,7 +427,7 @@ confirmed.**
 - **Server version:** `1.0.0`
 - **llms.txt:** HTTP 200, sha256 `ac7dd6f2240bc6b6`, no LM / ETag
 - **`/mcp` descriptor:** HTTP 200; tools: `get_page_starship`, `search_starship`
-- **`mcp2cli --list`:** exit 1 (auth gating)
+- **`mcp2cli --list`:** exit 1 (per-repo `/mcp` is GET-only descriptor; POST from mcp2cli returns 404)
 - **Verdict:** ✅ llms.txt + descriptor; ❌ protocol endpoint
 
 ### devcontainers/cli
@@ -332,7 +438,7 @@ confirmed.**
 - **Server version:** `1.0.0`
 - **llms.txt:** HTTP 200, sha256 `877557808c06c022`, no LM / ETag
 - **`/mcp` descriptor:** HTTP 200; tools: `get_page_dev_containers_cli`, `search_dev_containers_cli`
-- **`mcp2cli --list`:** exit 1 (auth gating)
+- **`mcp2cli --list`:** exit 1 (per-repo `/mcp` is GET-only descriptor; POST from mcp2cli returns 404)
 - **Verdict:** ✅ llms.txt + descriptor; ❌ protocol endpoint
 - **Note:** the llms.txt of this site is cited by
   `docs/research/devcontainer-spec-delta-2026-04-06.md` for the
@@ -346,7 +452,7 @@ confirmed.**
 - **Server version:** `1.0.0`
 - **llms.txt:** HTTP 200, sha256 `966a1697665143b0`, no LM / ETag
 - **`/mcp` descriptor:** HTTP 200; tools: `get_page_dev_container_specification`, `search_dev_container_specification`
-- **`mcp2cli --list`:** exit 1 (auth gating)
+- **`mcp2cli --list`:** exit 1 (per-repo `/mcp` is GET-only descriptor; POST from mcp2cli returns 404)
 - **Verdict:** ✅ llms.txt + descriptor; ❌ protocol endpoint
 
 ### devcontainers/images
@@ -357,7 +463,7 @@ confirmed.**
 - **Server version:** `1.0.0`
 - **llms.txt:** HTTP 200, sha256 `ba41c3748e298012`, no LM / ETag
 - **`/mcp` descriptor:** HTTP 200; tools: `get_page_dev_container_images`, `search_dev_container_images`
-- **`mcp2cli --list`:** exit 1 (auth gating)
+- **`mcp2cli --list`:** exit 1 (per-repo `/mcp` is GET-only descriptor; POST from mcp2cli returns 404)
 - **Verdict:** ✅ llms.txt + descriptor; ❌ protocol endpoint
 
 ### knowsuchagency/mcp2cli
@@ -368,7 +474,7 @@ confirmed.**
 - **Server version:** `1.0.0`
 - **llms.txt:** HTTP 200, sha256 `298d5d4d1d82a626`, no LM / ETag
 - **`/mcp` descriptor:** HTTP 200; tools: `get_page_mcp2cli`, `search_mcp2cli`
-- **`mcp2cli --list`:** exit 1 (auth gating)
+- **`mcp2cli --list`:** exit 1 (per-repo `/mcp` is GET-only descriptor; POST from mcp2cli returns 404)
 - **Verdict:** ✅ llms.txt + descriptor; ❌ protocol endpoint
 - **Note:** this is the upstream project for the `mcp2cli` skill.
   The mintlify doc site describes the tool we're using to probe
@@ -383,7 +489,7 @@ confirmed.**
 - **Server version:** `1.0.0`
 - **llms.txt:** HTTP 200, sha256 `1a3bdd2d13512188`, no LM / ETag
 - **`/mcp` descriptor:** HTTP 200; tools: `get_page_oh_my_claudecode`, `search_oh_my_claudecode`
-- **`mcp2cli --list`:** exit 1 (auth gating)
+- **`mcp2cli --list`:** exit 1 (per-repo `/mcp` is GET-only descriptor; POST from mcp2cli returns 404)
 - **Verdict:** ✅ llms.txt + descriptor; ❌ protocol endpoint
 - **Note:** upstream project for the OMC plugin powering this repo's
   workflow.
@@ -393,13 +499,20 @@ confirmed.**
 ## Global follow-ups (for a separate commit after this PR)
 
 1. **Correct `.claude/skills/mintlify/SKILL.md`:**
-   - Central MCP tools use **hyphens** (`search-mintlify`,
-     `get-page-mintlify`), not underscores.
-   - Per-repo MCP protocol endpoints are **auth-gated** and not
-     reachable via `mcp2cli` without credentials. Demote the per-repo
-     MCP section from "preferred fuzzy-search path" to "descriptor
-     reference only; use the central MCP for actual queries".
+   - Add a one-line note that `mcp2cli` normalizes tool names
+     `_` → `-` at the CLI layer, so invocation must use the
+     hyphen form (e.g., `search-mintlify`, `get-page-mise`) even
+     though the wire/descriptor format is underscored. This is a
+     `mcp2cli` argparse artifact, not a Mintlify naming choice.
+   - **Demote the per-repo MCP section** from "preferred fuzzy-search
+     path" to **"descriptor reference only"**. Per-repo `/mcp` URLs
+     return a JSON tool-schema descriptor via GET but reject POST
+     with `404 Not found`; they are not live MCP servers. Use the
+     central MCP for any real query.
    - Add the flag-order note (`--head N` before `--mcp <url>`).
+   - Remove the earlier "auth-gating" claim — it was based on an
+     over-read of Mintlify's authentication-setup docs and is
+     factually wrong for public per-repo sites.
 
 2. **Correct `.claude/skills/mcp2cli/SKILL.md`:**
    - Fix the flag order in the invocation examples.
