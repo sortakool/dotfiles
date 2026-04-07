@@ -34,6 +34,11 @@ checksum = "sha256:5b44c3bc2255115c9b69e30efc0fecdf498fdb63c5d58e17084fd5f16324c
 url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_darwin_amd64.tar.gz"
 provenance = "github-attestations"
 
+[tools.actionlint."platforms.windows-x64"]
+checksum = "sha256:6e7241b51e6817ea6a047693d8e6fed13b31819c9a0dd6c5a726e1592d22f6e9"
+url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_windows_amd64.zip"
+provenance = "github-attestations"
+
 [[tools.chezmoi]]
 version = "2.70.0"
 backend = "aqua:twpayne/chezmoi"
@@ -130,6 +135,11 @@ checksum = "sha256:ce76aeb46f051d19a618c4e89ae5ca1d37c5a06f1bac3afb261ff619fd330
 url = "https://github.com/suzuki-shunsuke/ghalint/releases/download/v1.5.5/ghalint_1.5.5_darwin_amd64.tar.gz"
 provenance = "slsa"
 
+[tools.ghalint."platforms.windows-x64"]
+checksum = "sha256:58c2589e7455fc05d83a28051f9098984db3fe6294f0f88aedc9691ae25eaff9"
+url = "https://github.com/suzuki-shunsuke/ghalint/releases/download/v1.5.5/ghalint_1.5.5_windows_amd64.zip"
+provenance = "slsa"
+
 [[tools.hadolint]]
 version = "2.14.0"
 backend = "aqua:hadolint/hadolint"
@@ -158,6 +168,10 @@ url = "https://github.com/hadolint/hadolint/releases/download/v2.14.0/hadolint-m
 checksum = "sha256:2b69a853433f1eca522ffb921cd490bd1321424d03331fd8390f93b7fb4a02e9"
 url = "https://github.com/hadolint/hadolint/releases/download/v2.14.0/hadolint-macos-x86_64"
 
+[tools.hadolint."platforms.windows-x64"]
+checksum = "sha256:8e0ee174f88edb14f207a68430c7a53c2883ed509cdbde9a3a26fffa140fa5e4"
+url = "https://github.com/hadolint/hadolint/releases/download/v2.14.0/hadolint-windows-x86_64.exe"
+
 [[tools.hk]]
 version = "1.41.0"
 backend = "aqua:jdx/hk"
@@ -181,6 +195,10 @@ url = "https://github.com/jdx/hk/releases/download/v1.41.0/hk-x86_64-unknown-lin
 [tools.hk."platforms.macos-arm64"]
 checksum = "sha256:25c9e973993c1607247e97ec558d747483ab4c48380485d69ea617161939544c"
 url = "https://github.com/jdx/hk/releases/download/v1.41.0/hk-aarch64-apple-darwin.tar.gz"
+
+[tools.hk."platforms.windows-x64"]
+checksum = "sha256:b3851965af1c570ca670710a82e1cce85213dc0b182336c90d031cff8f2e0dd5"
+url = "https://github.com/jdx/hk/releases/download/v1.41.0/hk-x86_64-pc-windows-msvc.zip"
 
 [[tools.jq]]
 version = "1.8.1"
@@ -214,6 +232,11 @@ provenance = "github-attestations"
 [tools.jq."platforms.macos-x64"]
 checksum = "sha256:e80dbe0d2a2597e3c11c404f03337b981d74b4a8504b70586c354b7697a7c27f"
 url = "https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-macos-amd64"
+provenance = "github-attestations"
+
+[tools.jq."platforms.windows-x64"]
+checksum = "sha256:23cb60a1354eed6bcc8d9b9735e8c7b388cd1fdcb75726b93bc299ef22dd9334"
+url = "https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-windows-amd64.exe"
 provenance = "github-attestations"
 
 [[tools.lima]]
@@ -296,6 +319,15 @@ checksum = "sha256:70f68407a05fa88843fbf9b400d979e6205489ef8af251dacc21841a07989
 url = "https://github.com/suzuki-shunsuke/pinact/releases/download/v3.9.0/pinact_darwin_amd64.tar.gz"
 provenance = "github-attestations"
 
+[tools.pinact."platforms.windows-x64"]
+checksum = "sha256:b923a567f88417d79ce183e59c2a2372d9cae9b697a472ce1f95d745932746b1"
+url = "https://github.com/suzuki-shunsuke/pinact/releases/download/v3.9.0/pinact_windows_amd64.zip"
+provenance = "github-attestations"
+
+[[tools."pipx:mcp2cli"]]
+version = "2.6.0"
+backend = "pipx:mcp2cli"
+
 [[tools.pkl]]
 version = "0.31.1"
 backend = "aqua:apple/pkl"
@@ -323,6 +355,10 @@ url = "https://github.com/apple/pkl/releases/download/0.31.1/pkl-macos-aarch64"
 [tools.pkl."platforms.macos-x64"]
 checksum = "sha256:22123ed4ae4c03afa8c54c69f77f0bec39b0fa0f67b09d6d148e0a376a2a471d"
 url = "https://github.com/apple/pkl/releases/download/0.31.1/pkl-macos-amd64"
+
+[tools.pkl."platforms.windows-x64"]
+checksum = "sha256:a8834481667325b44c539dbb758d7365a16389070f343c04b639bbe525ede013"
+url = "https://github.com/apple/pkl/releases/download/0.31.1/pkl-windows-amd64.exe"
 
 [[tools.python]]
 version = "3.14.3"
@@ -358,6 +394,11 @@ checksum = "sha256:9ab41dbc2f100a2a45d1833b9c11165f51051c558b5213eda9a9731d5948a
 url = "https://github.com/astral-sh/python-build-standalone/releases/download/20260324/cpython-3.14.3+20260324-x86_64-apple-darwin-install_only_stripped.tar.gz"
 provenance = "github-attestations"
 
+[tools.python."platforms.windows-x64"]
+checksum = "sha256:bbe19034b35b0267176a7442575ae7dc6343480fd4d35598cb7700173d431e09"
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20260324/cpython-3.14.3+20260324-x86_64-pc-windows-msvc-install_only_stripped.tar.gz"
+provenance = "github-attestations"
+
 [[tools.shellcheck]]
 version = "0.11.0"
 backend = "aqua:koalaman/shellcheck"
@@ -385,6 +426,10 @@ url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellche
 [tools.shellcheck."platforms.macos-x64"]
 checksum = "sha256:3c89db4edcab7cf1c27bff178882e0f6f27f7afdf54e859fa041fca10febe4c6"
 url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.darwin.x86_64.tar.xz"
+
+[tools.shellcheck."platforms.windows-x64"]
+checksum = "sha256:8a4e35ab0b331c85d73567b12f2a444df187f483e5079ceffa6bda1faa2e740e"
+url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.zip"
 
 [[tools.shfmt]]
 version = "3.13.0"
@@ -414,6 +459,10 @@ url = "https://github.com/mvdan/sh/releases/download/v3.13.0/shfmt_v3.13.0_darwi
 checksum = "sha256:b6890a0009abf71d36d7c536ad56e3132c547ceb77cd5d5ee62b3469ab4e9417"
 url = "https://github.com/mvdan/sh/releases/download/v3.13.0/shfmt_v3.13.0_darwin_amd64"
 
+[tools.shfmt."platforms.windows-x64"]
+checksum = "sha256:62241aaf6b0ca236f8625d8892784b73fa67ad40bc677a1ad1a64ae395f6a7d5"
+url = "https://github.com/mvdan/sh/releases/download/v3.13.0/shfmt_v3.13.0_windows_amd64.exe"
+
 [[tools.taplo]]
 version = "0.10.0"
 backend = "aqua:tamasfe/taplo"
@@ -435,6 +484,9 @@ url = "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-darwin-aa
 
 [tools.taplo."platforms.macos-x64"]
 url = "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-darwin-x86_64.gz"
+
+[tools.taplo."platforms.windows-x64"]
+url = "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-windows-x86_64.zip"
 
 [[tools.typos]]
 version = "1.45.0"
@@ -463,6 +515,10 @@ url = "https://github.com/crate-ci/typos/releases/download/v1.45.0/typos-v1.45.0
 [tools.typos."platforms.macos-x64"]
 checksum = "sha256:4a4c1060b248c13ce7bc6c1ffe5cb75120885e8ecb62e7ba2b40f5567680f9ba"
 url = "https://github.com/crate-ci/typos/releases/download/v1.45.0/typos-v1.45.0-x86_64-apple-darwin.tar.gz"
+
+[tools.typos."platforms.windows-x64"]
+checksum = "sha256:dc89f5f175ee1a389e1f5cc5173353d9db3751e2cddedf34339d8ec45cd38aa0"
+url = "https://github.com/crate-ci/typos/releases/download/v1.45.0/typos-v1.45.0-x86_64-pc-windows-msvc.zip"
 
 [[tools.uv]]
 version = "0.11.3"
@@ -498,6 +554,11 @@ checksum = "sha256:b0e05e0b43a000fdc2132ee3f3400ba5dee427bc2337d3ec4eb8cf4f3d572
 url = "https://github.com/astral-sh/uv/releases/download/0.11.3/uv-x86_64-apple-darwin.tar.gz"
 provenance = "github-attestations"
 
+[tools.uv."platforms.windows-x64"]
+checksum = "sha256:ae681c0aaec7cc96af184648cb88d73f8393ed60fa5880abdd6bdb910f9b227c"
+url = "https://github.com/astral-sh/uv/releases/download/0.11.3/uv-x86_64-pc-windows-msvc.zip"
+provenance = "github-attestations"
+
 [[tools.yamlfmt]]
 version = "0.21.0"
 backend = "aqua:google/yamlfmt"
@@ -525,6 +586,10 @@ url = "https://github.com/google/yamlfmt/releases/download/v0.21.0/yamlfmt_0.21.
 [tools.yamlfmt."platforms.macos-x64"]
 checksum = "sha256:060e943bcb8583c456810eb1ff4721b4f46c4a0c1a4432449d5dc3bbfe29a22b"
 url = "https://github.com/google/yamlfmt/releases/download/v0.21.0/yamlfmt_0.21.0_Darwin_x86_64.tar.gz"
+
+[tools.yamlfmt."platforms.windows-x64"]
+checksum = "sha256:07f80ce5d741eb4b0a9380ac78a19c7cb5bd44e2a9a47a5a04839e3ba54dd463"
+url = "https://github.com/google/yamlfmt/releases/download/v0.21.0/yamlfmt_0.21.0_Windows_x86_64.tar.gz"
 
 [[tools.yamllint]]
 version = "1.38.0"
@@ -557,3 +622,7 @@ url = "https://github.com/mikefarah/yq/releases/download/v4.52.5/yq_darwin_arm64
 [tools.yq."platforms.macos-x64"]
 checksum = "sha256:6e399d1eb466860c3202d231727197fdce055888c5c7bec6964156983dd1559d"
 url = "https://github.com/mikefarah/yq/releases/download/v4.52.5/yq_darwin_amd64"
+
+[tools.yq."platforms.windows-x64"]
+checksum = "sha256:47594981f3848a4b4447494adeca9555f908f7cf0a89c4da3fd0243a4631da1c"
+url = "https://github.com/mikefarah/yq/releases/download/v4.52.5/yq_windows_amd64.exe"

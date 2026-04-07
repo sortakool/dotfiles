@@ -25,6 +25,7 @@ colima = "0.10.1"  # Docker runtime (VZ + Rosetta) — preferred over Docker Des
 lima = "2.1.1"     # Required runtime dependency for colima (provides limactl)
 "npm:agnix" = "latest"
 "npm:agents-lint" = "latest"
+"pipx:mcp2cli" = "2.6.0"  # Process-spawn MCP client; forbids claude mcp add (see feedback_no_mcp_registration.md)
 
 [settings]
 experimental = true
