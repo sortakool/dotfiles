@@ -273,6 +273,10 @@ checksum = "sha256:2dc5b10aa3a4f26d08c1f3fe83e37e01f85a7d9db0d1d5cb6985b18af96ab
 url = "https://github.com/lima-vm/lima/releases/download/v2.1.1/lima-2.1.1-Darwin-x86_64.tar.gz"
 provenance = "github-attestations"
 
+[[tools."npm:@contextlint/cli"]]
+version = "0.8.1"
+backend = "npm:@contextlint/cli"
+
 [[tools."npm:@devcontainers/cli"]]
 version = "0.85.0"
 backend = "npm:@devcontainers/cli"
@@ -284,6 +288,14 @@ backend = "npm:agents-lint"
 [[tools."npm:agnix"]]
 version = "0.17.0"
 backend = "npm:agnix"
+
+[[tools."npm:claude-code-lint"]]
+version = "0.3.0"
+backend = "npm:claude-code-lint"
+
+[[tools."npm:markdownlint-cli2"]]
+version = "0.22.0"
+backend = "npm:markdownlint-cli2"
 
 [[tools.pinact]]
 version = "3.9.0"
@@ -519,6 +531,20 @@ url = "https://github.com/crate-ci/typos/releases/download/v1.45.0/typos-v1.45.0
 [tools.typos."platforms.windows-x64"]
 checksum = "sha256:dc89f5f175ee1a389e1f5cc5173353d9db3751e2cddedf34339d8ec45cd38aa0"
 url = "https://github.com/crate-ci/typos/releases/download/v1.45.0/typos-v1.45.0-x86_64-pc-windows-msvc.zip"
+
+[[tools."ubi:jackchuka/mdschema"]]
+version = "0.12.8"
+backend = "ubi:jackchuka/mdschema"
+
+[tools."ubi:jackchuka/mdschema"."platforms.macos-arm64-mdschema"]
+checksum = "blake3:2804b84d14a4d810cb0c8567a8749abddcc3ce70c6d8fd9edf0e80567f7870c5"
+
+[[tools."ubi:rvben/rumdl"]]
+version = "0.1.67"
+backend = "ubi:rvben/rumdl"
+
+[tools."ubi:rvben/rumdl"."platforms.macos-arm64-rumdl"]
+checksum = "blake3:6689bf2a02fa58d9891c5c6195ededd3b3eaf68cc72c2f30820fa8f9bad38387"
 
 [[tools.uv]]
 version = "0.11.3"

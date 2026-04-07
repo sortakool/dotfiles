@@ -29,9 +29,10 @@ __pycache__/
 mise.local.toml
 mise.*.local.toml
 
-# OMC/OMG plugin state
+# OMC/OMG/OMX plugin state
 .omg/
 .omc/state/
+.omx/
 
 # Codex CLI temporary state
 .codex/

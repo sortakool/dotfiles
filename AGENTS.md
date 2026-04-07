@@ -53,7 +53,7 @@ the official `@devcontainers/cli` (pinned in `mise.toml`).
 | `.claude/` | Claude-specific agents, skills, rules. Has its own `CLAUDE.md` with OMC orchestration |
 | `home/` | Chezmoi-managed dotfiles — see `home/AGENTS.md` |
 | `python/` | Python package `dotfiles_setup` — see `python/AGENTS.md` |
-| `tests/` | 65 pytest tests covering config, audit, bootstrap, ghcr, image smoke, shell integration |
+| `tests/` | Pytest + Bats test suite (65 pytest tests) — see `tests/AGENTS.md` |
 | `scripts/` | Utility scripts (`benchmark-docker.sh`, `devcontainer-smoke.sh`) |
 | `docs/` | Documentation, research findings, design specs |
 

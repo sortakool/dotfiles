@@ -26,6 +26,15 @@ lima = "2.1.1"     # Required runtime dependency for colima (provides limactl)
 "npm:agnix" = "latest"
 "npm:agents-lint" = "latest"
 "pipx:mcp2cli" = "2.6.0"  # Process-spawn MCP client; forbids claude mcp add (see feedback_no_mcp_registration.md)
+# Markdown + Claude-docs linters. Installed now; hk.pkl integration is
+# scheduled for post-devcontainer-work review (see GH issue tracking
+# follow-up). claude_md_size_limit (below in hk.pkl) provides the
+# immediate 200-line enforcement per Claude Code memory docs.
+"npm:claude-code-lint" = "latest"       # https://github.com/pdugan20/claudelint — CLAUDE.md size limits, import syntax, frontmatter
+"npm:@contextlint/cli" = "latest"       # https://github.com/nozomi-koborinai/contextlint — structured markdown cross-file integrity
+"npm:markdownlint-cli2" = "latest"      # https://github.com/DavidAnson/markdownlint — general markdown quality (MD013 line-length, etc.)
+"ubi:jackchuka/mdschema" = "latest"     # https://github.com/jackchuka/mdschema — markdown frontmatter schema validation
+"ubi:rvben/rumdl" = "latest"            # https://github.com/rvben/rumdl — Rust-fast markdown linter (71 rules)
 
 [settings]
 experimental = true

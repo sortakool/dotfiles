@@ -179,6 +179,23 @@ hooks {
         check = "! git grep -nE 'claude[[:space:]]+mcp[[:space:]]+add' -- ':!.claude/skills/mcp2cli/SKILL.md' ':!.claude/skills/mintlify/SKILL.md' ':!.claude/rules/research-doc-sources.md' ':!.claude/rules/research-repo-enumeration.md' ':!.claude/CLAUDE.md' ':!AGENTS.md' ':!mise.toml' ':!docs/research/mintlify-catalog.md' ':!hk.pkl' && ! git ls-files '.mcp.json' '**/.mcp.json' | grep -q ."
       }
 
+      // --- Claude Code memory docs size limit ---
+      //     The Claude Code memory docs (code.claude.com/docs/en/memory)
+      //     recommend each CLAUDE.md stay "under 200 lines". We enforce
+      //     the same limit on AGENTS.md because CLAUDE.md in this repo
+      //     is a thin `@AGENTS.md` import stub - the AGENTS.md holds
+      //     the content that CLAUDE.md delegates to, so the line budget
+      //     effectively lives in AGENTS.md.
+      //
+      //     Belt-and-suspenders check: claudelint (installed via
+      //     mise.toml) has a native size limit check with richer
+      //     diagnostics; full integration is tracked in a GH issue
+      //     scheduled for post-devcontainer-work review. This awk step
+      //     ships immediate enforcement in the meantime.
+      ["claude_md_size_limit"] {
+        check = "rc=0; for f in $(git ls-files | grep -E '(^|/)(CLAUDE|AGENTS)\\.md$'); do lines=$(wc -l < \"$f\"); if [ \"$lines\" -gt 200 ]; then echo \"$f: $lines lines (max 200 per Claude Code memory docs)\" >&2; rc=1; fi; done; exit $rc"
+      }
+
       // --- No global skill leakage (presence assertion for project-scoped
       //     mcp2cli + mintlify reference skills). Asserts that the
       //     project-local SKILL.md files exist; a commit that deletes them
