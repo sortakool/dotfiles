@@ -33,6 +33,8 @@
   },
   "forwardAgent": true,
   "updateRemoteUserUID": false,
+  "init": true,
+  "initializeCommand": "mkdir -p ~/.ssh ~/.claude ~/.codex ~/.gemini ~/.local/state/dotfiles && touch ~/.ssh/config ~/.ssh/known_hosts ~/.ssh/authorized_keys",
   "features": {
     "ghcr.io/devcontainers/features/sshd:1": {
       "username": "${localEnv:USER}",
@@ -43,6 +45,7 @@
   "appPort": ["${localEnv:DEVCONTAINER_SSH_PORT}:4444"],
   "forwardPorts": [4444],
   "onCreateCommand": "chezmoi init --apply --source=/workspaces/${localWorkspaceFolderBasename} --no-tty --force && sudo chown -R ${localEnv:USER}:${localEnv:USER} /home/${localEnv:USER}/.local/share/mise",
+  "postCreateCommand": "scripts/devcontainer-smoke.sh",
   "customizations": {
     "vscode": {
       "extensions": [
