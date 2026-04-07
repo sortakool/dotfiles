@@ -53,16 +53,6 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
 class TestMiseConfigDefaults:
     """Verify MiseConfig default values match the previous hardcoded constants."""
 
-    def test_config_dir(self) -> None:
-        """Verify default config_dir is /etc/mise."""
-        cfg = MiseConfig()
-        assert cfg.config_dir == Path("/etc/mise")
-
-    def test_data_dir(self) -> None:
-        """Verify default data_dir is /opt/mise."""
-        cfg = MiseConfig()
-        assert cfg.data_dir == Path("/opt/mise")
-
     def test_install_path(self) -> None:
         """Verify default install_path is /usr/local/bin/mise."""
         cfg = MiseConfig()

@@ -439,7 +439,7 @@ tokens = ["\"updateRemoteUserUID\": false"]
 
 [[suite]]
 name = "arch.no-mise-home-volume"
-description = "No mise-home volume mount (mise is image-baked at /opt/mise)"
+description = "No mise-home volume mount (mise is image-baked at /usr/local/share/mise)"
 category = "architecture"
 check_type = "static"
 handler = "forbid_tokens"

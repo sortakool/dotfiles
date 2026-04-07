@@ -18,8 +18,6 @@ class MiseConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="MISE_")
 
-    config_dir: Path = Path("/etc/mise")
-    data_dir: Path = Path("/opt/mise")
     install_path: Path = Path("/usr/local/bin/mise")
     strict: bool = False
     shell: str | None = None
