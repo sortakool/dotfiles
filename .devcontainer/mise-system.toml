@@ -2,8 +2,10 @@
 #
 # System-wide mise config for Docker devcontainer image
 # This is a DEDICATED config — not derived from chezmoi templates.
-# Installed to /etc/mise/config.toml during docker build.
-# Changes here must be validated via: docker buildx bake dev-load
+# Installed to /usr/local/share/mise/config.toml during docker build
+# (cookbook canonical path per https://mise.jdx.dev/mise-cookbook/docker).
+# Changes here must be validated via CI (never `docker buildx bake dev-load`
+# locally — see feedback_base_image_ci_only.md).
 
 [tools]
 # Core runtimes

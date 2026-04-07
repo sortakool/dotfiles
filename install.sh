@@ -27,7 +27,7 @@ script_dir="$(cd -P -- "$(dirname -- "$(command -v -- "$0")")" && pwd -P)"
 export PATH="${HOME}/.local/bin:${PATH}"
 
 # Headlessly trust configs
-/usr/local/bin/mise trust /etc/mise/config.toml || true
+/usr/local/bin/mise trust /usr/local/share/mise/config.toml || true
 /usr/local/bin/mise trust /workspaces/dotfiles/mise.toml || true
 
 set -- init --apply --source="${script_dir}" --no-tty --force

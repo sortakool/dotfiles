@@ -25,7 +25,7 @@ variable "BASE_IMAGE" {
 }
 
 variable "MISE_VERSION" {
-  default = "v2026.4.4"
+  default = "v2026.4.5"
 }
 
 variable "DEVCONTAINER_USERNAME" {

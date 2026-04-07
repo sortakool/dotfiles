@@ -70,7 +70,16 @@ description = "Bring the devcontainer up via the official @devcontainers/cli (Ma
 # into unrelated subprocesses. Override with e.g.
 #   BASE_IMAGE=ghcr.io/ray-manaloto/dotfiles-devcontainer:latest mise run up
 # or pin to a specific SHA tag.
-env = { BASE_IMAGE = "ghcr.io/ray-manaloto/dotfiles-devcontainer:dev" }
+#
+# DOCKER_DEFAULT_PLATFORM is task-scoped so it only affects `devcontainer up`
+# (and its child docker calls) — host-level docker/colima invocations are
+# unaffected. Required because the devcontainer image is amd64-only.
+#
+# DEVCONTAINER_SSH_PORT is staged here ahead of its first consumer. PR-2
+# wires it into devcontainer.json (named volume template + sshd feature
+# port mapping). Override per-clone via mise.local.toml. Do not remove —
+# see spec C11/C12 in .omc/specs/deep-interview-devcontainer-lifecycle.md.
+env = { BASE_IMAGE = "ghcr.io/ray-manaloto/dotfiles-devcontainer:dev", DOCKER_DEFAULT_PLATFORM = "linux/amd64", DEVCONTAINER_SSH_PORT = "4444" }
 run = "devcontainer up --workspace-folder ."
 
 [tasks.stop]

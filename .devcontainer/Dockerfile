@@ -2,7 +2,7 @@
 # check=error=true
 
 ARG BASE_IMAGE=ubuntu:25.10
-ARG MISE_VERSION=v2026.4.4
+ARG MISE_VERSION=v2026.4.5
 
 FROM ${BASE_IMAGE} AS devcontainer
 
@@ -12,13 +12,17 @@ ARG MISE_VERSION
 # Only PATH and mise directory layout stay as Docker ENV.
 # All other vars (locale, platform hints, tool config) live in
 # .devcontainer/mise-system.toml [env] so mise owns them.
-ENV MISE_DATA_DIR=/opt/mise \
-    MISE_CONFIG_DIR=/etc/mise \
-    MISE_INSTALL_PATH=/usr/local/bin/mise \
-    MISE_TRUSTED_CONFIG_PATHS=/etc/mise:/workspaces/dotfiles \
+#
+# Cookbook canonical layout per https://mise.jdx.dev/mise-cookbook/docker:
+#   - System tools baked at /usr/local/share/mise/installs (via MISE_INSTALL_MODE=system).
+#   - User installs land at ~/.local/share/mise/installs at runtime and
+#     shadow system tools per cookbook semantics.
+#   - MISE_DATA_DIR is left UNSET so mise uses XDG defaults per user.
+ENV MISE_INSTALL_PATH=/usr/local/bin/mise \
+    MISE_TRUSTED_CONFIG_PATHS=/usr/local/share/mise:/workspaces/dotfiles \
     CARGO_HOME=/opt/cargo \
     RUSTUP_HOME=/opt/rustup \
-    PATH="/usr/local/bin:/opt/mise/shims:/opt/cargo/bin:${PATH}"
+    PATH="/usr/local/bin:/usr/local/share/mise/shims:/opt/cargo/bin:${PATH}"
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -33,6 +37,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     gnupg \
     graphviz \
     pkg-config \
+    sudo \
     unzip \
     zsh \
     libatomic1 \
@@ -47,14 +52,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 RUN curl -fsSL "https://mise.jdx.dev/${MISE_VERSION}/mise-${MISE_VERSION}-linux-x64" > /usr/local/bin/mise && \
     chmod +x /usr/local/bin/mise
 
-# System-wide mise config and data structure
+# System-wide mise config and data structure (cookbook canonical paths).
 RUN groupadd --gid 2000 mise && \
-    mkdir -p /etc/mise /opt/mise /opt/cargo /opt/rustup && \
-    chown -R :mise /opt/mise /opt/cargo /opt/rustup && \
-    chmod -R 775 /opt/mise /opt/cargo /opt/rustup
+    mkdir -p /usr/local/share/mise /opt/cargo /opt/rustup && \
+    chown -R :mise /usr/local/share/mise /opt/cargo /opt/rustup && \
+    chmod -R 775 /usr/local/share/mise /opt/cargo /opt/rustup
 
 # Copy dedicated system config — no chezmoi dependency, no sed stripping
-COPY .devcontainer/mise-system.toml /etc/mise/config.toml
+COPY .devcontainer/mise-system.toml /usr/local/share/mise/config.toml
 
 # Pre-install tools globally via mise
 # Known cosmetic warnings during install:
@@ -65,12 +70,12 @@ COPY .devcontainer/mise-system.toml /etc/mise/config.toml
 #   in mise-system.toml [env] is a different check (PATH validation).
 # - bun "add the global bin folder to $PATH": bun checks if its bin output
 #   directory exists on $PATH at install time. During Docker RUN, PATH only
-#   includes /opt/mise/shims — not bun's per-package bin dirs. At runtime,
+#   includes /usr/local/share/mise/shims — not bun's per-package bin dirs. At runtime,
 #   mise shims intercept all lookups so the warning is cosmetic. No bun env
 #   var (BUN_QUIET, BUN_LOG_LEVEL) suppresses this — it's hardcoded in bun's
 #   install reporter. Unfixable: fundamental mismatch between bun's PATH-based
 #   assumptions and mise's shim resolution model.
-RUN --mount=type=cache,id=mise-cache,target=/opt/mise/cache,sharing=locked \
+RUN --mount=type=cache,id=mise-cache,target=/usr/local/share/mise/cache,sharing=locked \
     --mount=type=cache,id=uv-cache,target=/root/.cache/uv,sharing=locked \
     --mount=type=secret,id=github_token \
     export MISE_VERSION="${MISE_VERSION}" && \
@@ -85,7 +90,7 @@ RUN --mount=type=cache,id=mise-cache,target=/opt/mise/cache,sharing=locked \
       export MISE_GITHUB_TOKEN="$GITHUB_TOKEN"; \
     fi && \
     mise install -y && \
-    chmod -R 777 /opt/mise /etc/mise /opt/cargo /opt/rustup
+    chmod -R 777 /usr/local/share/mise /opt/cargo /opt/rustup
 
 # Reshim to ensure all shims are present (aqua tools may include doc-file
 # shims like LICENSE, README — these are harmless and must not be deleted
@@ -93,7 +98,7 @@ RUN --mount=type=cache,id=mise-cache,target=/opt/mise/cache,sharing=locked \
 RUN mise reshim -f
 
 # Final global permissions check
-RUN chmod -R 777 /opt/mise /etc/mise /opt/cargo /opt/rustup
+RUN chmod -R 777 /usr/local/share/mise /opt/cargo /opt/rustup
 
 # Copy image-specific hk config + shared checks for smoke-test validation.
 # hk-image.pkl imports hk-common.pkl — both must be in /etc/hk/ for pkl
