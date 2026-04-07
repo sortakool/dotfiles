@@ -2,6 +2,16 @@
 README.md
 LICENSE
 .github/
+# Hierarchical agent docs for the home/ directory itself (not user-level
+# dotfiles). These are project documentation describing what lives under
+# home/ and how chezmoi templating works here. Without these excludes,
+# chezmoi sees home/AGENTS.md AND home/AGENTS.md.tmpl as competing sources
+# for ~/AGENTS.md and reports "inconsistent state". The .tmpl files are
+# the actual user-level dotfile templates; the bare files are project
+# docs and live OUTSIDE chezmoi's management. Same pattern as README.md
+# / LICENSE above.
+AGENTS.md
+CLAUDE.md
 
 {{ if ne .chezmoi.os "darwin" }}
 # macOS-only files — skip on Linux
