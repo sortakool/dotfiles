@@ -28,7 +28,7 @@
   },
   "forwardAgent": true,
   "updateRemoteUserUID": false,
-  "postCreateCommand": "./install.sh",
+  "onCreateCommand": "chezmoi init --apply --source=/workspaces/${localWorkspaceFolderBasename} --no-tty --force",
   "customizations": {
     "vscode": {
       "extensions": [
