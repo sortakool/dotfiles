@@ -1,0 +1,20 @@
+# mise.local.toml.example — per-clone override surface for the devcontainer tasks.
+#
+# Copy to mise.local.toml (gitignored) and edit. mise merges *.local.toml
+# on top of mise.toml, so any key here shadows the matching key in mise.toml.
+#
+# See .omc/specs/deep-interview-devcontainer-lifecycle.md (Spec Amendments,
+# Constraints 10-12) for the full override semantics. In particular:
+#
+#   - Only the HOST-SIDE SSH port is overridable. The internal sshd port
+#     stays literal 4444 inside the container (spec Constraint 12). This
+#     lets you recover from a port-collision without losing the mise-user
+#     named volume, which keys off USER and project basename but NOT port.
+#   - BASE_IMAGE can be pinned to a specific tag or SHA for reproducible
+#     rebuilds of the overlay.
+#
+# DO NOT check in mise.local.toml; it is gitignored by design.
+
+[tasks.up]
+env = { DEVCONTAINER_SSH_PORT = "4444" }
+# env = { DEVCONTAINER_SSH_PORT = "4444", BASE_IMAGE = "ghcr.io/ray-manaloto/dotfiles-devcontainer:<sha>" }

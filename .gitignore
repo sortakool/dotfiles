@@ -25,6 +25,10 @@ __pycache__/
 # mise auto-generated state
 .mise/
 
+# mise per-clone overrides (see mise.local.toml.example)
+mise.local.toml
+mise.*.local.toml
+
 # OMC/OMG plugin state
 .omg/
 .omc/state/

@@ -70,7 +70,7 @@ description = "Bring the devcontainer up via the official @devcontainers/cli (Ma
 # into unrelated subprocesses. Override with e.g.
 #   BASE_IMAGE=ghcr.io/ray-manaloto/dotfiles-devcontainer:latest mise run up
 # or pin to a specific SHA tag.
-env = { BASE_IMAGE = "ghcr.io/ray-manaloto/dotfiles-devcontainer:dev", DOCKER_DEFAULT_PLATFORM = "linux/amd64" }
+env = { BASE_IMAGE = "ghcr.io/ray-manaloto/dotfiles-devcontainer:dev", DOCKER_DEFAULT_PLATFORM = "linux/amd64", DEVCONTAINER_SSH_PORT = "4444" }
 run = "devcontainer up --workspace-folder ."
 
 [tasks.stop]
