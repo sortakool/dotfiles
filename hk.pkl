@@ -176,7 +176,7 @@ hooks {
       //     Whitelisted paths are the files that legitimately document
       //     the ban (skills, rules, this hk step itself).
       ["no_mcp_registration"] {
-        check = "! git grep -nE 'claude[[:space:]]+mcp[[:space:]]+add' -- ':!.claude/skills/mcp2cli/SKILL.md' ':!.claude/skills/mintlify/SKILL.md' ':!.claude/rules/research-doc-sources.md' ':!.claude/rules/research-repo-enumeration.md' ':!.claude/CLAUDE.md' ':!mise.toml' ':!hk.pkl' && ! git ls-files '.mcp.json' '**/.mcp.json' | grep -q ."
+        check = "! git grep -nE 'claude[[:space:]]+mcp[[:space:]]+add' -- ':!.claude/skills/mcp2cli/SKILL.md' ':!.claude/skills/mintlify/SKILL.md' ':!.claude/rules/research-doc-sources.md' ':!.claude/rules/research-repo-enumeration.md' ':!.claude/CLAUDE.md' ':!mise.toml' ':!docs/research/mintlify-catalog.md' ':!hk.pkl' && ! git ls-files '.mcp.json' '**/.mcp.json' | grep -q ."
       }
 
       // --- No global skill leakage (presence assertion for project-scoped
