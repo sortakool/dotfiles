@@ -236,27 +236,46 @@ here for reviewer audit:
 | 3 | `curl llms.txt` | `curl https://www.mintlify.com/devcontainers/cli/llms.txt` | Verifying `@devcontainers/cli` has no `down` verb (Claim 3a) | ✅ confirmed upstream command list |
 | 4 | `curl llms.txt` | `curl https://www.mintlify.com/twpayne/chezmoi/llms.txt` | Citing machine-to-machine pattern (Claim 5) | ✅ returned `user-guide/manage-machine-to-machine-differences.md` |
 | 5 | `mcp2cli` reachability | `mcp2cli --help` | Proving the mcp2cli binary is installed and wired (pinned in `mise.toml` as `"pipx:mcp2cli" = "2.6.0"`) | ✅ help output visible; subcommands include `--list`, `--search`, `--jq`, `--head`, `--toon` |
-| 6 | `context7-cli` reachability | `which context7-cli` | R3 plan asked for "one lookup NOT covered by mintlify" via context7 | ⚠️ **binary not on PATH** — see observation below |
+| 6 | `ctx7` reachability | `which ctx7 && ctx7 --help` | R3 plan asked for "one lookup NOT covered by mintlify" via context7 | ✅ reachable at `~/.local/share/mise/installs/npm-ctx7/0.3.9/bin/ctx7`; subcommands: `skills`, `login`, `whoami`, `setup`. Invoked via the `/context7-cli` skill at `.claude/skills/context7-cli/`. |
 
-**Observation on exercise #6:** `context7-cli` is not installed on this
-Mac. The skill file `.claude/skills/context7-cli/SKILL.md` exists but
-the binary itself is absent. Two reasons this is not a blocker for
-this PR:
+**Observation on exercise #6 — binary name clarification + scope
+discovery:** the binary is `ctx7` (not `context7-cli`), pinned via
+mise at `~/.local/share/mise/installs/npm-ctx7/0.3.9/bin/ctx7` and
+invoked through the `/context7-cli` skill at
+`.claude/skills/context7-cli/`. `ctx7 --help` returns these subcommands:
 
-1. Every library a delta-doc reviewer would plausibly look up (mise,
-   chezmoi, `@devcontainers/cli`) is already in
-   `docs/research/mintlify-catalog.md`, so the mintlify path covered
-   every real lookup attempted during Commit 5.
-2. The R3 plan §6 Risk Register has R2 ("mcp2cli not on PATH; pipeline
-   test fails") but not a symmetric risk for context7-cli. The intent
-   of step 6 in the plan was "force a genuine fallback exercise",
-   which mintlify coverage made unnecessary.
+```
+skills|skill       Manage AI coding skills
+login [options]    Log in to Context7
+logout             Log out of Context7
+whoami             Show current login status
+setup [options]    Set up Context7 for your AI coding agent
+```
 
-**Action item:** the next session should either install
-`context7-cli` (probably via mise as another `"pipx:..."` entry) or
-remove the context7 step from `.claude/rules/research-doc-sources.md`
-preference chain if it's not going to be kept reachable. Do not do
-either in this PR — out of scope.
+This is a **skill-management CLI**, not a direct
+"fetch-doc-for-library-X" CLI. The direct doc-fetch path for Context7
+is a different mechanism (the Context7 MCP server, reachable via
+`mcp2cli`, or a `resolve-library-id` HTTP endpoint). The R3 plan's
+phrasing "`context7-cli` for at least one library lookup NOT covered
+by mintlify" conflated the two: `ctx7` manages skills, it does not
+fetch library docs inline.
+
+Two consequences for this PR:
+
+1. **The R3 "force a genuine fallback exercise" requirement cannot be
+   satisfied via `ctx7`'s CLI surface as written** — there's no
+   `ctx7 docs <library>` subcommand to invoke. It would need to go
+   through the Context7 MCP server via `mcp2cli` instead, which is
+   just another MCP invocation path (no new tool class exercised).
+2. **The preference chain in `.claude/rules/research-doc-sources.md`
+   step 5 ("context7-cli") should probably read "Context7 MCP via
+   mcp2cli"** rather than implying a direct CLI doc-fetch. This is a
+   rule-text clarification worth making in a follow-up commit — not
+   in this PR, to keep scope tight.
+
+Nothing in this delta doc's 5 claims actually needed a non-mintlify
+fallback, so the absence of a direct `ctx7 docs` invocation does not
+weaken the verdicts above.
 
 **Observation on mcp2cli tool-call exercise:** `mcp2cli` was exercised
 at the `--help` level only, not via a real tool call against
@@ -300,8 +319,14 @@ commit.
 3. **Audit `home/executable_run_*.sh.tmpl`** (2 files) against the
    chezmoi `chezmoi.os` canonical pattern; apply gating.
 4. **Close PR #9** once the delta is applied (PR #9 is superseded).
-5. **Decide on `context7-cli`**: install-and-pin via mise, or drop it
-   from the preference chain in `.claude/rules/research-doc-sources.md`.
+5. **Clarify the context7 entry in the preference chain**:
+   `.claude/rules/research-doc-sources.md` step 5 currently reads
+   "`context7-cli`" but `ctx7` is a skill-management CLI, not a direct
+   doc-fetcher. The rule should either (a) re-word to "Context7 MCP
+   via `mcp2cli`" if we plan to use the Context7 MCP server for
+   non-mintlify libraries, or (b) drop the entry if we plan to rely
+   on mintlify + raw curl only. Decide in a follow-up commit, not
+   this PR.
 
 ---
 
