@@ -38,7 +38,7 @@ def build_smoke_script() -> str:
     """Build the inline smoke test script."""
     return """\
 set -euo pipefail
-MISE_CFG="${MISE_CONFIG_DIR:-/etc/mise}/config.toml"
+MISE_CFG="${MISE_CONFIG_DIR:-/usr/local/share/mise}/config.toml"
 echo "=== hk validate ==="
 HK_FILE=/etc/hk/hk.pkl hk validate
 echo "=== mise ls (check no missing — system config only) ==="
@@ -69,8 +69,8 @@ echo "=== path constraints ==="
 if [ ! -x /usr/local/bin/mise ]; then
   echo "FAIL: /usr/local/bin/mise missing"; exit 1
 fi
-if [ ! -d /opt/mise/installs ]; then
-  echo "FAIL: /opt/mise/installs missing"; exit 1
+if [ ! -d /usr/local/share/mise/installs ]; then
+  echo "FAIL: /usr/local/share/mise/installs missing"; exit 1
 fi
 echo "=== backend policy checks ==="
 grep -q 'npm.package_manager = "bun"' "$MISE_CFG" || {
