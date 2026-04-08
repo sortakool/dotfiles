@@ -1,5 +1,5 @@
 <!-- OMC:START -->
-<!-- OMC:VERSION:4.10.2 -->
+<!-- OMC:VERSION:4.11.2 -->
 
 # oh-my-claudecode - Intelligent Multi-Agent Orchestration
 
@@ -42,7 +42,7 @@ If verification fails, keep iterating.
 <execution_protocols>
 Broad requests: explore first, then plan. 2+ independent tasks in parallel. `run_in_background` for builds/tests.
 Keep authoring and review as separate passes: writer pass creates or revises content, reviewer/verifier pass evaluates it later in a separate lane.
-Always use `code-reviewer` or `verifier` for the approval pass — keep approval in a separate context from authoring.
+Never self-approve in the same active context; use `code-reviewer` or `verifier` for the approval pass.
 Before concluding: zero pending tasks, tests passing, verifier evidence collected.
 </execution_protocols>
 
@@ -53,7 +53,7 @@ Kill switches: `DISABLE_OMC`, `OMC_SKIP_HOOKS` (comma-separated).
 </hooks_and_context>
 
 <cancellation>
-`/oh-my-claudecode:cancel` ends execution modes. Cancel when done+verified or blocked. Keep running until work is complete and verified.
+`/oh-my-claudecode:cancel` ends execution modes. Cancel when done+verified or blocked. Don't cancel if work incomplete.
 </cancellation>
 
 <worktree_paths>
