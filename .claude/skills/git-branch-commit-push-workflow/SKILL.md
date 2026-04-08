@@ -1,3 +1,9 @@
+---
+name: git-branch-commit-push-workflow
+description: Plain git workflow for branches, commits, pushes, and PRs. Avoids virtual-branch composition bugs where commits silently depend on other applied branches.
+disable-model-invocation: true
+---
+
 # Git Branch-Commit-Push Workflow (Plain Git)
 
 ## The Insight

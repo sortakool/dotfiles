@@ -1,3 +1,8 @@
+---
+name: pkl-import-hyphen-alias-expertise
+description: Pkl import of hyphenated filenames requires an 'as' alias; the pklr (Rust) evaluator does not support import/spread syntax. Use the pkl binary with HK_PKL_BACKEND=pkl.
+---
+
 # Pkl Import Alias Required for Hyphenated Filenames
 
 ## The Insight

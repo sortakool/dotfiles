@@ -12,8 +12,10 @@ ad-hoc directories under `.omc/`. The standard structure is:
 | `.omc/plans/` | Plans and handoffs | Session resume plans, ralplan output, consensus plans |
 | `.omc/specs/` | Specs from deep-dive/interview | `deep-dive-{slug}.md`, `deep-dive-trace-{slug}.md` |
 | `.omc/research/` | Research artifacts | External context findings, doc lookups |
-| `.omc/skills/` | Learned project skills | Expertise and workflow skill files |
 | `.omc/logs/` | Execution logs | Agent run logs, pipeline traces |
+
+**Skills do NOT live under `.omc/`.** Claude Code only auto-loads project
+skills from `.claude/skills/<name>/SKILL.md`. See rule 5 below.
 
 ## Rules
 
@@ -28,4 +30,12 @@ ad-hoc directories under `.omc/`. The standard structure is:
 
 4. **Specs from deep-dive/interview go in specs/**: Not in plans, not in research.
 
-5. **Learned skills go in skills/**: Not in plans, not in research. Use the learner skill format.
+5. **Learned skills go in `.claude/skills/<name>/SKILL.md`**: NOT in `.omc/skills/`
+   (Claude Code's skill loader does not scan that path). Each skill is a
+   directory containing a `SKILL.md` file with YAML frontmatter (`name`,
+   `description`, and optionally `user-invocable`, `triggers`,
+   `argument-hint`). The frontmatter `name` should match the directory
+   name so slash-invocation and auto-loading stay consistent. OMC's
+   `/learner` and `/skillify` workflows that historically wrote to
+   `.omc/skills/` should be redirected to `.claude/skills/` for this
+   project.

@@ -5,7 +5,13 @@
       "Bash(bash \"/Users/rmanaloto/.claude/plugins/cache/omc/oh-my-claudecode/4.11.2/scripts/setup-progress.sh\" complete 4.11.2)",
       "Bash(hk run:*)",
       "Bash(git add:*)",
-      "Bash(git commit -m ':*)"
+      "Bash(git commit -m ':*)",
+      "Read(//Users/rmanaloto/**)",
+      "Bash(cp /Users/rmanaloto/dev/github/ray-manaloto/macos-development-environment/home/dot_tmux.conf ~/.tmux.conf)",
+      "Bash(tmux source-file:*)",
+      "Bash(tmux show-options:*)",
+      "Bash(tmux display-message:*)",
+      "Bash(git reset:*)"
     ]
   }
 }
