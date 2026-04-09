@@ -46,6 +46,7 @@ RUN rm -f /etc/sudoers.d/devcontainer && \
       > /etc/sudoers.d/"${DEVCONTAINER_USERNAME}" && \
     chmod 0440 /etc/sudoers.d/"${DEVCONTAINER_USERNAME}"
 
+
 # Pre-stage home directories for volume mount targets
 RUN mkdir -p \
     /home/${DEVCONTAINER_USERNAME}/.cache/uv \

@@ -10,6 +10,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from contextlib import suppress
@@ -242,64 +243,40 @@ def initialize_host_ssh_runtime() -> dict[str, str]:
 
     target_socket = _resolve_host_ssh_auth_sock()
     if not target_socket:
-        _stop_proxy(pid_file)
-        target_file.unlink(missing_ok=True)
-        port_file.unlink(missing_ok=True)
-        return {
-            "state_dir": str(state_dir),
-            "ssh_proxy_port": "",
-            "authorized_keys": str(len(public_keys)),
-        }
-
-    current_target = (
-        target_file.read_text(encoding="utf-8").strip() if target_file.exists() else ""
-    )
-    current_port = (
-        port_file.read_text(encoding="utf-8").strip() if port_file.exists() else ""
-    )
-    if current_target == target_socket and current_port.isdigit():
-        raw_pid = (
-            pid_file.read_text(encoding="utf-8").strip() if pid_file.exists() else ""
+        msg = (
+            "SSH_AUTH_SOCK is unset on the host and launchctl getenv has no "
+            "fallback; start the macOS SSH agent before running `mise run up`"
         )
-        if raw_pid.isdigit():
-            try:
-                os.kill(int(raw_pid), 0)
-            except OSError:
-                pass
-            else:
-                if _wait_for_tcp_port(
-                    "127.0.0.1",
-                    int(current_port),
-                    timeout_seconds=0.5,
-                ):
-                    return {
-                        "state_dir": str(state_dir),
-                        "ssh_proxy_port": current_port,
-                        "authorized_keys": str(len(public_keys)),
-                    }
+        raise RuntimeError(msg)
 
+    # Always tear down prior state and respawn. PID-file liveness via
+    # os.kill(pid, 0) is unreliable across reboots (PIDs get recycled), so
+    # reusing the "live" branch silently bound the container to dead or
+    # unrelated processes. Cost of a fresh spawn is ~100ms.
     _stop_proxy(pid_file)
     target_file.unlink(missing_ok=True)
     port_file.unlink(missing_ok=True)
 
+    log_file = state_dir / "host-ssh-proxy.log"
     port = _choose_host_ssh_proxy_port()
-    proc = subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "dotfiles_setup.main",
-            "docker",
-            "proxy",
-            "--listen-tcp",
-            f"127.0.0.1:{port}",
-            "--target-unix",
-            target_socket,
-        ],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    with log_file.open("w", encoding="utf-8") as log_fd:
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "dotfiles_setup.main",
+                "docker",
+                "proxy",
+                "--listen-tcp",
+                f"127.0.0.1:{port}",
+                "--target-unix",
+                target_socket,
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=log_fd,
+            stderr=log_fd,
+            start_new_session=True,
+        )
     pid_file.write_text(f"{proc.pid}\n", encoding="utf-8")
     target_file.write_text(target_socket + "\n", encoding="utf-8")
     port_file.write_text(f"{port}\n", encoding="utf-8")
@@ -308,7 +285,11 @@ def initialize_host_ssh_runtime() -> dict[str, str]:
         _stop_proxy(pid_file)
         target_file.unlink(missing_ok=True)
         port_file.unlink(missing_ok=True)
-        msg = f"failed to create host SSH proxy on 127.0.0.1:{port}"
+        log_tail = log_file.read_text(encoding="utf-8") if log_file.exists() else ""
+        msg = (
+            f"failed to create host SSH proxy on 127.0.0.1:{port}; "
+            f"proxy subprocess log:\n{log_tail}"
+        )
         raise RuntimeError(msg)
 
     return {
@@ -316,6 +297,17 @@ def initialize_host_ssh_runtime() -> dict[str, str]:
         "ssh_proxy_port": str(port),
         "authorized_keys": str(len(public_keys)),
     }
+
+
+def stop_host_ssh_runtime() -> None:
+    """Tear down host-side SSH proxy state spawned by initialize_host_ssh_runtime."""
+    state_dir = host_state_dir()
+    pid_file = state_dir / HOST_SSH_PROXY_PID_FILE
+    target_file = state_dir / HOST_SSH_PROXY_TARGET_FILE
+    port_file = state_dir / HOST_SSH_PROXY_PORT_FILE
+    _stop_proxy(pid_file)
+    target_file.unlink(missing_ok=True)
+    port_file.unlink(missing_ok=True)
 
 
 def host_authorized_keys() -> list[str]:
@@ -334,50 +326,61 @@ def ensure_container_ssh_proxy() -> str:
     """Ensure the in-container SSH agent proxy socket is available."""
     state_dir = host_state_dir()
     port_file = state_dir / HOST_SSH_PROXY_PORT_FILE
-    proxy_port = (
-        port_file.read_text(encoding="utf-8").strip() if port_file.exists() else ""
-    )
-    if not proxy_port.isdigit():
-        return ""
-
-    if CONTAINER_SSH_PROXY_SOCKET.exists() and CONTAINER_SSH_PROXY_SOCKET.is_socket():
-        raw_pid = (
-            CONTAINER_SSH_PROXY_PID_FILE.read_text(encoding="utf-8").strip()
-            if CONTAINER_SSH_PROXY_PID_FILE.exists()
-            else ""
+    if not port_file.exists():
+        msg = (
+            f"host SSH proxy port file not found at {port_file}; "
+            "initializeCommand did not run or host proxy failed to start"
         )
-        if raw_pid.isdigit():
-            try:
-                os.kill(int(raw_pid), 0)
-            except OSError:
-                pass
-            else:
-                return str(CONTAINER_SSH_PROXY_SOCKET)
+        raise RuntimeError(msg)
+    proxy_port = port_file.read_text(encoding="utf-8").strip()
+    if not proxy_port.isdigit():
+        msg = (
+            f"host SSH proxy port file {port_file} is not a valid port: {proxy_port!r}"
+        )
+        raise RuntimeError(msg)
 
+    # Probe upstream reachability BEFORE spawning the listener. If the host
+    # proxy is dead (stale state across host reboots), fail loudly instead
+    # of binding a socket that connects to nothing on first use.
+    if not _wait_for_tcp_port(HOST_PROXY_HOST, int(proxy_port), timeout_seconds=2.0):
+        msg = (
+            f"host SSH proxy unreachable at {HOST_PROXY_HOST}:{proxy_port}; "
+            "run `mise run down && mise run up` on the host to respawn it"
+        )
+        raise RuntimeError(msg)
+
+    # Always tear down prior state and respawn for the same reason as the
+    # host side: PID-file liveness is unreliable.
     _stop_proxy(CONTAINER_SSH_PROXY_PID_FILE, CONTAINER_SSH_PROXY_SOCKET)
 
-    proc = subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "dotfiles_setup.main",
-            "docker",
-            "proxy",
-            "--listen-unix",
-            str(CONTAINER_SSH_PROXY_SOCKET),
-            "--target-tcp",
-            f"{HOST_PROXY_HOST}:{proxy_port}",
-        ],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    log_file = Path(tempfile.gettempdir()) / "dotfiles-ssh-agent-proxy.log"
+    with log_file.open("w", encoding="utf-8") as log_fd:
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "dotfiles_setup.main",
+                "docker",
+                "proxy",
+                "--listen-unix",
+                str(CONTAINER_SSH_PROXY_SOCKET),
+                "--target-tcp",
+                f"{HOST_PROXY_HOST}:{proxy_port}",
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=log_fd,
+            stderr=log_fd,
+            start_new_session=True,
+        )
     CONTAINER_SSH_PROXY_PID_FILE.write_text(f"{proc.pid}\n", encoding="utf-8")
 
     if not _wait_for_unix_socket(CONTAINER_SSH_PROXY_SOCKET):
         _stop_proxy(CONTAINER_SSH_PROXY_PID_FILE, CONTAINER_SSH_PROXY_SOCKET)
-        msg = f"failed to create container SSH proxy at {CONTAINER_SSH_PROXY_SOCKET}"
+        log_tail = log_file.read_text(encoding="utf-8") if log_file.exists() else ""
+        msg = (
+            f"failed to create container SSH proxy at {CONTAINER_SSH_PROXY_SOCKET}; "
+            f"proxy subprocess log:\n{log_tail}"
+        )
         raise RuntimeError(msg)
 
     return str(CONTAINER_SSH_PROXY_SOCKET)

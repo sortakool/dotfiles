@@ -6,7 +6,7 @@ hk = "1.41.0"
 pkl = "0.31.1"
 hadolint = "2.14.0"
 shellcheck = "0.11.0"
-shfmt = "3.13.0"
+shfmt = "3.13.1"
 taplo = "0.10.0"
 actionlint = "1.7.12"
 typos = "1.45.0"
@@ -16,8 +16,8 @@ yq = "4.52.5"
 ghalint = "1.5.5"
 jq = "1.8.1"
 # Python toolchain for the mde-py package in python/
-python = "3.14.3"
-uv = "0.11.3"
+python = "3.14.4"
+uv = "0.11.5"
 pinact = "latest"
 chezmoi = "latest"  # Used by CI lint hard-gate step to verify .chezmoiignore mise overlay gating
 "npm:@devcontainers/cli" = "0.85.0"
@@ -25,7 +25,7 @@ colima = "0.10.1"  # Docker runtime (VZ + Rosetta) — preferred over Docker Des
 lima = "2.1.1"     # Required runtime dependency for colima (provides limactl)
 "npm:agnix" = "latest"
 "npm:agents-lint" = "latest"
-"pipx:mcp2cli" = "2.6.0"  # Process-spawn MCP client; forbids claude mcp add (see feedback_no_mcp_registration.md)
+"pipx:mcp2cli" = "3.0.1"
 # Markdown + Claude-docs linters. Installed now; hk.pkl integration is
 # scheduled for post-devcontainer-work review (see GH issue tracking
 # follow-up). claude_md_size_limit (below in hk.pkl) provides the
@@ -35,6 +35,21 @@ lima = "2.1.1"     # Required runtime dependency for colima (provides limactl)
 "npm:markdownlint-cli2" = "latest"      # https://github.com/DavidAnson/markdownlint — general markdown quality (MD013 line-length, etc.)
 "ubi:jackchuka/mdschema" = "latest"     # https://github.com/jackchuka/mdschema — markdown frontmatter schema validation
 "ubi:rvben/rumdl" = "latest"            # https://github.com/rvben/rumdl — Rust-fast markdown linter (71 rules)
+"npm:oh-my-claude-sisyphus" = "4.11.3"
+"github:ast-grep/ast-grep" = "0.42.1"
+lefthook = "2.1.5"
+"npm:ctx7" = "0.3.10"
+rtk = "0.35.0"
+"npm:skills" = "1.4.9"
+"npm:agent-browser" = "0.25.3"
+"npm:portless" = "0.10.1"
+"pipx:deepagents-cli" = "0.0.35"
+aws-cli = { version = "2.34.27", symlink_bins = "true" }
+azure-cli = { version = "2.85.0", uvx_args = "--prerelease=allow" }
+docker-cli = "29.4.0"
+opencode = "1.4.0"
+"npm:@claude-flow/cli" = "3.5.78"
+"npm:@ralph-orchestrator/ralph-cli" = "2.9.1"
 
 [settings]
 experimental = true
@@ -98,10 +113,17 @@ description = "Bring the devcontainer up via the official @devcontainers/cli (Ma
 # (and its child docker calls) — host-level docker/colima invocations are
 # unaffected. Required because the devcontainer image is amd64-only.
 #
-# DEVCONTAINER_SSH_PORT is staged here ahead of its first consumer. PR-2
-# wires it into devcontainer.json (named volume template + sshd feature
-# port mapping). Override per-clone via mise.local.toml. Do not remove —
-# see spec C11/C12 in .omc/specs/deep-interview-devcontainer-lifecycle.md.
+# DEVCONTAINER_SSH_PORT is the HOST-side port for the inbound shell
+# (Requirement R1: `ssh ${USER}@localhost -p 4444` opens a shell in the
+# container). Container-internal sshd listens on 2222 (feature hardcoded);
+# devcontainer.json maps ${DEVCONTAINER_SSH_PORT}:2222 via appPort.
+# Override per-clone via mise.local.toml on port collision without losing
+# named volumes — volume names do NOT include the port (C10/C11/C12).
+#
+# Outbound agent forwarding (Requirement R2: `ssh -T git@github.com` from
+# inside container) is independent; uses the host-TCP + container-unix-
+# socket proxy pattern spawned from initializeCommand/postStartCommand.
+# Research: .omc/research/research-20260407-ssh-devcontainer/report.md.
 #
 # --pull flag (default true) implements "pull only if missing": first run
 # pulls the base image, subsequent restarts reuse the local copy. Force a
@@ -250,23 +272,84 @@ fi
 echo "OK: $PRE_COUNT tools persisted identically across stop/up (mise-system.toml baseline: $EXPECTED_MIN)"
 '''
 
+[tasks.verify-arch]
+description = "R3: container runs as linux/amd64 x86_64 (not ARM passthrough)"
+# Proves Requirement 3: the container is AMD64 regardless of host arch.
+# Three independent signals: (1) docker image manifest architecture,
+# (2) container uname -m, (3) container arch. All three must report
+# x86_64/amd64. The host can be arm64 (macOS ARM via Colima VZ+Rosetta)
+# or amd64 (Linux CI runner); we don't check the host.
+run = '''
+set -euo pipefail
+container_name="$(docker ps -q --filter "label=devcontainer.local_folder=$PWD" | head -1)"
+if [ -z "${container_name}" ]; then
+  echo "FAIL: no running devcontainer for $PWD" >&2
+  exit 1
+fi
+echo "==> docker image architecture"
+image_id=$(docker inspect "${container_name}" --format '{{"{{"}}.Image{{"}}"}}')
+image_arch=$(docker image inspect "${image_id}" --format '{{"{{"}}.Architecture{{"}}"}}')
+echo "image: ${image_arch}"
+[ "${image_arch}" = "amd64" ] || { echo "FAIL: image arch is ${image_arch}, expected amd64" >&2; exit 1; }
+
+echo "==> container uname -m"
+uname_m=$(docker exec "${container_name}" uname -m)
+echo "uname -m: ${uname_m}"
+[ "${uname_m}" = "x86_64" ] || { echo "FAIL: uname -m is ${uname_m}, expected x86_64" >&2; exit 1; }
+
+echo "==> container arch"
+arch_out=$(docker exec "${container_name}" arch)
+echo "arch: ${arch_out}"
+[ "${arch_out}" = "x86_64" ] || { echo "FAIL: arch is ${arch_out}, expected x86_64" >&2; exit 1; }
+
+echo "OK: R3 container is linux/amd64 x86_64 on all three signals"
+'''
+
+[tasks.verify-ssh-inbound]
+description = "R1: ssh ${USER}@localhost -p ${DEVCONTAINER_SSH_PORT} succeeds from the host"
+# Proves Requirement 1: the ghcr.io/devcontainers/features/sshd feature
+# is running sshd inside the container, the host port mapping is live,
+# and the authorized_keys copy in postCreateCommand worked (host user
+# can log in without a password). Runs on the HOST, not inside the
+# container. StrictHostKeyChecking=accept-new + UserKnownHostsFile=/dev/
+# null so we don't pollute the host's known_hosts with the container's
+# ephemeral host keys.
+env = { DEVCONTAINER_SSH_PORT = "4444" }
+run = '''
+set -euo pipefail
+port="${DEVCONTAINER_SSH_PORT}"
+echo "==> probing ssh ${USER}@localhost -p ${port}"
+out=$(ssh -o BatchMode=yes \
+          -o StrictHostKeyChecking=accept-new \
+          -o UserKnownHostsFile=/dev/null \
+          -o LogLevel=ERROR \
+          -o ConnectTimeout=10 \
+          -p "${port}" "${USER}@localhost" 'hostname && whoami')
+echo "${out}"
+echo "${out}" | grep -q "${USER}" || {
+  echo "FAIL: whoami did not return ${USER}" >&2
+  exit 1
+}
+echo "OK: R1 inbound ssh ${USER}@localhost -p ${port} works"
+'''
+
 [tasks.verify-local]
-description = "Full Priority-2 local devcontainer validation (sequential: pull → verify-image → up → ps → smoke → persistence)"
-# Turns the 7-step Priority 2 sequence from the session handoff into an
-# unattended gate. Step 7 (CLion handoff) is manual and not included.
-# Step 6 (github ssh) is already covered by tier 3 inside smoke.
-#
+description = "Full local devcontainer validation (pull → verify-image → up → ps → smoke → persistence → verify-ssh-inbound)"
 # Sequential shell body (not `depends = [...]`) so mise can't parallelize
 # the steps — smoke/persistence rely on up finishing first, and
-# verify-image relies on pull finishing first.
+# verify-image relies on pull finishing first. verify-ssh-inbound (R1)
+# runs last because it needs postCreateCommand to have installed
+# ~/.ssh/authorized_keys from the host-state bind mount.
 run = '''
 set -euo pipefail
 mise run pull
 mise run verify-image
 mise run up
 mise run ps
+mise run verify-arch
 mise run smoke
 mise run persistence
+mise run verify-ssh-inbound
 '''
 
 [tasks.stop]
@@ -277,7 +360,13 @@ alias = "down"
 # read-configuration, outdated, upgrade, features, templates, exec).
 # Teardown uses `docker rm -f` filtered on the workspace-folder label
 # that the devcontainer CLI applies to every container it creates.
-run = 'docker rm -f $(docker ps -aq --filter "label=devcontainer.local_folder=$PWD")'
+#
+# Also stops the host-side SSH agent proxy spawned by initializeCommand
+# so `mise run down` leaves the host with zero background state.
+run = '''
+docker rm -f $(docker ps -aq --filter "label=devcontainer.local_folder=$PWD") || true
+uv run --project python dotfiles-setup docker stop-host-proxy || true
+'''
 
 [tasks.build]
 description = "Build the docker image locally using docker bake"

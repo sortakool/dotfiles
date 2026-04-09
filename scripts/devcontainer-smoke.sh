@@ -51,30 +51,30 @@ else
   exit 1
 fi
 
-echo "[tier3] ssh -T git@github.com (transport check)"
-# This validates the SSH *transport* to github.com — DNS, TCP, key exchange,
-# host-key trust, key file readability — NOT credential completion. Inside
-# `devcontainer exec` there is no PTY and no SSH_AUTH_SOCK, so a passphrase-
-# protected host key cannot decrypt (the macOS Keychain that normally unlocks
-# it is unreachable from Linux). Real git push workflows rely on an IDE
-# attaching via the sshd feature with agent forwarding.
-#
-# IgnoreUnknown swallows macOS-only directives (UseKeychain, etc.) that the
-# host's bind-mounted ~/.ssh/config carries in but Linux OpenSSH rejects as
-# fatal. Built-in OpenSSH facility (see .claude/rules/use-tool-builtins.md).
-#
-# A "Permission denied (publickey)" response from github.com is a SUCCESS
-# signal for image validation: it proves the full SSH stack reached the
-# server and offered a key. Any other failure (DNS, network, host-key
-# mismatch, fatal config) is a real bug.
-ssh_out=$(ssh -o "IgnoreUnknown=UseKeychain,AddKeysToAgent" \
-              -o BatchMode=yes \
-              -o ConnectTimeout=10 \
-              -T git@github.com 2>&1 || true)
-if echo "${ssh_out}" | grep -qE "successfully authenticated|Permission denied \(publickey\)"; then
-  echo "  OK: github ssh transport reachable"
+echo "[tier3] SSH agent proxy + github auth"
+# Real end-to-end SSH auth via the host-TCP + container-unix-socket proxy
+# pattern (see python/src/dotfiles_setup/docker.py::serve_proxy). The host
+# half is spawned by initializeCommand, the container half by
+# postStartCommand; this tier verifies the full chain actually works.
+expected_sock="/tmp/dotfiles-ssh-agent.sock"
+if [ "${SSH_AUTH_SOCK:-}" != "${expected_sock}" ]; then
+  echo "  FAIL: SSH_AUTH_SOCK=${SSH_AUTH_SOCK:-<unset>}, expected ${expected_sock}" >&2
+  exit 1
+fi
+if [ ! -S "${expected_sock}" ]; then
+  echo "  FAIL: ${expected_sock} is not a socket (container proxy not running)" >&2
+  exit 1
+fi
+if ! ssh-add -L 2>/dev/null | grep -q '^ssh-'; then
+  echo "  FAIL: ssh-add -L shows no identities (host proxy not forwarding the agent)" >&2
+  ssh-add -L 2>&1 | sed 's/^/    /' >&2 || true
+  exit 1
+fi
+ssh_out=$(ssh -o BatchMode=yes -o ConnectTimeout=10 -T git@github.com 2>&1 || true)
+if echo "${ssh_out}" | grep -q "successfully authenticated"; then
+  echo "  OK: github ssh full auth via proxy"
 else
-  echo "  FAIL: github ssh transport broken" >&2
+  echo "  FAIL: github ssh did not reach successful auth" >&2
   echo "${ssh_out}" | sed 's/^/    /' >&2
   exit 1
 fi

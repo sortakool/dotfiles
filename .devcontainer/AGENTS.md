@@ -26,40 +26,42 @@ Defines the devcontainer image and runtime lifecycle. Two layers:
 The devcontainer uses **declarative lifecycle hooks** (per containers.dev
 spec), not a bootstrap shell wrapper:
 
-- `initializeCommand` (host side): pre-creates `~/.ssh`, `~/.claude`, etc.
-  and touches `~/.ssh/{config,known_hosts,authorized_keys}` so bind mounts
-  land cleanly on first create.
+- `initializeCommand` (host side): pre-creates `~/.claude`, `~/.codex`,
+  `~/.gemini`, `~/.local/state/dotfiles`, then spawns the host-side
+  SSH-agent proxy via `dotfiles-setup docker initialize-host`.
 - `onCreateCommand` (inside container, once): runs `chezmoi init --apply`
   against `/workspaces/${localWorkspaceFolderBasename}`, then chowns the
   mise-user, cargo-user, and rustup-user named volume mountpoints to
   `${USER}:${USER}`.
 - `postCreateCommand` (inside container, once): runs
   `../scripts/devcontainer-smoke.sh` tier 1/2/3 checks. Exit 0 required.
-- **No `postStartCommand`.** SSH startup is handled by the `sshd` feature's
-  `startNow: true`, not by a bespoke start hook.
+- `postStartCommand` (inside container, every start): spawns the
+  container-side SSH-agent unix-socket proxy via
+  `dotfiles-setup docker start-container-proxy`. Bridges
+  `$SSH_AUTH_SOCK=/tmp/dotfiles-ssh-agent.sock` to the host proxy at
+  `host.docker.internal:<port from /tmp/dotfiles-host-state/ssh-agent-port>`.
 
 ## Dynamic Naming
 
 Container name and named volumes are templated so multiple projects on
 this Mac can run devcontainers side-by-side:
 
-- **Container name:** `dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-${localEnv:DEVCONTAINER_SSH_PORT}`
+- **Container name:** `dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}`
 - **mise-user volume:** `dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-mise-user`
 - **cargo-user volume:** `dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-cargo-user`
 - **rustup-user volume:** `dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-rustup-user`
 
-Volume names intentionally have **no port** so port-collision recovery
-doesn't lose user mise/cargo/rustup installs.
-
-- Host-side SSH port: `${localEnv:DEVCONTAINER_SSH_PORT}` (default 4444).
-- Internal sshd port: **literal 4444** inside the container, not templated.
+SSH-agent forwarding uses a host-TCP + container-unix-socket proxy; no
+host port is reserved or bound other than the ephemeral loopback port
+chosen per-run by the host proxy (stored in
+`~/.local/state/dotfiles/ssh-agent-port`).
 
 ## Override Model
 
 - `mise.toml [tasks.up].env` holds the defaults: `BASE_IMAGE`,
-  `DOCKER_DEFAULT_PLATFORM=linux/amd64`, `DEVCONTAINER_SSH_PORT=4444`.
+  `DOCKER_DEFAULT_PLATFORM=linux/amd64`.
 - `mise.local.toml` (gitignored, see `mise.local.toml.example`) overrides
-  per-clone. Typical use: bump `DEVCONTAINER_SSH_PORT` on port collision.
+  per-clone. Typical use: pin `BASE_IMAGE` to a specific SHA tag.
 - No `.env.devcontainer`, no `.miserc.toml` multi-env layering. Cloud/GHA
   portability is an explicitly deferred future spec.
 
@@ -68,8 +70,8 @@ doesn't lose user mise/cargo/rustup installs.
 Bringing the container up is **always a terminal action**:
 
 ```bash
-mise run up     # start (binds SSH on ${DEVCONTAINER_SSH_PORT:-4444})
-mise run down   # stop
+mise run up     # start (spawns host SSH-agent proxy via initializeCommand)
+mise run down   # stop (also tears down host SSH-agent proxy)
 ```
 
 Attaching an IDE to the running container:
@@ -80,20 +82,13 @@ Attaching an IDE to the running container:
   Container` → select the running container. **CLion caveat:** the first
   attach invokes `initializeCommand`, so launch CLion from a terminal
   (`open -a CLion` from shell, or `clion .` via the JetBrains Toolbox
-  shell wrapper) to ensure it inherits `DEVCONTAINER_SSH_PORT`.
+  shell wrapper) to ensure it inherits `mise`, `uv`, and `$SSH_AUTH_SOCK`.
 
 > ⚠️ **Never use `Reopen in Container` (VS Code) or the "create new dev
 > container" CLion flow from a dock-launched IDE.** macOS GUI processes
-> don't inherit terminal env, so `${localEnv:DEVCONTAINER_SSH_PORT}` is
-> empty, devcontainer-spec substitution fails with a port-parse error on
-> `appPort: [":4444"]`, and the container refuses to start.
-> `initializeCommand` cannot fix this — spec substitution runs before any
-> lifecycle command.
-
-The `mise run up` + attach-to-running pattern preserves per-worktree
-container naming (Constraint 10), per-worktree SSH ports (Constraint 12),
-and the named mise-user / cargo-user / rustup-user volumes (Constraint 11)
-without regression.
+> don't inherit terminal env, so `mise`, `uv`, and `$SSH_AUTH_SOCK` are
+> not available to `initializeCommand`, which then fails to spawn the
+> host-side SSH agent proxy.
 
 ## Mise Cookbook Paths
 
@@ -172,20 +167,27 @@ on merge (same blast radius as PR-1's hotfix cycle).
 
 <!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
 
-## ⚠ STATUS 2026-04-07: SSH MODEL BROKEN
+## SSH Agent Forwarding (proxy pattern)
 
-The `sshd` feature + `appPort` + readonly `~/.ssh` bind mount documented
-above do **not** work end-to-end. The feature's `port`/`username`/`startNow`
-options don't exist in its schema (silently dropped); sshd listens on
-its hardcoded **2222**, not 4444. `@devcontainers/cli` does no agent
-forwarding (Microsoft maintainer in `devcontainers/cli#441`). VS Code
-"Attach to Running Container" already auto-forwards
-(`microsoft/vscode-remote-release#11413`); only the CLI lane is broken.
+SSH agent forwarding into the CLI lane (`mise run up` + `devcontainer exec`)
+uses a host-TCP + container-unix-socket proxy. Neither the devcontainer
+spec nor `@devcontainers/cli` provides native SSH-agent forwarding
+(`devcontainers/cli#441`), and Colima has no
+`host-services/ssh-auth.sock` equivalent (`abiosoft/colima#1330`, `#942`).
 
-**Fix:** adopt cpp-playground host-TCP + container-unix-socket SSH-agent
-proxy pattern, scoped to the CLI lane only. Treat C10/C11/C12 + the
-IDE-Workflow + Dynamic-Naming sections above as historical pending the
-rewrite.
+- **Host half:** spawned by `initializeCommand` via
+  `dotfiles-setup docker initialize-host` → listens on
+  `127.0.0.1:<ephemeral>`, targets `$SSH_AUTH_SOCK` (with
+  `launchctl getenv SSH_AUTH_SOCK` fallback).
+- **Container half:** spawned by `postStartCommand` via
+  `dotfiles-setup docker start-container-proxy` → listens on
+  `/tmp/dotfiles-ssh-agent.sock` (bound to `remoteEnv.SSH_AUTH_SOCK`),
+  targets `host.docker.internal:<port from host-state>`.
+- **State dir:** host `~/.local/state/dotfiles/` bind-mounted at
+  container `/tmp/dotfiles-host-state/`; carries the proxy port file,
+  target file, and PID file.
+- **Teardown:** `mise run down` calls
+  `dotfiles-setup docker stop-host-proxy` to kill the host process and
+  clear state files, leaving the host with zero background state.
 
 - **Research:** `.omc/research/research-20260407-ssh-devcontainer/report.md`
-- **Resume plan:** `.omc/plans/session-2026-04-07e-ssh-rewrite-priority.md`

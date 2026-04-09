@@ -19,12 +19,31 @@
 // BASE_IMAGE default comes from mise.toml [tasks.up].env. Override
 // per-clone via mise.local.toml (see mise.local.toml.example).
 //
-// DEVCONTAINER_SSH_PORT default also comes from mise.toml [tasks.up].env
-// (default 4444). Override per-clone via mise.local.toml. Only the
-// host-side port mapping is dynamic; the internal sshd port stays
-// literal 4444 (spec Constraint 12) so the mise-user / cargo-user /
-// rustup-user named volumes (which do NOT include port in their
-// names) survive port-collision recovery without losing user installs.
+// ===============================================================
+// TWO independent SSH requirements, TWO mechanisms:
+//
+// (R1) INBOUND shell: `ssh ${USER}@localhost -p 4444` from Mac host
+//      opens a shell into the container. Provided by:
+//      - `features.ghcr.io/devcontainers/features/sshd` — installs
+//        openssh-server. NOTE: the feature's `port`/`username`/`startNow`
+//        options are silently dropped (see research report); sshd
+//        listens on its hardcoded **2222** internally. External port is
+//        `${DEVCONTAINER_SSH_PORT}` (default 4444) via `appPort`.
+//      - `postCreateCommand` copies the host user's authorized keys
+//        (pre-written by `dotfiles-setup docker initialize-host` on the
+//        host from `ssh-add -L`) into `~/.ssh/authorized_keys` so the
+//        container sshd can authenticate the Mac user.
+//
+// (R2) OUTBOUND agent: `ssh -T git@github.com` inside the container
+//      reaches the host's launchd SSH agent. Provided by the host-TCP
+//      + container-unix-socket proxy pattern in
+//      `python/src/dotfiles_setup/docker.py::serve_proxy`. Host half
+//      spawned by `initializeCommand`; container half by
+//      `postStartCommand` + `postCreateCommand` (idempotent).
+//
+// Research + rationale:
+//   .omc/research/research-20260407-ssh-devcontainer/report.md
+// ===============================================================
 {
   "name": "dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-${localEnv:DEVCONTAINER_SSH_PORT}",
   "build": {
@@ -45,7 +64,6 @@
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},type=bind,consistency=cached",
   "mounts": [
-    "source=${localEnv:HOME}/.ssh,target=/home/${localEnv:USER}/.ssh,type=bind,readonly=true",
     "source=${localEnv:HOME}/.claude,target=/home/${localEnv:USER}/.claude,type=bind",
     "source=${localEnv:HOME}/.codex,target=/home/${localEnv:USER}/.codex,type=bind",
     "source=${localEnv:HOME}/.gemini,target=/home/${localEnv:USER}/.gemini,type=bind",
@@ -57,40 +75,23 @@
   "containerEnv": {
     "MISE_ARCH": "x64",
     "MISE_OS": "linux",
-    "MISE_TRUSTED_CONFIG_PATHS": "/usr/local/share/mise:/workspaces/dotfiles",
-    "MISE_STRICT": "1"
+    "MISE_TRUSTED_CONFIG_PATHS": "/usr/local/share/mise",
+    "MISE_OVERRIDE_CONFIG_FILENAMES": "config.toml",
+    "MISE_STRICT": "1",
+    "DEVCONTAINER": "true",
+    "SSH_AUTH_SOCK": "/tmp/dotfiles-ssh-agent.sock"
   },
-  "forwardAgent": true,
+  "features": {
+    "ghcr.io/devcontainers/features/sshd:1": {}
+  },
+  "appPort": ["${localEnv:DEVCONTAINER_SSH_PORT}:2222"],
+  "forwardPorts": [2222],
   "updateRemoteUserUID": false,
   "init": true,
-  "initializeCommand": "mkdir -p ~/.ssh ~/.claude ~/.codex ~/.gemini ~/.local/state/dotfiles && touch ~/.ssh/config ~/.ssh/known_hosts ~/.ssh/authorized_keys",
-  // ⚠ BROKEN AS OF 2026-04-07 — DO NOT TRUST THIS BLOCK.
-  // The official sshd feature schema only accepts `version` and
-  // `gatewayPorts` (probed:
-  // raw.githubusercontent.com/devcontainers/features/main/src/sshd/devcontainer-feature.json).
-  // The `username`, `port`, and `startNow` options below DO NOT EXIST
-  // and are silently dropped. The feature listens on its hardcoded
-  // port 2222 — the appPort mapping below to container :4444 is wired
-  // to nothing. Verified empirically 2026-04-07: Connection reset by
-  // peer on host:4444; sshd_config inside the container shows `Port 2222`.
-  //
-  // This whole block + the appPort + the readonly ~/.ssh bind mount
-  // need to be replaced by the cpp-playground SSH-agent proxy pattern
-  // (host-TCP + container-unix-socket) per the research artifact:
-  //   .omc/research/research-20260407-ssh-devcontainer/report.md
-  //
-  // Resume plan: .omc/plans/session-2026-04-07e-ssh-rewrite-priority.md
-  "features": {
-    "ghcr.io/devcontainers/features/sshd:1": {
-      "username": "${localEnv:USER}",
-      "port": "4444",
-      "startNow": true
-    }
-  },
-  "appPort": ["${localEnv:DEVCONTAINER_SSH_PORT}:4444"],
-  "forwardPorts": [4444],
+  "initializeCommand": "mkdir -p ~/.claude ~/.codex ~/.gemini ~/.local/state/dotfiles && uv run --project python dotfiles-setup docker initialize-host",
   "onCreateCommand": "chezmoi init --apply --source=/workspaces/${localWorkspaceFolderBasename} --no-tty --force && sudo chown -R ${localEnv:USER}:${localEnv:USER} /home/${localEnv:USER}/.local/share/mise /home/${localEnv:USER}/.cargo /home/${localEnv:USER}/.rustup",
-  "postCreateCommand": "scripts/devcontainer-smoke.sh",
+  "postCreateCommand": "install -d -m 700 ~/.ssh && install -m 600 /tmp/dotfiles-host-state/authorized_keys ~/.ssh/authorized_keys && ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null && chmod 600 ~/.ssh/known_hosts && uv run --project python dotfiles-setup docker start-container-proxy && scripts/devcontainer-smoke.sh",
+  "postStartCommand": "uv run --project python dotfiles-setup docker start-container-proxy",
   "customizations": {
     "vscode": {
       "extensions": [

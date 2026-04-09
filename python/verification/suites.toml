@@ -98,13 +98,41 @@ paths = [".devcontainer/Dockerfile"]
 tokens = ["openssh-server"]
 
 [[suite]]
-name = "build.sshd-feature-in-devcontainer"
-description = "SSH must be wired via official ghcr.io/devcontainers/features/sshd feature in devcontainer.json (replaced overlay openssh-server install in PR-2 commit B)"
+name = "build.amd64-platform-wired"
+description = "R3 AMD64: devcontainer must build and run as linux/amd64 x86_64. Required tokens: --platform=linux/amd64 in devcontainer.json build.options (Dockerfile build arg). Runtime arch is additionally verified by `mise run verify-arch` via docker image inspect + uname -m + arch, which runs as part of verify-local. See AGENTS.md SSH Requirements section (R3)."
 category = "build"
 check_type = "static"
 handler = "require_tokens"
 paths = [".devcontainer/devcontainer.json"]
-tokens = ["ghcr.io/devcontainers/features/sshd"]
+tokens = [
+    "--platform=linux/amd64",
+]
+
+[[suite]]
+name = "build.ssh-r1-inbound-wired"
+description = "R1 INBOUND: ssh ${USER}@localhost -p 4444 opens a shell in the container. Requires: (1) the ghcr.io/devcontainers/features/sshd feature (provides openssh-server, internal port 2222 hardcoded); (2) appPort mapping ${DEVCONTAINER_SSH_PORT}:2222; (3) postCreateCommand copies /tmp/dotfiles-host-state/authorized_keys into ~/.ssh/authorized_keys. DO NOT DROP — see AGENTS.md SSH Requirements section and .omc/plans/session-2026-04-09-ssh-rewrite.md."
+category = "build"
+check_type = "static"
+handler = "require_tokens"
+paths = [".devcontainer/devcontainer.json"]
+tokens = [
+    "ghcr.io/devcontainers/features/sshd",
+    "${localEnv:DEVCONTAINER_SSH_PORT}:2222",
+    "authorized_keys",
+]
+
+[[suite]]
+name = "build.ssh-r2-outbound-proxy-wired"
+description = "R2 OUTBOUND: ssh -T git@github.com inside the container reaches the host launchd SSH agent via the host-TCP + container-unix-socket proxy pattern. Requires: (1) initializeCommand spawns host proxy via dotfiles-setup docker initialize-host; (2) postStartCommand spawns container proxy; (3) containerEnv.SSH_AUTH_SOCK points at /tmp/dotfiles-ssh-agent.sock. Research: .omc/research/research-20260407-ssh-devcontainer/report.md."
+category = "build"
+check_type = "static"
+handler = "require_tokens"
+paths = [".devcontainer/devcontainer.json"]
+tokens = [
+    "dotfiles-setup docker initialize-host",
+    "dotfiles-setup docker start-container-proxy",
+    "/tmp/dotfiles-ssh-agent.sock",
+]
 
 [[suite]]
 name = "build.uv-link-mode-not-global"

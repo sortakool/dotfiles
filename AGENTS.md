@@ -35,7 +35,7 @@ the official `@devcontainers/cli` (pinned in `mise.toml`).
 |------|---------|
 | `mise.toml` | Tool versions and tasks (hk, pkl, hadolint, shellcheck, actionlint, pinact, python 3.14, uv, agnix) |
 | `mise.lock` | Locked tool versions for reproducible installs |
-| `mise.local.toml` | Gitignored per-clone overrides (e.g., `DEVCONTAINER_SSH_PORT`). See `mise.local.toml.example` |
+| `mise.local.toml` | Gitignored per-clone overrides (e.g., `BASE_IMAGE`). See `mise.local.toml.example` |
 | `hk.pkl` | Project git hook config; imports `hk-common.pkl`; includes `no_lint_skip` + `no_mcp_registration` enforcement |
 | `hk-common.pkl` | Shared step definitions (hygiene, safety, security, typos) reused by `hk.pkl` and `hk-image.pkl` |
 | `hk-image.pkl` | Image-only hook config for devcontainer validation |
@@ -155,6 +155,15 @@ pushing to test in CI.
   `fix=true` + `--stash none` can strand unstaged edits when new files
   are present.
 
+### Devcontainer success criteria (durable, do NOT silently drop)
+Gated by `mise run verify-local`. Sessions touching `.devcontainer/` or `mise.toml [tasks.up]` MUST preserve all three. Mechanism: `.devcontainer/AGENTS.md`. Research: `.omc/research/research-20260407-ssh-devcontainer/report.md`.
+
+| Req | Criterion | Gate |
+|---|---|---|
+| **R1 inbound** | `ssh ${USER}@localhost -p 4444` opens a shell, no password | `mise run verify-ssh-inbound` |
+| **R2 outbound** | `ssh -T git@github.com` inside container → "successfully authenticated" | smoke tier 3 |
+| **R3 amd64** | container reports `x86_64` / `amd64` on `uname -m`, `arch`, image manifest | `mise run verify-arch` |
+
 ### Environment variables
 
 | Variable | Value | Purpose |
@@ -163,7 +172,7 @@ pushing to test in CI.
 | `HK_MISE` | `1` | Enable mise integration for hk |
 | `CONTAINER_REGISTRY` | `ghcr.io` | Docker registry (use `CONTAINER_REGISTRY`, not `REGISTRY` — avoids HCL collision) |
 | `DEVCONTAINER_USERNAME` | `${localEnv:USER}` (fallback: `devcontainer`) | Container user (UID 1000); passed through from host `USER` via `devcontainer.json`. Host-user migration is the current state — the legacy `vscode` value has been replaced. |
-| `DEVCONTAINER_SSH_PORT` | `4444` | Host-side SSH port; override in `mise.local.toml` on collision |
+| `DEVCONTAINER_SSH_PORT` | `4444` | Host-side port for R1 inbound `ssh ${USER}@localhost -p 4444`; container-internal sshd is hardcoded on `2222` by the feature. Override per-clone via `mise.local.toml` on port collision (volume names do NOT include the port — C10/C11/C12). |
 | `DOCKER_DEFAULT_PLATFORM` | `linux/amd64` | Force AMD64 on ARM Mac hosts |
 
 ### Docker Runtimes
@@ -175,10 +184,10 @@ devcontainers. Use the native `colima` buildx driver, not `colima-builder`
 ### Do not
 
 1. **Do NOT launch CLion or VS Code from the dock for devcontainer work.**
-   macOS GUI processes don't inherit terminal env, so
-   `${localEnv:DEVCONTAINER_SSH_PORT}` is empty and devcontainer-spec
-   substitution fails with a port-parse error on `appPort: [":4444"]`.
-   Terminal only. See `.devcontainer/AGENTS.md`.
+   macOS GUI processes don't inherit terminal env, so `mise`, `uv`, and
+   `$SSH_AUTH_SOCK` are not available to `initializeCommand`, which then
+   fails to spawn the host-side SSH agent proxy. Terminal only. See
+   `.devcontainer/AGENTS.md`.
 2. **Do NOT `mise run build` or `docker buildx bake dev-load` locally.**
    CI-only. Base image is published by `main` workflow.
 3. **Do NOT add `2>/dev/null` to the Dockerfile.** The
