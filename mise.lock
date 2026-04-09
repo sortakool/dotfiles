@@ -446,7 +446,7 @@ version = "0.22.0"
 backend = "npm:markdownlint-cli2"
 
 [[tools."npm:oh-my-claude-sisyphus"]]
-version = "4.11.3"
+version = "4.11.4"
 backend = "npm:oh-my-claude-sisyphus"
 
 [[tools."npm:portless"]]
