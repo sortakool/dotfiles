@@ -1,5 +1,5 @@
 <!-- OMC:START -->
-<!-- OMC:VERSION:4.11.2 -->
+<!-- OMC:VERSION:4.11.4 -->
 
 # oh-my-claudecode - Intelligent Multi-Agent Orchestration
 
@@ -30,8 +30,6 @@ Tier-0 workflows include `autopilot`, `ultrawork`, `ralph`, `team`, and `ralplan
 Keyword triggers: `"autopilot"→autopilot`, `"ralph"→ralph`, `"ulw"→ultrawork`, `"ccg"→ccg`, `"ralplan"→ralplan`, `"deep interview"→deep-interview`, `"deslop"`/`"anti-slop"`→ai-slop-cleaner, `"deep-analyze"`→analysis mode, `"tdd"`→TDD mode, `"deepsearch"`→codebase search, `"ultrathink"`→deep reasoning, `"cancelomc"`→cancel.
 Team orchestration is explicit via `/team`.
 Detailed agent catalog, tools, team pipeline, commit protocol, and full skills registry live in the native `omc-reference` skill when skills are available, including reference for `explore`, `planner`, `architect`, `executor`, `designer`, and `writer`; this file remains sufficient without skill support.
-Project-scoped reference skills under `.claude/skills/`: `mcp2cli` (process-spawn MCP invocation, no `claude mcp add`) and `mintlify` (AI-optimized doc surface via `llms.txt` + `.md` + per-repo MCP). See `feedback_no_mcp_registration.md`.
-Research rules under `.claude/rules/`: `research-doc-sources.md` (preference chain llms.txt -> .md -> mcp2cli -> context7-cli -> raw HTML) and `research-repo-enumeration.md` (every research artifact ends with `## GitHub repos touched`). The no-MCP-registration ban is machine-enforced by the `no_mcp_registration` step in `hk.pkl`.
 </skills>
 
 <verification>
