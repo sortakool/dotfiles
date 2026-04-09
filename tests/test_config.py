@@ -11,8 +11,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "python" / "src"))
 
 from dotfiles_setup.config import (
     CONTAINER_HOST_STATE_DIR,
-    CONTAINER_SSH_PROXY_PID_FILE,
-    CONTAINER_SSH_PROXY_SOCKET,
     ContainerConfig,
     DotfilesConfig,
     MiseConfig,
@@ -140,14 +138,6 @@ class TestContainerPathConstants:
     def test_container_host_state_dir(self) -> None:
         """Verify CONTAINER_HOST_STATE_DIR is set and has expected stem."""
         assert CONTAINER_HOST_STATE_DIR.name == "dotfiles-host-state"
-
-    def test_container_ssh_proxy_socket(self) -> None:
-        """Verify CONTAINER_SSH_PROXY_SOCKET is set and has expected stem."""
-        assert CONTAINER_SSH_PROXY_SOCKET.name == "dotfiles-ssh-agent.sock"
-
-    def test_container_ssh_proxy_pid_file(self) -> None:
-        """Verify CONTAINER_SSH_PROXY_PID_FILE is set and has expected stem."""
-        assert CONTAINER_SSH_PROXY_PID_FILE.name == "dotfiles-ssh-agent-proxy.pid"
 
 
 class TestEnvVarOverrides:

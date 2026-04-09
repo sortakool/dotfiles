@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from dotfiles_setup.config import DotfilesConfig
-from dotfiles_setup.docker import ensure_container_ssh_proxy, host_authorized_keys
+from dotfiles_setup.docker import host_authorized_keys
 
 logger = logging.getLogger(__name__)
 
@@ -411,12 +411,6 @@ class DevEnvironmentAuditor:
         ssh_dir = Path.home() / ".ssh"
         ssh_dir.mkdir(mode=0o700, exist_ok=True)
 
-        if self.config.devcontainer:
-            proxy_socket = ensure_container_ssh_proxy()
-            if proxy_socket:
-                os.environ["SSH_AUTH_SOCK"] = proxy_socket
-                logger.info("Using container SSH agent proxy at %s", proxy_socket)
-
         public_key_lines: list[str] = []
 
         # 2a. Get public keys from agent when available
@@ -494,9 +488,12 @@ class DevEnvironmentAuditor:
             logger.info("SSH_AUTH_SOCK is set")
 
         # Use subprocess.run directly (not ToolManager) so we can bound
-        # the call with a timeout and distinguish "bridge unresponsive"
+        # the call with a timeout and distinguish "agent unresponsive"
         # from "agent has no identities". A hung ssh-add -l used to
-        # silently stall verify-local for 50 minutes; see #77.
+        # silently stall verify-local for 50 minutes; see #77. The
+        # custom proxy that motivated this guard was deleted in #77
+        # stage 2, but the timeout itself is still the right safety net
+        # against a stuck native /run/host-services/ssh-auth.sock.
         try:
             proc = subprocess.run(
                 ["ssh-add", "-l"],
@@ -507,8 +504,8 @@ class DevEnvironmentAuditor:
             )
         except subprocess.TimeoutExpired as exc:
             msg = (
-                "SSH bridge unresponsive — see host-ssh-proxy.log and "
-                "/tmp/dotfiles-ssh-agent-proxy.log"
+                f"SSH agent unresponsive — ssh-add -l exceeded "
+                f"{SSH_ADD_TIMEOUT_SECONDS}s against {ssh_auth_sock}"
             )
             raise AuditError(msg) from exc
 

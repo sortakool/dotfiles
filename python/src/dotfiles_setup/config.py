@@ -37,9 +37,9 @@ class ContainerConfig(BaseSettings):
 # Paths that live inside the container at well-known locations.
 # Declared here (with S108 per-file-ignore in pyproject.toml) so that
 # no other module needs inline lint suppressions for /tmp references.
+# Bind-mounted from the host at ``~/.local/state/dotfiles`` so the
+# container's R1 sshd can read the staged authorized_keys file.
 CONTAINER_HOST_STATE_DIR = Path("/tmp/dotfiles-host-state")
-CONTAINER_SSH_PROXY_SOCKET = Path("/tmp/dotfiles-ssh-agent.sock")
-CONTAINER_SSH_PROXY_PID_FILE = Path("/tmp/dotfiles-ssh-agent-proxy.pid")
 
 
 class DotfilesConfig(BaseSettings):

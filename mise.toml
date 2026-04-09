@@ -362,11 +362,10 @@ alias = "down"
 # Teardown uses `docker rm -f` filtered on the workspace-folder label
 # that the devcontainer CLI applies to every container it creates.
 #
-# Also stops the host-side SSH agent proxy spawned by initializeCommand
-# so `mise run down` leaves the host with zero background state.
+# R2 outbound now uses Docker Desktop's native magic socket — no host
+# proxy to tear down (deleted in #77 stage 2).
 run = '''
 docker rm -f $(docker ps -aq --filter "label=devcontainer.local_folder=$PWD") || true
-uv run --project python dotfiles-setup docker stop-host-proxy || true
 '''
 
 [tasks.build]

@@ -14,13 +14,7 @@ from typing import Any, ClassVar
 from dotfiles_setup.ai import AIOrchestrator
 from dotfiles_setup.audit import DevEnvironmentAuditor, ToolManager
 from dotfiles_setup.config import DotfilesConfig
-from dotfiles_setup.docker import (
-    DevContainerManager,
-    ensure_container_ssh_proxy,
-    parse_host_port,
-    serve_proxy,
-    stop_host_ssh_runtime,
-)
+from dotfiles_setup.docker import DevContainerManager
 from dotfiles_setup.ghcr import validate_ghcr_prereqs
 from dotfiles_setup.image import ImageCommand
 from dotfiles_setup.image import main as image_main
@@ -73,24 +67,8 @@ def _add_docker_subcommands(
     docker_subparsers.add_parser("down", help="Bring the devcontainer down")
     docker_subparsers.add_parser(
         "initialize-host",
-        help="Prepare host-side SSH runtime for direct devcontainer launches",
+        help="Stage host-side authorized_keys for the container's R1 sshd login",
     )
-    docker_subparsers.add_parser(
-        "stop-host-proxy",
-        help="Stop the host-side SSH agent proxy and clear its state files",
-    )
-    docker_subparsers.add_parser(
-        "start-container-proxy",
-        help="Start the in-container SSH agent unix-socket proxy",
-    )
-    proxy_parser = docker_subparsers.add_parser(
-        "proxy",
-        help="Run a socket proxy for SSH agent forwarding",
-    )
-    proxy_parser.add_argument("--listen-unix")
-    proxy_parser.add_argument("--listen-tcp")
-    proxy_parser.add_argument("--target-unix")
-    proxy_parser.add_argument("--target-tcp")
 
 
 def _add_verify_subcommands(
@@ -254,17 +232,6 @@ def handle_docker(
         docker_manager.down()
     elif args.docker_command == "initialize-host":
         docker_manager.initialize_host()
-    elif args.docker_command == "stop-host-proxy":
-        stop_host_ssh_runtime()
-    elif args.docker_command == "start-container-proxy":
-        ensure_container_ssh_proxy()
-    elif args.docker_command == "proxy":
-        serve_proxy(
-            listen_unix=Path(args.listen_unix) if args.listen_unix else None,
-            listen_tcp=parse_host_port(args.listen_tcp) if args.listen_tcp else None,
-            target_unix=Path(args.target_unix) if args.target_unix else None,
-            target_tcp=parse_host_port(args.target_tcp) if args.target_tcp else None,
-        )
 
 
 def handle_audit(config: DotfilesConfig | None = None) -> None:
