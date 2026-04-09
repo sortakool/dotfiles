@@ -122,16 +122,17 @@ tokens = [
 ]
 
 [[suite]]
-name = "build.ssh-r2-outbound-proxy-wired"
-description = "R2 OUTBOUND: ssh -T git@github.com inside the container reaches the host launchd SSH agent via the host-TCP + container-unix-socket proxy pattern. Requires: (1) initializeCommand spawns host proxy via dotfiles-setup docker initialize-host; (2) postStartCommand spawns container proxy; (3) containerEnv.SSH_AUTH_SOCK points at /tmp/dotfiles-ssh-agent.sock. Research: .omc/research/research-20260407-ssh-devcontainer/report.md."
+name = "build.ssh-r2-outbound-native-docker-desktop-wired"
+description = "R2 OUTBOUND: ssh -T git@github.com inside the container reaches the host launchd SSH agent via Docker Desktop's native /run/host-services/ssh-auth.sock magic socket. Requires: (1) devcontainer.json bind-mounts /run/host-services/ssh-auth.sock; (2) containerEnv.SSH_AUTH_SOCK points at /run/host-services/ssh-auth.sock; (3) initializeCommand still writes authorized_keys (for R1 orthogonally). Research: .omc/research/research-20260409c-dockerdesktop-ssh/report.md. Runtime pin: Docker Desktop only — Colima has no equivalent (abiosoft/colima#1330, #942), tracked for follow-up in issue #78."
 category = "build"
 check_type = "static"
 handler = "require_tokens"
 paths = [".devcontainer/devcontainer.json"]
 tokens = [
+    "source=/run/host-services/ssh-auth.sock",
+    "target=/run/host-services/ssh-auth.sock",
+    "\"SSH_AUTH_SOCK\": \"/run/host-services/ssh-auth.sock\"",
     "dotfiles-setup docker initialize-host",
-    "dotfiles-setup docker start-container-proxy",
-    "/tmp/dotfiles-ssh-agent.sock",
 ]
 
 [[suite]]

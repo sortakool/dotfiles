@@ -68,6 +68,7 @@
     "source=${localEnv:HOME}/.codex,target=/home/${localEnv:USER}/.codex,type=bind",
     "source=${localEnv:HOME}/.gemini,target=/home/${localEnv:USER}/.gemini,type=bind",
     "source=${localEnv:HOME}/.local/state/dotfiles,target=/tmp/dotfiles-host-state,type=bind",
+    "source=/run/host-services/ssh-auth.sock,target=/run/host-services/ssh-auth.sock,type=bind",
     "source=dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-mise-user,target=/home/${localEnv:USER}/.local/share/mise,type=volume",
     "source=dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-cargo-user,target=/home/${localEnv:USER}/.cargo,type=volume",
     "source=dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-rustup-user,target=/home/${localEnv:USER}/.rustup,type=volume"
@@ -79,7 +80,7 @@
     "MISE_OVERRIDE_CONFIG_FILENAMES": "config.toml",
     "MISE_STRICT": "1",
     "DEVCONTAINER": "true",
-    "SSH_AUTH_SOCK": "/tmp/dotfiles-ssh-agent.sock"
+    "SSH_AUTH_SOCK": "/run/host-services/ssh-auth.sock"
   },
   "features": {
     "ghcr.io/devcontainers/features/sshd:1": {}
@@ -90,8 +91,7 @@
   "init": true,
   "initializeCommand": "mkdir -p ~/.claude ~/.codex ~/.gemini ~/.local/state/dotfiles && uv run --project python dotfiles-setup docker initialize-host",
   "onCreateCommand": "chezmoi init --apply --source=/workspaces/${localWorkspaceFolderBasename} --no-tty --force && sudo chown -R ${localEnv:USER}:${localEnv:USER} /home/${localEnv:USER}/.local/share/mise /home/${localEnv:USER}/.cargo /home/${localEnv:USER}/.rustup",
-  "postCreateCommand": "install -d -m 700 ~/.ssh && install -m 600 /tmp/dotfiles-host-state/authorized_keys ~/.ssh/authorized_keys && ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null && chmod 600 ~/.ssh/known_hosts && uv run --project python dotfiles-setup docker start-container-proxy && scripts/devcontainer-smoke.sh",
-  "postStartCommand": "uv run --project python dotfiles-setup docker start-container-proxy",
+  "postCreateCommand": "sudo chown ${localEnv:USER}:${localEnv:USER} /run/host-services/ssh-auth.sock && install -d -m 700 ~/.ssh && install -m 600 /tmp/dotfiles-host-state/authorized_keys ~/.ssh/authorized_keys && ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null && chmod 600 ~/.ssh/known_hosts && scripts/devcontainer-smoke.sh",
   "customizations": {
     "vscode": {
       "extensions": [

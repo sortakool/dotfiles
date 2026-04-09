@@ -51,28 +51,28 @@ else
   exit 1
 fi
 
-echo "[tier3] SSH agent proxy + github auth"
-# Real end-to-end SSH auth via the host-TCP + container-unix-socket proxy
-# pattern (see python/src/dotfiles_setup/docker.py::serve_proxy). The host
-# half is spawned by initializeCommand, the container half by
-# postStartCommand; this tier verifies the full chain actually works.
-expected_sock="/tmp/dotfiles-ssh-agent.sock"
+echo "[tier3] SSH agent forwarding + github auth"
+# Real end-to-end SSH auth via Docker Desktop's native magic socket at
+# /run/host-services/ssh-auth.sock (see .omc/research/research-20260409c-dockerdesktop-ssh/).
+# Runtime-pinned to Docker Desktop — Colima has no equivalent; issue #78 tracks
+# eventual Colima replication.
+expected_sock="/run/host-services/ssh-auth.sock"
 if [ "${SSH_AUTH_SOCK:-}" != "${expected_sock}" ]; then
   echo "  FAIL: SSH_AUTH_SOCK=${SSH_AUTH_SOCK:-<unset>}, expected ${expected_sock}" >&2
   exit 1
 fi
 if [ ! -S "${expected_sock}" ]; then
-  echo "  FAIL: ${expected_sock} is not a socket (container proxy not running)" >&2
+  echo "  FAIL: ${expected_sock} is not a socket (Docker Desktop magic mount missing — are you on Docker Desktop? 'docker context ls' should show desktop-linux *)" >&2
   exit 1
 fi
 if ! ssh-add -L 2>/dev/null | grep -q '^ssh-'; then
-  echo "  FAIL: ssh-add -L shows no identities (host proxy not forwarding the agent)" >&2
+  echo "  FAIL: ssh-add -L shows no identities (host ssh-agent empty? run 'ssh-add ~/.ssh/id_*' on the Mac)" >&2
   ssh-add -L 2>&1 | sed 's/^/    /' >&2 || true
   exit 1
 fi
 ssh_out=$(ssh -o BatchMode=yes -o ConnectTimeout=10 -T git@github.com 2>&1 || true)
 if echo "${ssh_out}" | grep -q "successfully authenticated"; then
-  echo "  OK: github ssh full auth via proxy"
+  echo "  OK: github ssh full auth via /run/host-services/ssh-auth.sock"
 else
   echo "  FAIL: github ssh did not reach successful auth" >&2
   echo "${ssh_out}" | sed 's/^/    /' >&2

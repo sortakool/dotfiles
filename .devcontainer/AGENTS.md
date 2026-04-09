@@ -33,13 +33,13 @@ spec), not a bootstrap shell wrapper:
   against `/workspaces/${localWorkspaceFolderBasename}`, then chowns the
   mise-user, cargo-user, and rustup-user named volume mountpoints to
   `${USER}:${USER}`.
-- `postCreateCommand` (inside container, once): runs
-  `../scripts/devcontainer-smoke.sh` tier 1/2/3 checks. Exit 0 required.
-- `postStartCommand` (inside container, every start): spawns the
-  container-side SSH-agent unix-socket proxy via
-  `dotfiles-setup docker start-container-proxy`. Bridges
-  `$SSH_AUTH_SOCK=/tmp/dotfiles-ssh-agent.sock` to the host proxy at
-  `host.docker.internal:<port from /tmp/dotfiles-host-state/ssh-agent-port>`.
+- `postCreateCommand` (inside container, once): chowns the Docker
+  Desktop magic SSH agent socket at `/run/host-services/ssh-auth.sock`
+  to the container user (needed because the socket comes in as
+  `root:root 0660`), installs `authorized_keys` from the
+  `/tmp/dotfiles-host-state/` bind mount for R1, seeds
+  `~/.ssh/known_hosts`, and runs `scripts/devcontainer-smoke.sh` tier
+  1/2/3 checks. Exit 0 required.
 
 ## Dynamic Naming
 
@@ -167,27 +167,34 @@ on merge (same blast radius as PR-1's hotfix cycle).
 
 <!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
 
-## SSH Agent Forwarding (proxy pattern)
+## SSH Agent Forwarding (Docker Desktop only)
 
-SSH agent forwarding into the CLI lane (`mise run up` + `devcontainer exec`)
-uses a host-TCP + container-unix-socket proxy. Neither the devcontainer
-spec nor `@devcontainers/cli` provides native SSH-agent forwarding
-(`devcontainers/cli#441`), and Colima has no
-`host-services/ssh-auth.sock` equivalent (`abiosoft/colima#1330`, `#942`).
+**Runtime as of 2026-04-09:** Docker Desktop 29.3.1+. Verify
+`docker context ls` → `desktop-linux *`. Do NOT switch context —
+the path below is Docker-Desktop-only and silently breaks on Colima
+(`abiosoft/colima#1330`, `#942`). Colima is a deferred alternative
+tracked in issue #78.
 
-- **Host half:** spawned by `initializeCommand` via
-  `dotfiles-setup docker initialize-host` → listens on
-  `127.0.0.1:<ephemeral>`, targets `$SSH_AUTH_SOCK` (with
-  `launchctl getenv SSH_AUTH_SOCK` fallback).
-- **Container half:** spawned by `postStartCommand` via
-  `dotfiles-setup docker start-container-proxy` → listens on
-  `/tmp/dotfiles-ssh-agent.sock` (bound to `remoteEnv.SSH_AUTH_SOCK`),
-  targets `host.docker.internal:<port from host-state>`.
-- **State dir:** host `~/.local/state/dotfiles/` bind-mounted at
-  container `/tmp/dotfiles-host-state/`; carries the proxy port file,
-  target file, and PID file.
-- **Teardown:** `mise run down` calls
-  `dotfiles-setup docker stop-host-proxy` to kill the host process and
-  clear state files, leaving the host with zero background state.
+Docker Desktop exposes the macOS launchd SSH agent at
+`/run/host-services/ssh-auth.sock` inside every container. Bind-mount
+it and set `SSH_AUTH_SOCK` to the same path — no custom proxy or
+feature required:
 
-- **Research:** `.omc/research/research-20260407-ssh-devcontainer/report.md`
+```jsonc
+"mounts": ["source=/run/host-services/ssh-auth.sock,target=/run/host-services/ssh-auth.sock,type=bind,consistency=cached"],
+"containerEnv": { "SSH_AUTH_SOCK": "/run/host-services/ssh-auth.sock" }
+```
+
+Use `containerEnv` (not `remoteEnv`) so the var reaches terminal
+sessions. Authority: `devcontainers/cli#441` (@chrmarti). Live-probe
+verified 2026-04-09. Full research + deletion manifest for the legacy
+custom proxy (scheduled under #77):
+`.omc/research/research-20260409c-dockerdesktop-ssh/`.
+
+**R1 inbound** stays: `ghcr.io/devcontainers/features/sshd@1.1.0` on
+internal port 2222 mapped to 4444 via `appPort`. Remove dead options
+`port`/`username`/`startNow` — schema only honors `version` +
+`gatewayPorts`.
+
+Prior Colima-targeted research (scope-mismatched):
+`.omc/research/research-20260407-ssh-devcontainer/`.
