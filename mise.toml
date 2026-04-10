@@ -384,6 +384,21 @@ mise run verify-ssh-inbound
 mise run verify-secrets
 '''
 
+[tasks.prune]
+description = "Full devcontainer prune: stop container, remove volumes, images, and build cache"
+run = '''
+set -euo pipefail
+echo "==> stopping container"
+docker rm -f $(docker ps -aq --filter "label=devcontainer.local_folder=$PWD") 2>/dev/null || true
+echo "==> removing named volumes"
+docker volume ls --format '{{"{{"}}.Name{{"}}"}}' | grep -E "dotfiles-$(basename "$PWD")-${USER}" | xargs -r docker volume rm 2>/dev/null || true
+echo "==> removing overlay images"
+docker images --format '{{"{{"}}.Repository{{"}}"}}:{{"{{"}}.Tag{{"}}"}}' | grep vsc-dotfiles | xargs -r docker rmi 2>/dev/null || true
+echo "==> pruning build cache"
+docker builder prune -f 2>&1 | tail -1
+echo "==> done"
+'''
+
 [tasks.stop]
 description = "Tear the devcontainer down (no 'devcontainer down' verb in v0.85.0)"
 alias = "down"
