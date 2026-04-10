@@ -2,13 +2,6 @@
 README.md
 LICENSE
 .github/
-# Hierarchical agent docs for the home/ directory itself (not user-level
-# dotfiles). AGENTS.md is project documentation describing what lives
-# under home/; it lives OUTSIDE chezmoi's management. Without this
-# exclude, chezmoi sees home/AGENTS.md AND home/AGENTS.md.tmpl as
-# competing sources for ~/AGENTS.md and reports "inconsistent state".
-AGENTS.md
-
 {{ if ne .chezmoi.os "darwin" }}
 # macOS-only files — skip on Linux
 Library/**
