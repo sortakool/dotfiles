@@ -129,7 +129,7 @@ description = "Bring the devcontainer up via the official @devcontainers/cli (Ma
 # pulls the base image, subsequent restarts reuse the local copy. Force a
 # fresh pull with `mise run pull` or `mise run up --no-pull=false` after
 # CI republishes :dev. Bypass entirely with `mise run up --no-pull`.
-env = { BASE_IMAGE = "ghcr.io/ray-manaloto/dotfiles-devcontainer:dev", DOCKER_DEFAULT_PLATFORM = "linux/amd64", DEVCONTAINER_SSH_PORT = "4444" }
+env = { BASE_IMAGE = "ghcr.io/ray-manaloto/dotfiles-devcontainer:dev", DOCKER_DEFAULT_PLATFORM = "linux/amd64", DEVCONTAINER_SSH_PORT = "4444", DOPPLER_PROJECT = "dotfiles", DOPPLER_CONFIG = "dev" }
 usage = '''
 flag "--pull" default=#true help="Pull :dev if the image is missing locally (default: true)"
 '''

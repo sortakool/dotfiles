@@ -27,8 +27,9 @@ The devcontainer uses **declarative lifecycle hooks** (per containers.dev
 spec), not a bootstrap shell wrapper:
 
 - `initializeCommand` (host side): pre-creates
-  `~/.local/state/dotfiles`, then spawns the host-side SSH-agent proxy
-  via `dotfiles-setup docker initialize-host`.
+  `~/.local/state/dotfiles`, downloads Doppler secrets to
+  `~/.local/state/dotfiles/doppler.env` (KEY=VALUE format for
+  `--env-file`), then runs `dotfiles-setup docker initialize-host`.
 - `onCreateCommand` (inside container, once): runs `chezmoi init --apply`
   against `/workspaces/${localWorkspaceFolderBasename}`, then chowns the
   mise-user, cargo-user, and rustup-user named volume mountpoints to
@@ -40,6 +41,28 @@ spec), not a bootstrap shell wrapper:
   `/tmp/dotfiles-host-state/` bind mount for R1, seeds
   `~/.ssh/known_hosts`, and runs `scripts/devcontainer-smoke.sh` tier
   1/2/3 checks. Exit 0 required.
+
+## Secrets Injection (Doppler)
+
+Secrets from Doppler are injected into the container as environment
+variables via Docker's `--env-file` flag. The flow:
+
+1. `initializeCommand` (host-side) runs `doppler secrets download
+   --format docker` → writes `~/.local/state/dotfiles/doppler.env`
+2. `runArgs --env-file` passes the file to `docker run` → all secrets
+   become container env vars at creation time
+3. No doppler CLI, fnox, or service token needed inside the container
+
+Doppler project/config defaults (`dotfiles`/`dev`) come from
+`mise.toml [tasks.up].env`. Override per-clone via `mise.local.toml`:
+
+```toml
+[tasks.up]
+env = { DOPPLER_CONFIG = "dev_personal" }
+```
+
+Future: migrate to mise-env-fnox with doppler provider inside the
+container for runtime secret resolution (#83).
 
 ## Dynamic Naming
 
@@ -144,26 +167,8 @@ Current assertions:
 Do NOT add `2>/dev/null` to any of these — the `build.no-stderr-suppression`
 contract rejects stderr suppression. Let errors be loud.
 
-## PR Blast Radius (reference for future reverts)
-
-The devcontainer lifecycle restoration shipped as PR-1 (#58 + hotfixes
-#59/#60/#61) followed by PR-2 (#65). Within PR-2 the commits are:
-
-- A: imperative bootstrap script → declarative onCreateCommand chezmoi (no base image change)
-- B: sshd feature replaces apt block (overlay only, 79→72)
-- C: dynamic naming + mise-user volume + chown (overlay 72→73)
-- D: init/initializeCommand/postCreateCommand smoke (overlay 73)
-- F: rust cookbook + cargo/rustup volumes (**BASE IMAGE change**, overlay 73→75)
-- G: two-layer build hierarchy comment (overlay 75)
-- E: docs append (no code change)
-
-Commit F is the only PR-2 commit that mutates the published `:dev` ghcr
-base image. Commits A/B/C/D/G/E affect only local devcontainer wiring,
-the thin host-user overlay (never published), or docs. If a post-merge
-revert is needed for everything except the rust cookbook,
-`git revert <shaA>..<shaD>` is safe and leaves F's base image change
-intact. If F itself needs revert, that triggers another `:dev` republish
-on merge (same blast radius as PR-1's hotfix cycle).
+<!-- PR blast radius reference: PR-1 (#58+hotfixes), PR-2 (#65).
+     Only PR-2 commit F mutates the :dev base image. See git log. -->
 
 <!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
 
@@ -177,24 +182,10 @@ tracked in issue #78.
 
 Docker Desktop exposes the macOS launchd SSH agent at
 `/run/host-services/ssh-auth.sock` inside every container. Bind-mount
-it and set `SSH_AUTH_SOCK` to the same path — no custom proxy or
-feature required:
+it and set `SSH_AUTH_SOCK` via `containerEnv` (not `remoteEnv`).
+Authority: `devcontainers/cli#441` (@chrmarti). Live-probe verified
+2026-04-09. Research: `.omc/research/research-20260409c-dockerdesktop-ssh/`.
 
-```jsonc
-"mounts": ["source=/run/host-services/ssh-auth.sock,target=/run/host-services/ssh-auth.sock,type=bind,consistency=cached"],
-"containerEnv": { "SSH_AUTH_SOCK": "/run/host-services/ssh-auth.sock" }
-```
-
-Use `containerEnv` (not `remoteEnv`) so the var reaches terminal
-sessions. Authority: `devcontainers/cli#441` (@chrmarti). Live-probe
-verified 2026-04-09. Full research + deletion manifest for the legacy
-custom proxy (scheduled under #77):
-`.omc/research/research-20260409c-dockerdesktop-ssh/`.
-
-**R1 inbound** stays: `ghcr.io/devcontainers/features/sshd@1.1.0` on
-internal port 2222 mapped to 4444 via `appPort`. Remove dead options
-`port`/`username`/`startNow` — schema only honors `version` +
-`gatewayPorts`.
-
-Prior Colima-targeted research (scope-mismatched):
-`.omc/research/research-20260407-ssh-devcontainer/`.
+**R1 inbound**: `ghcr.io/devcontainers/features/sshd@1.1.0` on
+internal port 2222 mapped to 4444 via `appPort`. Schema only honors
+`version` + `gatewayPorts`.

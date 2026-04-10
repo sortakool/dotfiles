@@ -46,6 +46,20 @@
 //
 // Research + rationale:
 //   .omc/research/research-20260409c-dockerdesktop-ssh/report.md
+//
+// ===============================================================
+// (S1) SECRETS injection via Doppler:
+//
+// `initializeCommand` (host-side) runs `doppler secrets download`
+// to write a KEY=VALUE env file to the staging area
+// (~/.local/state/dotfiles/doppler.env). `runArgs --env-file`
+// injects all secrets as container env vars at creation time.
+// No doppler CLI needed inside the container.
+//
+// Doppler project/config defaults come from mise.toml [tasks.up].env
+// (DOPPLER_PROJECT=dotfiles, DOPPLER_CONFIG=dev). Override per-clone
+// via mise.local.toml. Future: migrate to mise-env-fnox integration
+// with doppler provider inside the container (#83).
 // ===============================================================
 {
   "name": "dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-${localEnv:DEVCONTAINER_SSH_PORT}",
@@ -61,7 +75,9 @@
   },
   "runArgs": [
     "--name",
-    "dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-${localEnv:DEVCONTAINER_SSH_PORT}"
+    "dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-${localEnv:DEVCONTAINER_SSH_PORT}",
+    "--env-file",
+    "${localEnv:HOME}/.local/state/dotfiles/doppler.env"
   ],
   "remoteUser": "${localEnv:USER}",
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
@@ -89,7 +105,7 @@
   "forwardPorts": [2222],
   "updateRemoteUserUID": false,
   "init": true,
-  "initializeCommand": "mkdir -p ~/.local/state/dotfiles && uv run --project python dotfiles-setup docker initialize-host",
+  "initializeCommand": "mkdir -p ~/.local/state/dotfiles && doppler secrets download --format docker --no-file --project \"$DOPPLER_PROJECT\" --config \"$DOPPLER_CONFIG\" > ~/.local/state/dotfiles/doppler.env && uv run --project python dotfiles-setup docker initialize-host",
   "onCreateCommand": "chezmoi init --apply --source=/workspaces/${localWorkspaceFolderBasename} --no-tty --force && sudo chown -R ${localEnv:USER}:${localEnv:USER} /home/${localEnv:USER}/.local/share/mise /home/${localEnv:USER}/.cargo /home/${localEnv:USER}/.rustup",
   "postCreateCommand": "sudo chown ${localEnv:USER}:${localEnv:USER} /run/host-services/ssh-auth.sock && install -d -m 700 ~/.ssh && install -m 600 /tmp/dotfiles-host-state/authorized_keys ~/.ssh/authorized_keys && ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null && chmod 600 ~/.ssh/known_hosts && scripts/devcontainer-smoke.sh",
   "customizations": {
