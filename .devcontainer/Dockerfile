@@ -147,7 +147,7 @@ FROM devcontainer-base AS clang-builder
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG CLANG_P2996_REPO=https://github.com/bloomberg/clang-p2996.git
-ARG CLANG_P2996_REF=a5270822dede40aaaf2c62381b89f110d2cfda4c
+ARG CLANG_P2996_REF=9ffb96e3ce362289008e14ad2a79a249f58aa90a
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \

@@ -98,6 +98,16 @@
       ],
       "depNameTemplate": "twpayne/chezmoi",
       "datasourceTemplate": "github-releases"
+    },
+    {
+      "fileMatch": ["docker-bake\\.hcl$", "\\.devcontainer/Dockerfile$"],
+      "matchStrings": [
+        "CLANG_P2996_REF[\"= ]+(?<currentDigest>[a-f0-9]{40})"
+      ],
+      "depNameTemplate": "bloomberg/clang-p2996",
+      "packageNameTemplate": "https://github.com/bloomberg/clang-p2996",
+      "currentValueTemplate": "p2996",
+      "datasourceTemplate": "git-refs"
     }
   ],
   "enabledManagers": ["npm", "cargo", "go", "pipx", "mise", "dockerfile", "docker-compose", "devcontainer", "github-actions"],
