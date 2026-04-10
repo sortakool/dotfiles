@@ -140,6 +140,10 @@ if [[ "${usage_pull:-true}" == "true" ]]; then
     docker pull "$BASE_IMAGE"
   fi
 fi
+# Clear stale host keys for the devcontainer SSH port — each container
+# recreate generates new host keys, causing "REMOTE HOST IDENTIFICATION
+# HAS CHANGED" warnings. ssh-keygen -R removes the old entry.
+ssh-keygen -R "[localhost]:${DEVCONTAINER_SSH_PORT}" 2>/dev/null || true
 devcontainer up --workspace-folder .
 '''
 
@@ -360,12 +364,13 @@ echo "OK: S1 doppler env file has ${count} secrets (project=${DOPPLER_PROJECT}, 
 '''
 
 [tasks.verify-local]
-description = "Full local devcontainer validation (pull → verify-image → up → ps → smoke → persistence → verify-ssh-inbound)"
+description = "Full local devcontainer validation (pull → verify-image → up → ps → smoke → persistence → verify-ssh-inbound → verify-secrets)"
 # Sequential shell body (not `depends = [...]`) so mise can't parallelize
 # the steps — smoke/persistence rely on up finishing first, and
 # verify-image relies on pull finishing first. verify-ssh-inbound (R1)
 # runs last because it needs postCreateCommand to have installed
-# ~/.ssh/authorized_keys from the host-state bind mount.
+# ~/.ssh/authorized_keys from the host-state bind mount. verify-secrets
+# (S1) validates the host-side doppler env file.
 run = '''
 set -euo pipefail
 mise run pull
@@ -376,6 +381,7 @@ mise run verify-arch
 mise run smoke
 mise run persistence
 mise run verify-ssh-inbound
+mise run verify-secrets
 '''
 
 [tasks.stop]
