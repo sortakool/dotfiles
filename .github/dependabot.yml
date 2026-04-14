@@ -35,3 +35,25 @@ updates:
 
     commit-message:
       prefix: "ci"
+
+  - package-ecosystem: "pip"  # Use "pip" even for pyproject.toml projects
+    directory: "/python"      # Location of your pyproject.toml
+    schedule:
+      interval: "cron"
+      # This cron runs every 15 minutes (note: may be capped by GitHub)
+      cronjob: "*/15 * * * *"
+      timezone: "America/Chicago"
+
+    open-pull-requests-limit: 5
+
+    groups:
+      github-actions:
+        patterns:
+          - "*"         # Group ALL Actions updates into a single PR
+
+    labels:
+      - "dependencies"
+      - "python"
+
+    commit-message:
+      prefix: "ci" 
