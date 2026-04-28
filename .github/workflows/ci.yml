@@ -157,6 +157,23 @@ jobs:
     outputs:
       image-tag: ${{ steps.meta.outputs.tags }}
     steps:
+      - name: Free runner disk space
+        # The multi-stage Dockerfile + BuildKit cache pushes the
+        # default ubuntu-latest runner past its ~14 GB free-space
+        # budget mid-build. Empirically, runs 25075763960 (initial)
+        # and the 2026-04-28 rerun both died with
+        # "System.IO.IOException: No space left on device" before
+        # `Build and push` could write its layer cache. Removing
+        # bundled toolchains we don't need frees ~30-50 GB and
+        # eliminates the failure mode.
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+                      /usr/local/share/boost /opt/hostedtoolcache/CodeQL \
+                      /opt/hostedtoolcache/PyPy /opt/hostedtoolcache/Ruby \
+                      /usr/local/lib/node_modules
+          sudo docker system prune -af || true
+          df -h /
+
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
