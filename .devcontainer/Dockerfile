@@ -40,7 +40,6 @@ ARG DEBIAN_FRONTEND=noninteractive
 ENV MISE_DATA_DIR=/usr/local/share/mise \
     MISE_CONFIG_DIR=/usr/local/share/mise \
     MISE_INSTALL_PATH=/usr/local/bin/mise \
-    MISE_INSTALL_ARCH=x86_64 \
     MISE_SYSTEM_CONFIG_DIR=/usr/local/share/mise \
     MISE_SYSTEM_CONFIG_FILE=/usr/local/share/mise/config.toml \
     MISE_TRUSTED_CONFIG_PATHS=/usr/local/share/mise:/workspaces/dotfiles \
