@@ -101,7 +101,10 @@ claude-code = "latest"
 "conda:valgrind" = "latest"
 "bazel" = "latest"
 
-"conda:imagemagick" = "latest"
+# conda:imagemagick removed 2026-04-28 — conda-forge solve fails with
+# "duplicate records for adwaita-icon-theme-40.1.1-ha770c72_1.tar.bz2"
+# (heavy GUI dep chain conflict). If imagemagick is needed, install via
+# apt in the Dockerfile (`imagemagick` is a standard Ubuntu package).
 "conda:vim" = "latest"
 "npm:renovate" = "latest"
 "sqlite" = "latest"
