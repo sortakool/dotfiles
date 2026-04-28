@@ -36,6 +36,8 @@ yamlfmt = "latest"
 yq = "latest"
 ghalint = "latest"
 jq = "latest"
+"npm:ajv-cli" = "latest"
+"pipx:check-jsonschema" = "latest"
 # CLI utilities
 fzf = "latest"
 ripgrep = "latest"
@@ -43,6 +45,13 @@ fd = "latest"
 bat = "latest"
 vivid = "latest"
 "github:cli/cli" = "latest"
+"conda:rsync" = "latest"
+"conda:curl" = "latest"
+"fnox" = "latest"
+"usage" = "latest"
+"conda:hyperfine" = "latest"
+"gitlab:graphviz/graphviz" = "latest"
+"conda:tree" = "latest"
 # AI CLIs (depends=node ensures npm is available for version resolution)
 "npm:@google/gemini-cli" = { version = "latest", depends = ["node"] }
 "npm:@openai/codex" = { version = "latest", depends = ["node"] }
@@ -66,6 +75,8 @@ pinact = "latest"
 # Claude Code CLI — uses http:claude backend (native binary, no npm)
 claude-code = "latest"
 # Conda packages (C++ toolchain for devcontainer)
+"conda:llvm" = "latest"
+"conda:llvm-tools" = "latest"
 "conda:clang" = "latest"
 "conda:clangxx" = "latest"
 "conda:cmake" = "latest"
@@ -87,8 +98,41 @@ claude-code = "latest"
 "conda:linux-perf" = "latest"
 "conda:tar" = "latest"
 "conda:p7zip" = "latest"
+"conda:valgrind" = "latest"
+"bazel" = "latest"
+
+"conda:imagemagick" = "latest"
+"conda:vim" = "latest"
+"npm:renovate" = "latest"
+"sqlite" = "latest"
+"github:tursodatabase/turso" = "latest"
+"libsql-server" = "latest"
+"micromamba" = "latest"
+# Interactive shell tools (moved from home/dot_config/mise/config.toml.tmpl
+# 2026-04-27 — these belong in the system image, not a per-user overlay).
+"conda:HTTPie" = "latest"
+"conda:ncdu" = "latest"
+"conda:htop" = "latest"
+"conda:broot" = "latest"
+"conda:procs" = "latest"
+"conda:tealdeer" = "latest"
+btop = "latest"
+eza = "latest"
+glow = "latest"
+starship = "latest"
+dust = "latest"
+tokei = "latest"
+xh = "latest"
+hexyl = "latest"
+yazi = "latest"
+zellij = "latest"
+zoxide = "latest"
+gitui = "latest"
+lazygit = "latest"
+lsd = "latest"
 
 [settings]
+arch = "x86_64"
 experimental = true
 auto_install = true
 asdf_compat = true
@@ -110,6 +154,7 @@ python.uv_venv_auto = "source"
 [settings.status]
 show_tools = true
 missing_tools = "always"
+show_env = true
 
 [env]
 # Build toolchain
@@ -122,7 +167,7 @@ HK_MISE = "1"
 LANG = "C.UTF-8"
 LC_ALL = "C.UTF-8"
 # Platform hints for tool backends
-MISE_ARCH = "x64"
+MISE_ARCH = "x86_64"
 MISE_OS = "linux"
 CONDA_SUBDIR = "linux-64"
 # Network / install behavior

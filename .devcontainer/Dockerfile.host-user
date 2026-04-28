@@ -67,10 +67,20 @@ ENV DEVCONTAINER_USERNAME=${DEVCONTAINER_USERNAME} \
     USER=${DEVCONTAINER_USERNAME} \
     LOGNAME=${DEVCONTAINER_USERNAME} \
     HOME=/home/${DEVCONTAINER_USERNAME} \
-    MISE_TRUSTED_CONFIG_PATHS=/home/${DEVCONTAINER_USERNAME}/.config/mise \
+    MISE_TRUSTED_CONFIG_PATHS="/" \
+    MISE_SYSTEM_CONFIG_DIR=/usr/local/share/mise \
+    MISE_SYSTEM_CONFIG_FILE=/usr/local/share/mise/config.toml \
+    MISE_CONFIG_DIR=/home/${DEVCONTAINER_USERNAME}/.config/mise \
+    MISE_GLOBAL_CONFIG_FILE=/home/${DEVCONTAINER_USERNAME}/.config/mise/config.toml \
     TMPDIR=/home/${DEVCONTAINER_USERNAME}/.local/tmp \
     PATH="/home/${DEVCONTAINER_USERNAME}/.local/bin:/home/${DEVCONTAINER_USERNAME}/.local/share/mise/shims:${PATH}"
 
 WORKDIR /home/${DEVCONTAINER_USERNAME}
-
 USER ${DEVCONTAINER_USERNAME}
+
+RUN echo 'eval "$(mise activate zsh)"' >> /home/${DEVCONTAINER_USERNAME}/.zshrc && \
+    echo 'eval "$(mise activate bash)"' >> /home/${DEVCONTAINER_USERNAME}/.bashrc && \
+    mkdir -p /home/${DEVCONTAINER_USERNAME}/.config/mise && \
+    mise install --system -y
+
+WORKDIR /home/${DEVCONTAINER_USERNAME}

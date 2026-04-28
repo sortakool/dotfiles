@@ -13,6 +13,8 @@
 # Tier 4 (CLion remote toolchain) is manual and out of scope here.
 set -euo pipefail
 
+echo "[devcontainer-smoke][start]"
+
 WORKSPACE_FOLDER="${WORKSPACE_FOLDER:-/workspaces/$(basename "$PWD")}"
 
 echo "::group::Tier 1 — tools + hk"
@@ -125,3 +127,5 @@ fi
 echo "::endgroup::"
 
 echo "devcontainer smoke: tiers 1-3 OK"
+
+echo "[devcontainer-smoke][end]"

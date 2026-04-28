@@ -43,6 +43,9 @@ biome lint \
 	"${CONFIG_FILE}"
 
 echo "[validate-devcontainer-json] Layer 2/3: devcontainer read-configuration"
+# `devcontainer read-configuration` calls `docker ps` first; preflight
+# the Docker daemon so the failure mode is clear when DD is stopped.
+"$(dirname "$0")/ensure-docker-up.sh"
 # Stub env vars: these are resolved at read time but we don't care about
 # the values — only that substitution succeeds and the JSONC parses.
 parsed="$(

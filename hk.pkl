@@ -77,7 +77,7 @@ hooks {
       }
       ["docker_bake_check"] {
         glob = List("docker-bake.hcl", ".devcontainer/Dockerfile")
-        check = "devcontainer read-configuration --workspace-folder ."
+        check = "scripts/ensure-docker-up.sh && devcontainer read-configuration --workspace-folder ."
       }
 
       // --- devcontainer.json 3-layer schema validation ---
