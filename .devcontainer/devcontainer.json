@@ -66,7 +66,7 @@
   "name": "dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-${localEnv:DEVCONTAINER_WORKSPACE_HASH}-${localEnv:DEVCONTAINER_SSH_PORT}",
   "build": {
     "dockerfile": "Dockerfile.host-user",
-    "options": ["--platform=linux/amd64"],
+    "options": ["--platform=linux/amd64/v2"],
     "args": {
       "DEVCONTAINER_USERNAME": "${localEnv:USER}",
       "BASE_IMAGE": "${localEnv:BASE_IMAGE}",
