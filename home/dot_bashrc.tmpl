@@ -1,17 +1,46 @@
-# .bashrc - Managed by chezmoi
+{{- $remote := or (env "CODESPACES" | not | not) (env "SSH_CONNECTION" | not | not) (env "KUBERNETES_SERVICE_HOST" | not | not) (env "container" | not | not) (env "REMOTE_CONTAINERS" | not | not) (stat "/.dockerenv" | not | not) -}}
 
-# Ensure ~/.local/bin and ~/.cargo/bin are in PATH
-export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+set -o vi
 
-# Load Mise environment
-if [ -x "$(command -v mise)" ]; then
+# edit PATH
+if [[ -d $HOME/.local/bin ]]; then
+  export PATH=$HOME/.local/bin:$PATH
+fi
+
+{{if not .remote -}}
+# Hand SSH_AUTH_SOCK to gpg-agent when configured for SSH. Skipped on
+# remote/container so Docker Desktop's magic socket
+# (/run/host-services/ssh-auth.sock), 1Password, and macOS Keychain
+# agents are not overridden. Also no-op when gpg-agent has
+# enable-ssh-support disabled (lets gpgconf errors surface on stderr).
+if command -v gpgconf >/dev/null && \
+   gpgconf --list-options gpg-agent | grep -q '^enable-ssh-support:.*:1$'; then
+  unset SSH_AGENT_PID
+  if [ "${gnupg_SSH_AUTH_SOCK_by:-0}" -ne $$ ]; then
+    export SSH_AUTH_SOCK="$(gpgconf --list-dirs agent-ssh-socket)"
+  fi
+fi
+{{- end}}
+
+if command -v mise >/dev/null; then
   eval "$(mise activate bash)"
 fi
 
-# If not running interactively, don't do anything else
-[[ $- != *i* ]] && return
+# (neo)vim
+if command -v nvim > /dev/null ; then
+  export EDITOR="nvim"
+  export VISUAL="nvim"
+elif command -v vim > /dev/null ; then
+  export EDITOR="vim"
+  export VISUAL="vim"
+fi
 
-# Load Pixi completions/env if needed
-if [ -x "$(command -v pixi)" ]; then
-  export PATH="$HOME/.pixi/bin:$PATH"
+# enable the starship prompt
+if command -v starship >/dev/null; then
+  eval "$(starship init bash)"
+fi
+
+# use bat instead of cat
+if command -v bat >/dev/null; then
+  alias cat="bat"
 fi

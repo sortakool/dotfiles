@@ -62,22 +62,21 @@
 // with doppler provider inside the container (#83).
 // ===============================================================
 {
-  "name": "dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-${localEnv:DEVCONTAINER_SSH_PORT}",
+  "$schema": "https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devContainer.schema.json",
+  "name": "dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-${localEnv:DEVCONTAINER_WORKSPACE_HASH}-${localEnv:DEVCONTAINER_SSH_PORT}",
   "build": {
     "dockerfile": "Dockerfile.host-user",
-    "options": [
-      "--platform=linux/amd64"
-    ],
+    "options": ["--platform=linux/amd64/v2"],
     "args": {
       "DEVCONTAINER_USERNAME": "${localEnv:USER}",
-      "BASE_IMAGE": "${localEnv:BASE_IMAGE}"
-    }
+      "BASE_IMAGE": "${localEnv:BASE_IMAGE}",
+    },
   },
   "runArgs": [
     "--name",
-    "dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-${localEnv:DEVCONTAINER_SSH_PORT}",
+    "dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-${localEnv:DEVCONTAINER_WORKSPACE_HASH}-${localEnv:DEVCONTAINER_SSH_PORT}",
     "--env-file",
-    "${localEnv:HOME}/.local/state/dotfiles/doppler.env"
+    "${localEnv:HOME}/.local/state/dotfiles/doppler.env",
   ],
   "remoteUser": "${localEnv:USER}",
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
@@ -85,28 +84,31 @@
   "mounts": [
     "source=${localEnv:HOME}/.local/state/dotfiles,target=/tmp/dotfiles-host-state,type=bind",
     "source=/run/host-services/ssh-auth.sock,target=/run/host-services/ssh-auth.sock,type=bind",
-    "source=dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-mise-user,target=/home/${localEnv:USER}/.local/share/mise,type=volume",
-    "source=dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-cargo-user,target=/home/${localEnv:USER}/.cargo,type=volume",
-    "source=dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-rustup-user,target=/home/${localEnv:USER}/.rustup,type=volume"
+    "source=dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-${localEnv:DEVCONTAINER_WORKSPACE_HASH}-home,target=/home/${localEnv:USER},type=volume",
   ],
   "containerEnv": {
-    "MISE_ARCH": "x64",
+    "MISE_ARCH": "x86_64",
     "MISE_OS": "linux",
-    "MISE_TRUSTED_CONFIG_PATHS": "/usr/local/share/mise",
+    "CONDA_SUBDIR": "linux-64",
+    "MISE_TRUSTED_CONFIG_PATHS": "/",
     "MISE_OVERRIDE_CONFIG_FILENAMES": "config.toml",
     "MISE_STRICT": "1",
+    "MISE_SYSTEM_CONFIG_DIR": "/usr/local/share/mise",
+    "MISE_SYSTEM_CONFIG_FILE": "/usr/local/share/mise/config.toml",
+    "MISE_GLOBAL_CONFIG_FILE": "/home/${localEnv:USER}/.config/mise/config.toml",
+    "MISE_CONFIG_DIR": "/home/${localEnv:USER}/.config/mise",
     "DEVCONTAINER": "true",
-    "SSH_AUTH_SOCK": "/run/host-services/ssh-auth.sock"
+    "SSH_AUTH_SOCK": "/run/host-services/ssh-auth.sock",
   },
   "features": {
-    "ghcr.io/devcontainers/features/sshd:1": {}
+    "ghcr.io/devcontainers/features/sshd:1": {},
   },
   "appPort": ["${localEnv:DEVCONTAINER_SSH_PORT}:2222"],
   "forwardPorts": [2222],
   "updateRemoteUserUID": false,
   "init": true,
   "initializeCommand": "mkdir -p ~/.local/state/dotfiles && doppler secrets download --format docker --no-file --project \"$DOPPLER_PROJECT\" --config \"$DOPPLER_CONFIG\" > ~/.local/state/dotfiles/doppler.env && uv run --project python dotfiles-setup docker initialize-host",
-  "onCreateCommand": "chezmoi init --apply --source=/workspaces/${localWorkspaceFolderBasename} --no-tty --force && sudo chown -R ${localEnv:USER}:${localEnv:USER} /home/${localEnv:USER}/.local/share/mise /home/${localEnv:USER}/.cargo /home/${localEnv:USER}/.rustup",
+  "onCreateCommand": "bash /workspaces/${localWorkspaceFolderBasename}/.devcontainer/scripts/on-create.sh /workspaces/${localWorkspaceFolderBasename}",
   "postCreateCommand": "sudo chown ${localEnv:USER}:${localEnv:USER} /run/host-services/ssh-auth.sock && install -d -m 700 ~/.ssh && install -m 600 /tmp/dotfiles-host-state/authorized_keys ~/.ssh/authorized_keys && ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null && chmod 600 ~/.ssh/known_hosts && scripts/devcontainer-smoke.sh",
   "customizations": {
     "vscode": {
@@ -118,8 +120,7 @@
         "ms-python.vscode-pylance",
         "charliermarsh.ruff",
         "tamasfe.even-better-toml",
-        "mkhl.direnv"
-      ]
-    }
-  }
+      ],
+    },
+  },
 }

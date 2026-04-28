@@ -135,7 +135,7 @@ echo "=== All smoke checks passed ==="
 
 
 def build_smoke_docker_cmd(
-    image_ref: str, *, platform: str = "linux/amd64"
+    image_ref: str, *, platform: str = "linux/amd64/v2"
 ) -> list[str]:
     """Build the docker command used for smoke validation."""
     script = build_smoke_script()
@@ -153,7 +153,7 @@ def build_smoke_docker_cmd(
     ]
 
 
-def smoke(image_ref: str, *, platform: str = "linux/amd64") -> dict[str, Any]:
+def smoke(image_ref: str, *, platform: str = "linux/amd64/v2") -> dict[str, Any]:
     """Run smoke tests against a container image."""
     logger.info("Smoking image: %s", image_ref)
     cmd = build_smoke_docker_cmd(image_ref, platform=platform)
@@ -220,7 +220,7 @@ def _parse_human_size(size: str) -> int:
 def size_report(
     image_ref: str,
     *,
-    platform: str = "linux/amd64",
+    platform: str = "linux/amd64/v2",
     top_layers: int = 10,
 ) -> dict[str, Any]:
     """Report image size and large-layer metrics."""
@@ -261,7 +261,7 @@ def size_report(
 def benchmark(
     image_ref: str,
     *,
-    platform: str = "linux/amd64",
+    platform: str = "linux/amd64/v2",
     output_path: Path | None = None,
 ) -> dict[str, Any]:
     """Benchmark smoke and size-report timings for an image."""
@@ -321,7 +321,7 @@ class ImageCommand:
     """Parsed image CLI command parameters."""
 
     image_ref: str
-    platform: str = "linux/amd64"
+    platform: str = "linux/amd64/v2"
     command: str = "smoke"
     output_path: Path | None = None
     baseline_path: Path | None = None

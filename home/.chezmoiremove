@@ -1,0 +1,14 @@
+# chezmoi removal allowlist for devcontainer home volume.
+#
+# IMPORTANT: This is NOT generic drift cleanup. chezmoi only removes
+# files explicitly listed here. Files in $HOME that are neither
+# managed nor listed here are left alone.
+#
+# Keep empty on day 1. Add patterns only after:
+#   1. Running `chezmoi apply --dry-run --verbose` to preview
+#   2. Verifying no seeded essentials (.bashrc, .zshrc, .profile, .ssh)
+#      are accidentally matched
+#   3. Confirming patterns are NOT also in .chezmoiignore (ignored
+#      files are never removed per chezmoi docs — the ignore wins).
+#
+# Reference: https://www.chezmoi.io/reference/special-files/chezmoiremove/

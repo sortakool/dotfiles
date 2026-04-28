@@ -160,7 +160,7 @@ class DevContainerManager:
         logger.info("Pulling published base image %s...", self.base_image)
         docker = self._get_bin("docker")
         subprocess.run(
-            [docker, "pull", "--platform", "linux/amd64", self.base_image],
+            [docker, "pull", "--platform", "linux/amd64/v2", self.base_image],
             check=True,
             text=True,
             env=os.environ.copy(),
@@ -174,7 +174,7 @@ class DevContainerManager:
                 "--image-name",
                 self.image_name,
                 "--platform",
-                "linux/amd64",
+                "linux/amd64/v2",
             ]
         )
 

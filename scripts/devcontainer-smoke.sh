@@ -13,6 +13,8 @@
 # Tier 4 (CLion remote toolchain) is manual and out of scope here.
 set -euo pipefail
 
+echo "[devcontainer-smoke][start]"
+
 WORKSPACE_FOLDER="${WORKSPACE_FOLDER:-/workspaces/$(basename "$PWD")}"
 
 echo "::group::Tier 1 — tools + hk"
@@ -56,7 +58,11 @@ clang++ -fsanitize=address,undefined -O1 -g "$td/hello.cc" -o "$td/hello"
 "$td/hello"
 rm -rf "$td"
 
-echo "[tier3] mise-user volume ownership"
+echo "[tier3] home volume ownership + seed survivors"
+# v6 single-home-volume contract: the whole /home/${USER} dir is a
+# persistent named volume. Assert (a) mise install dir is user-owned
+# (same invariant as pre-v6), and (b) the chezmoi-managed shell files,
+# .ssh, and mise install dir were all seeded correctly on first create.
 owner="$(stat -c '%U' "${HOME}/.local/share/mise")"
 if [ "${owner}" = "${USER}" ]; then
   echo "  OK: ${HOME}/.local/share/mise owned by ${USER}"
@@ -64,6 +70,32 @@ else
   echo "  FAIL: ${HOME}/.local/share/mise owned by ${owner}, expected ${USER}" >&2
   exit 1
 fi
+
+for f in "${HOME}/.bashrc" "${HOME}/.zshrc" "${HOME}/.profile"; do
+  if [ -e "$f" ]; then
+    echo "  OK: ${f} exists"
+  else
+    echo "  FAIL: ${f} missing — chezmoi init may have wiped seeded files" >&2
+    exit 1
+  fi
+done
+for d in "${HOME}/.ssh" "${HOME}/.local/share/mise" "${HOME}/.local/tmp"; do
+  if [ -d "$d" ]; then
+    echo "  OK: ${d} exists"
+  else
+    echo "  FAIL: ${d} missing" >&2
+    exit 1
+  fi
+done
+
+# TMPDIR must be set to the home-volume path so tools that respect
+# $TMPDIR land on the persistent volume, not the ephemeral overlay.
+expected_tmpdir="${HOME}/.local/tmp"
+if [ "${TMPDIR:-}" != "${expected_tmpdir}" ]; then
+  echo "  FAIL: TMPDIR=${TMPDIR:-<unset>}, expected ${expected_tmpdir}" >&2
+  exit 1
+fi
+echo "  OK: TMPDIR=${TMPDIR}"
 
 echo "[tier3] SSH agent forwarding + github auth"
 # Real end-to-end SSH auth via Docker Desktop's native magic socket at
@@ -95,3 +127,5 @@ fi
 echo "::endgroup::"
 
 echo "devcontainer smoke: tiers 1-3 OK"
+
+echo "[devcontainer-smoke][end]"

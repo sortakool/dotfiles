@@ -2,54 +2,57 @@
 # These are Build Type 1 tools: run locally before commits
 
 [tools]
-hk = "1.41.0"
+hk = "1.44.2"
 pkl = "0.31.1"
 hadolint = "2.14.0"
 shellcheck = "0.11.0"
 shfmt = "3.13.1"
 taplo = "0.10.0"
 actionlint = "1.7.12"
-typos = "1.45.0"
+typos = "1.45.1"
 yamllint = "1.38.0"
 yamlfmt = "0.21.0"
-yq = "4.52.5"
+yq = "4.53.2"
 ghalint = "1.5.5"
 jq = "1.8.1"
 # Python toolchain for the mde-py package in python/
 python = "3.14.4"
-uv = "0.11.5"
+uv = "0.11.7"
+pixi = "0.66.0"  # Pinned: 0.67.2 ships only source tarball under mise's core backend (binary missing). Bump after verifying install layout. Also in mise-system.toml; needed locally for tests/test_bootstrap.py + test_shell_integration.py.
 pinact = "latest"
-chezmoi = "latest"  # Used by CI lint hard-gate step to verify .chezmoiignore mise overlay gating
-"npm:@devcontainers/cli" = "0.85.0"
+chezmoi = "2.70.2"
+"npm:@devcontainers/cli" = "0.86.0"
 colima = "0.10.1"  # Alternate Docker runtime (VZ + Rosetta); Docker Desktop is the CURRENT supported runtime — see AGENTS.md Docker Runtimes + .omc/research/research-20260409c-dockerdesktop-ssh/
 lima = "2.1.1"     # Runtime dependency for colima (provides limactl); kept for deferred Colima follow-up
-"npm:agnix" = "latest"
+"npm:agnix" = "0.22.1"
 "npm:agents-lint" = "latest"
-"pipx:mcp2cli" = "3.0.1"
+"pipx:mcp2cli" = "3.0.2"
+"pipx:check-jsonschema" = "latest"  # Full JSON Schema URL validation for .devcontainer/devcontainer.json (needs JSONC→JSON preprocessing)
+biome = "2.4.13"
 # Markdown + Claude-docs linters. Installed now; hk.pkl integration is
 # scheduled for post-devcontainer-work review (see GH issue tracking
 # follow-up). claude_md_size_limit (below in hk.pkl) provides the
 # immediate 200-line enforcement per Claude Code memory docs.
 "npm:claude-code-lint" = "latest"       # https://github.com/pdugan20/claudelint — CLAUDE.md size limits, import syntax, frontmatter
-"npm:@contextlint/cli" = "latest"       # https://github.com/nozomi-koborinai/contextlint — structured markdown cross-file integrity
-"npm:markdownlint-cli2" = "latest"      # https://github.com/DavidAnson/markdownlint — general markdown quality (MD013 line-length, etc.)
-"ubi:jackchuka/mdschema" = "latest"     # https://github.com/jackchuka/mdschema — markdown frontmatter schema validation
-"ubi:rvben/rumdl" = "latest"            # https://github.com/rvben/rumdl — Rust-fast markdown linter (71 rules)
-"npm:oh-my-claude-sisyphus" = "4.11.4"
+"npm:@contextlint/cli" = "0.9.1"       # https://github.com/nozomi-koborinai/contextlint — structured markdown cross-file integrity
+"npm:markdownlint-cli2" = "0.22.1"      # https://github.com/DavidAnson/markdownlint — general markdown quality (MD013 line-length, etc.)
+"aqua:jackchuka/mdschema" = "latest"     # https://github.com/jackchuka/mdschema — markdown frontmatter schema validation
+"rumdl" = "latest"            # https://github.com/rvben/rumdl — Rust-fast markdown linter (71 rules)
+"npm:oh-my-claude-sisyphus" = "4.13.4"
 "github:ast-grep/ast-grep" = "0.42.1"
-lefthook = "2.1.5"
-"npm:ctx7" = "0.3.10"
-rtk = "0.35.0"
-"npm:skills" = "1.4.9"
-"npm:agent-browser" = "0.25.3"
-"npm:portless" = "0.10.1"
-"pipx:deepagents-cli" = "0.0.35"
-aws-cli = { version = "2.34.27", symlink_bins = "true" }
+lefthook = "2.1.6"
+"npm:ctx7" = "0.4.0"
+rtk = "0.37.2"
+"npm:skills" = "1.5.2"
+"npm:agent-browser" = "0.26.0"
+"npm:portless" = "0.11.0"
+"pipx:deepagents-cli" = "0.0.41"
+aws-cli = { version = "2.34.38", symlink_bins = "true" }
 azure-cli = { version = "2.85.0", uvx_args = "--prerelease=allow" }
-docker-cli = "29.4.0"
-opencode = "1.4.0"
-"npm:@claude-flow/cli" = "3.5.78"
-"npm:@ralph-orchestrator/ralph-cli" = "2.9.1"
+docker-cli = "29.4.1"
+opencode = "latest"
+"npm:@claude-flow/cli" = "3.5.82"
+"npm:@ralph-orchestrator/ralph-cli" = "2.9.2"
 
 [settings]
 experimental = true
@@ -57,7 +60,9 @@ auto_install = true
 lockfile = true
 
 [settings.status]
-show_prepare_stale = true
+show_tools = true
+missing_tools = "always"
+show_env = true
 
 [hooks]
 # Reshim after every tool install so `mise doctor` does not report stale
@@ -83,8 +88,8 @@ dcps    = "mise run ps"
 dcsmoke = "mise run smoke"
 dcverify = "mise run verify-image"
 
-[prepare.python]
-auto = true
+[tasks."deps:python"]
+description = "Sync python venv when pyproject.toml or uv.lock changes"
 dir = "python"
 sources = ["pyproject.toml", "uv.lock"]
 outputs = [".venv/"]
@@ -140,6 +145,20 @@ if [[ "${usage_pull:-true}" == "true" ]]; then
     docker pull "$BASE_IMAGE"
   fi
 fi
+# v6 collision guard: compute an 8-char hash of $PWD so sibling clones
+# of `dotfiles` on the same host get distinct Docker volume + container
+# names. Exported so devcontainer.json ${localEnv:DEVCONTAINER_WORKSPACE_HASH}
+# substitution picks it up. Portable hash detection: sha256sum is Linux
+# default, shasum is macOS default — try both.
+if command -v sha256sum >/dev/null 2>&1; then
+  DEVCONTAINER_WORKSPACE_HASH="$(printf '%s' "$PWD" | sha256sum | cut -c1-8)"
+elif command -v shasum >/dev/null 2>&1; then
+  DEVCONTAINER_WORKSPACE_HASH="$(printf '%s' "$PWD" | shasum -a 256 | cut -c1-8)"
+else
+  echo "ERROR: neither sha256sum nor shasum found — cannot compute workspace hash" >&2
+  exit 1
+fi
+export DEVCONTAINER_WORKSPACE_HASH
 # Clear stale host keys for the devcontainer SSH port — each container
 # recreate generates new host keys, causing "REMOTE HOST IDENTIFICATION
 # HAS CHANGED" warnings. ssh-keygen -R removes the old entry.
@@ -186,8 +205,18 @@ run = "devcontainer exec --workspace-folder . bash -l"
 [tasks.ps]
 description = "Show the running devcontainer + its named volumes"
 run = '''
+# Portable hash detection for the workspace collision suffix.
+if command -v sha256sum >/dev/null 2>&1; then
+  _hash="$(printf '%s' "$PWD" | sha256sum | cut -c1-8)"
+elif command -v shasum >/dev/null 2>&1; then
+  _hash="$(printf '%s' "$PWD" | shasum -a 256 | cut -c1-8)"
+else
+  echo "ERROR: neither sha256sum nor shasum found" >&2
+  exit 1
+fi
 docker ps --filter "label=devcontainer.local_folder=$PWD" --format 'table {{"{{"}}.Names{{"}}"}}\t{{"{{"}}.Status{{"}}"}}\t{{"{{"}}.Ports{{"}}"}}'
-docker volume ls --format '{{"{{"}}.Name{{"}}"}}' | grep -E 'mise-user|cargo-user|rustup-user' || true
+# Scoped to this clone's hashed home volume (v6 single-volume consolidation).
+docker volume ls --format '{{"{{"}}.Name{{"}}"}}' | grep -E "dotfiles-$(basename "$PWD")-${USER}-${_hash}" || true
 '''
 
 [tasks.dev]
@@ -250,6 +279,15 @@ if [ "$PRE_COUNT" -lt "$EXPECTED_MIN" ]; then
   exit 1
 fi
 
+# (1a) v6 single-home-volume contract: write an in-volume canary file.
+#      This file lives on the persistent home volume; if the volume is
+#      correctly mounted across stop/up, it must survive. Contrast with
+#      /tmp (ephemeral per container) — the canary proves the VOLUME is
+#      the thing persisting, not just the container state.
+echo "==> writing in-volume persistence canary"
+CANARY_CONTENT="canary-$(date +%s)-$$"
+devcontainer exec --workspace-folder . bash -lc "printf '%s' '${CANARY_CONTENT}' > ~/.local/tmp/persistence-canary.txt"
+
 # (2) Stop/up cycle — the actual persistence test.
 echo "==> tearing container down"
 mise run stop
@@ -273,6 +311,31 @@ if ! diff -u /tmp/mise-persistence-pre.tsv /tmp/mise-persistence-post.tsv; then
   echo "FAIL: installed-tool set drifted across stop/up" >&2
   exit 1
 fi
+
+# (5) v6 home-volume contract: assert the single home volume preserved
+#     the in-volume canary AND the seeded essentials (shell files, .ssh,
+#     mise install dir). This closes the Codex v4 finding that the
+#     previous persistence task only covered `mise ls` — the new home
+#     volume needs broader restart-level assertions.
+echo "==> asserting home-volume persistence (canary + seed survivors)"
+devcontainer exec --workspace-folder . bash -lc "
+set -euo pipefail
+[ -f ~/.local/tmp/persistence-canary.txt ] || { echo 'FAIL: TMPDIR canary lost across restart' >&2; exit 1; }
+got_canary=\$(cat ~/.local/tmp/persistence-canary.txt)
+if [ \"\${got_canary}\" != '${CANARY_CONTENT}' ]; then
+  echo \"FAIL: TMPDIR canary content mismatch (expected '${CANARY_CONTENT}', got '\${got_canary}')\" >&2
+  exit 1
+fi
+[ -f ~/.bashrc ]            || { echo 'FAIL: ~/.bashrc missing after restart' >&2; exit 1; }
+[ -f ~/.zshrc ]             || { echo 'FAIL: ~/.zshrc missing after restart' >&2; exit 1; }
+[ -f ~/.profile ]           || { echo 'FAIL: ~/.profile missing after restart' >&2; exit 1; }
+[ -d ~/.ssh ]               || { echo 'FAIL: ~/.ssh missing after restart' >&2; exit 1; }
+[ -d ~/.local/share/mise ]  || { echo 'FAIL: ~/.local/share/mise missing after restart' >&2; exit 1; }
+# Cleanup the canary so it doesn't accumulate.
+rm -f ~/.local/tmp/persistence-canary.txt
+echo 'OK: home-volume seed survivors + canary present'
+"
+
 echo "OK: $PRE_COUNT tools persisted identically across stop/up (mise-system.toml baseline: $EXPECTED_MIN)"
 '''
 
@@ -388,10 +451,27 @@ mise run verify-secrets
 description = "Full devcontainer prune: stop container, remove volumes, images, and build cache"
 run = '''
 set -euo pipefail
+# Portable hash for this workspace (v6 single-volume collision guard).
+# Scoped prune prevents deleting sibling-clone hashed home volumes
+# (Codex v3 finding — broad-prefix prune was cross-clone destructive).
+if command -v sha256sum >/dev/null 2>&1; then
+  _hash="$(printf '%s' "$PWD" | sha256sum | cut -c1-8)"
+elif command -v shasum >/dev/null 2>&1; then
+  _hash="$(printf '%s' "$PWD" | shasum -a 256 | cut -c1-8)"
+else
+  echo "ERROR: neither sha256sum nor shasum found" >&2
+  exit 1
+fi
 echo "==> stopping container"
 docker rm -f $(docker ps -aq --filter "label=devcontainer.local_folder=$PWD") 2>/dev/null || true
-echo "==> removing named volumes"
-docker volume ls --format '{{"{{"}}.Name{{"}}"}}' | grep -E "dotfiles-$(basename "$PWD")-${USER}" | xargs -r docker volume rm 2>/dev/null || true
+echo "==> removing named volumes (scoped to hash ${_hash})"
+docker volume ls --format '{{"{{"}}.Name{{"}}"}}' | grep -E "dotfiles-$(basename "$PWD")-${USER}-${_hash}" | xargs -r docker volume rm 2>/dev/null || true
+# Also clean up any ORPHANED legacy volumes from the pre-v6 per-directory
+# layout (mise-user / cargo-user / rustup-user). These were cross-clone
+# shared before the hash was introduced; once no container references
+# them they can be safely removed for ANY clone. Bounded by the
+# basename+user prefix so only this repo's orphans are targeted.
+docker volume ls --format '{{"{{"}}.Name{{"}}"}}' | grep -E "dotfiles-$(basename "$PWD")-${USER}-(mise-user|cargo-user|rustup-user)$" | xargs -r docker volume rm 2>/dev/null || true
 echo "==> removing overlay images"
 docker images --format '{{"{{"}}.Repository{{"}}"}}:{{"{{"}}.Tag{{"}}"}}' | grep vsc-dotfiles | xargs -r docker rmi 2>/dev/null || true
 echo "==> pruning build cache"

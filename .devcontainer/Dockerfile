@@ -1,13 +1,11 @@
 # syntax=docker/dockerfile:1.7
 # check=error=true
 
-ARG BASE_IMAGE=ubuntu:25.10
-ARG MISE_VERSION=v2026.4.5
+ARG BASE_IMAGE=ubuntu:26.04
 
 FROM ${BASE_IMAGE} AS devcontainer-base
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG MISE_VERSION
 
 # Only PATH and mise directory layout stay as Docker ENV.
 # All other vars (locale, platform hints, tool config) live in
@@ -42,6 +40,8 @@ ARG MISE_VERSION
 ENV MISE_DATA_DIR=/usr/local/share/mise \
     MISE_CONFIG_DIR=/usr/local/share/mise \
     MISE_INSTALL_PATH=/usr/local/bin/mise \
+    MISE_SYSTEM_CONFIG_DIR=/usr/local/share/mise \
+    MISE_SYSTEM_CONFIG_FILE=/usr/local/share/mise/config.toml \
     MISE_TRUSTED_CONFIG_PATHS=/usr/local/share/mise:/workspaces/dotfiles \
     MISE_CARGO_HOME=/usr/local/share/cargo \
     MISE_RUSTUP_HOME=/usr/local/share/rustup \
@@ -71,9 +71,13 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
-# Install mise globally (pinned version to prevent stale CDN cache issues)
-RUN curl -fsSL "https://mise.jdx.dev/${MISE_VERSION}/mise-${MISE_VERSION}-linux-x64" > /usr/local/bin/mise && \
-    chmod +x /usr/local/bin/mise
+# Install latest mise via the official installer. Image is rebuilt on
+# every `main` push, so CDN drift is acceptable here. The mise.run
+# installer already chmods the binary; the explicit chmod is a belt-
+# and-braces guard against permission drift on the cache mount.
+RUN curl https://mise.run | sh && \
+    chmod +x ${MISE_INSTALL_PATH} && \
+    mise --version
 
 # System-wide mise config and data structure (cookbook canonical paths).
 RUN groupadd --gid 2000 mise && \
@@ -101,7 +105,6 @@ COPY .devcontainer/mise-system.toml /usr/local/share/mise/config.toml
 RUN --mount=type=cache,id=mise-cache,target=/usr/local/share/mise/cache,sharing=locked \
     --mount=type=cache,id=uv-cache,target=/root/.cache/uv,sharing=locked \
     --mount=type=secret,id=github_token \
-    export MISE_VERSION="${MISE_VERSION}" && \
     export MISE_INSTALL_MODE=system && \
     export UV_LINK_MODE=copy && \
     export LANG=C.UTF-8 && \
@@ -112,7 +115,7 @@ RUN --mount=type=cache,id=mise-cache,target=/usr/local/share/mise/cache,sharing=
       export GITHUB_TOKEN && \
       export MISE_GITHUB_TOKEN="$GITHUB_TOKEN"; \
     fi && \
-    mise install -y && \
+    mise install --system -y && \
     test "$(mise ls --installed | wc -l)" -gt 0 || { echo "ERROR: mise installed zero tools — system config not discovered (check MISE_CONFIG_DIR points at /usr/local/share/mise containing config.toml)"; exit 1; } && \
     test -d /usr/local/share/cargo/bin || { echo "ERROR: MISE_CARGO_HOME not honored — /usr/local/share/cargo/bin missing after mise install (rust cookbook regression)"; exit 1; } && \
     test -d /usr/local/share/rustup/toolchains || { echo "ERROR: MISE_RUSTUP_HOME not honored — /usr/local/share/rustup/toolchains missing after mise install (rust cookbook regression)"; exit 1; } && \
@@ -212,8 +215,9 @@ FROM devcontainer-base AS devcontainer
 # GCC-16 with P2996 reflection (precompiled .deb from jwakely trunk snapshot,
 # post-reflection-merge commit 4b0e94b 2026-01-15).
 # Installs to /opt/gcc-latest/bin. Rolling latest — no pinned hash.
-# If this fails on Ubuntu 25.10, fall back to building from source
-# (see cpp-playground Dockerfile gcc stage for the pattern).
+# kayari.org ships a single rolling .deb tracking Ubuntu trunk; compatibility
+# with the current base image is empirical. If `dpkg -i` fails, build from
+# source (see cpp-playground Dockerfile gcc stage for the pattern).
 RUN curl -fLOSs https://kayari.org/gcc-latest/gcc-latest.deb && \
     dpkg -i gcc-latest.deb && \
     rm -f gcc-latest.deb && \

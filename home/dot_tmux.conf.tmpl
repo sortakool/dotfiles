@@ -1,0 +1,21 @@
+set-window-option -g mode-keys vi
+bind-key -r -T prefix k select-pane -U
+bind-key -r -T prefix j select-pane -D
+bind-key -r -T prefix h select-pane -L
+bind-key -r -T prefix l select-pane -R
+
+set-option -sg escape-time 10
+
+{{ if and .chezmoi.osRelease (eq .chezmoi.osRelease.id "ubuntu" "debian") -}}
+if-shell -b "test -f /usr/share/powerline/bindings/tmux/powerline.conf" \
+  "source /usr/share/powerline/bindings/tmux/powerline.conf"
+
+{{- else if and .chezmoi.osRelease (eq .chezmoi.osRelease.id "fedora") -}}
+if-shell -b "test -f /usr/share/tmux/powerline.conf" \
+  "source /usr/share/tmux/powerline.conf"
+
+{{- else if eq .chezmoi.os "darwin" -}}
+if-shell "command -v powerline-daemon >/dev/null" \
+  "run-shell 'powerline-daemon -q && powerline-config tmux setup'"
+
+{{- end }}

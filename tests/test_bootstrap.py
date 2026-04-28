@@ -25,7 +25,7 @@ def test_mise_version() -> None:
         ["mise", "--version"], capture_output=True, text=True, check=False
     )
     assert result.returncode == 0
-    # Mise version is now date-based, e.g. 2026.3.12
+    # Mise version is now date-based, e.g. 2026.4.24
     assert result.stdout.strip() != ""
 
 

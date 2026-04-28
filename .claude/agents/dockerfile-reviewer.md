@@ -9,7 +9,7 @@ You are a Docker and BuildKit specialist reviewing devcontainer builds for this 
 
 This project uses a multi-stage Dockerfile with BuildKit features:
 
-- **APT packages**: Uses plain `apt-get` (no snapshot pinning — removed due to snapshot.ubuntu.com unreliability on 25.10).
+- **APT packages**: Uses plain `apt-get` (no snapshot pinning — removed due to snapshot.ubuntu.com unreliability on 26.04).
 - **Non-root user**: The Dockerfile switches to `USER vscode` (uid=1000) before the final RUN. All `--mount` options after this point must specify `uid=1000,gid=1000`.
 - **Secret mounts**: `--mount=type=secret,id=github_token,uid=1000,gid=1000` — the uid/gid is required because BuildKit secrets default to root-owned mode 0400, unreadable by non-root users.
 - **Cache mounts**: Used for mise, uv, chezmoi, and pkl caches. Must use consistent target paths and uid=1000,gid=1000.

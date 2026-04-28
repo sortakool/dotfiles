@@ -15,24 +15,34 @@
 {{- $isInteractive := and (eq .chezmoi.os "darwin") (not $isCI) stdinIsATTY -}}
 
 {{- /* Defaults — overridden by prompts when interactive on Mac. NOTE: Changes
-       to this file require `chezmoi init` on existing machines. */ -}}
+       to this file require `chezmoi init` on existing machines.
+
+       v6 refactor (plan home-volume-consolidation-draft.md):
+       `is_ephemeral` removed. It conflated two concerns: "don't template
+       tool-managed dirs" and "don't run chezmoi on the Mac host." Replaced
+       by `is_darwin` / `is_devcontainer` which name the host vs container
+       discriminator directly. Tool-managed dirs (.cargo, .rustup,
+       .config/gcloud) are now unconditionally skipped in .chezmoiignore
+       regardless of environment. */ -}}
 {{- $isDevComputer := false -}}
 {{- $isPersonal := false -}}
-{{- $isEphemeral := eq .chezmoi.os "linux" -}}
 
 {{- if $isInteractive -}}
 {{-   $isDevComputer = promptBoolOnce . "is_dev_computer" "Is this a development computer" false -}}
 {{-   $isPersonal = promptBoolOnce . "is_personal" "Is this a personal machine" false -}}
-{{-   $isEphemeral = promptBoolOnce . "is_ephemeral" "Is this an ephemeral environment" false -}}
 {{- else if eq .chezmoi.os "linux" -}}
 {{-   $isDevComputer = true -}}
 {{- end -}}
 
+{{- $remote := or (env "CODESPACES" | not | not) (env "SSH_CONNECTION" | not | not) (env "KUBERNETES_SERVICE_HOST" | not | not) (env "container" | not | not) (env "REMOTE_CONTAINERS" | not | not) (stat "/.dockerenv" | not | not) -}}
+
 [data]
     is_dev_computer = {{ $isDevComputer }}
     is_personal = {{ $isPersonal }}
-    is_ephemeral = {{ or $isEphemeral $isCI }}
+    is_darwin = {{ eq .chezmoi.os "darwin" }}
+    is_devcontainer = {{ eq .chezmoi.os "linux" }}
     is_ci = {{ $isCI }}
+    remote = {{ $remote }}
 
 [scriptEnv]
     PATH = {{ list (joinPath .chezmoi.homeDir ".local/bin") (joinPath (env "MISE_DATA_DIR" | default (joinPath .chezmoi.homeDir ".local/share/mise")) "shims") "/usr/local/bin" "/usr/bin" "/bin" "/sbin" | join ":" | quote }}
@@ -43,3 +53,6 @@
 
 [diff]
     pager = "delta"
+
+[warnings]
+    configFileTemplateHasChanged = false

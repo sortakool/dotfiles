@@ -1,4 +1,4 @@
-amends "package://github.com/jdx/hk/releases/download/v1.40.0/hk@1.40.0#/Config.pkl"
+amends "package://github.com/jdx/hk/releases/download/v1.44.2/hk@1.44.2#/Config.pkl"
 
 import "hk-common.pkl" as common
 
@@ -77,7 +77,21 @@ hooks {
       }
       ["docker_bake_check"] {
         glob = List("docker-bake.hcl", ".devcontainer/Dockerfile")
-        check = "devcontainer read-configuration --workspace-folder ."
+        check = "scripts/ensure-docker-up.sh && devcontainer read-configuration --workspace-folder ."
+      }
+
+      // --- devcontainer.json 3-layer schema validation ---
+      //     Layer 1: biome lint (JSONC parse, duplicate keys)
+      //     Layer 2: devcontainer read-configuration (official parser + substitution)
+      //     Layer 3: check-jsonschema vs official spec schema URL
+      //     Rationale: devcontainer.json is JSONC, so plain JSON tools
+      //     choke on trailing commas and comments. The 3-layer pipeline
+      //     catches parse errors, substitution failures, AND schema
+      //     drift (unknown fields, wrong types, missing required).
+      //     See scripts/validate-devcontainer-json.sh for details.
+      ["devcontainer_json_validate"] {
+        glob = List(".devcontainer/devcontainer.json")
+        check = "scripts/validate-devcontainer-json.sh"
       }
 
       // --- Thin host-user overlay invariant (Principle 1 of devcontainer-build refactor)

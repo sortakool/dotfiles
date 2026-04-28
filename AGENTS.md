@@ -176,7 +176,7 @@ Gated by `mise run verify-local`. Sessions touching `.devcontainer/` or `mise.to
 | `CONTAINER_REGISTRY` | `ghcr.io` | Docker registry (use `CONTAINER_REGISTRY`, not `REGISTRY` — avoids HCL collision) |
 | `DEVCONTAINER_USERNAME` | `${localEnv:USER}` (fallback: `devcontainer`) | Container user (UID 1000); passed through from host `USER` via `devcontainer.json`. Host-user migration is the current state — the legacy `vscode` value has been replaced. |
 | `DEVCONTAINER_SSH_PORT` | `4444` | Host-side port for R1 inbound `ssh ${USER}@localhost -p 4444`; container-internal sshd is hardcoded on `2222` by the feature. Override per-clone via `mise.local.toml` on port collision (volume names do NOT include the port — C10/C11/C12). |
-| `DOCKER_DEFAULT_PLATFORM` | `linux/amd64` | Force AMD64 on ARM Mac hosts |
+| `DOCKER_DEFAULT_PLATFORM` | `linux/amd64/v2` | Force AMD64 on ARM Mac hosts |
 
 ### Docker Runtimes
 

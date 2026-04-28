@@ -99,13 +99,13 @@ tokens = ["openssh-server"]
 
 [[suite]]
 name = "build.amd64-platform-wired"
-description = "R3 AMD64: devcontainer must build and run as linux/amd64 x86_64. Required tokens: --platform=linux/amd64 in devcontainer.json build.options (Dockerfile build arg). Runtime arch is additionally verified by `mise run verify-arch` via docker image inspect + uname -m + arch, which runs as part of verify-local. See AGENTS.md SSH Requirements section (R3)."
+description = "R3 AMD64: devcontainer must build and run as linux/amd64/v2 x86_64. Required tokens: --platform=linux/amd64/v2 in devcontainer.json build.options (Dockerfile build arg). Runtime arch is additionally verified by `mise run verify-arch` via docker image inspect + uname -m + arch, which runs as part of verify-local. See AGENTS.md SSH Requirements section (R3)."
 category = "build"
 check_type = "static"
 handler = "require_tokens"
 paths = [".devcontainer/devcontainer.json"]
 tokens = [
-    "--platform=linux/amd64",
+    "--platform=linux/amd64/v2",
 ]
 
 [[suite]]

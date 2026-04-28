@@ -49,6 +49,31 @@ post-failure reporting.
 - **`gh run watch --exit-status` is unreliable** — always verify
   workflow completion with `gh pr checks <n> --json` or
   `gh run list --json conclusion`.
+- **`smoke-test` is intentionally PR-skipped.** Its `if:` guard is
+  `github.ref == 'refs/heads/main' || github.event_name == 'schedule'`.
+  Smoke-test validates the published `:dev` image, which only exists
+  after a successful main push. On PRs, expect `smoke-test` to show
+  `SKIPPED` — that's not a failure. Treat the PR as green when
+  `lint`/`contract-preflight`/`build`/`CodeRabbit` all pass.
+
+## Cron schedules (`schedule:`)
+
+- **GHA `schedule.cron` supports a sibling `timezone:` field.** Use
+  `cron: "0 0 * * *"` + `timezone: "America/Chicago"` for IANA-zoned
+  schedules. Verified against the GHA workflow-syntax docs 2026-04-27.
+  Older AI-summarized claims of "GHA cron is UTC-only" are stale —
+  the field is supported.
+
+## Dependabot (`.github/dependabot.yml`)
+
+- **`interval: "cron"` enforces a 24h minimum.** The schema accepts
+  `interval: "cron"` + `cronjob: "<expr>"` + `timezone: "<tz>"`, but
+  `dependabot-api.githubapp.com` rejects sub-daily expressions:
+  *"Cronjob expression has a minimum interval of 1 hours which is less
+  than the minimum allowed interval of 24 hours."* Use `0 0 * * *`
+  (daily at midnight) or longer; do NOT try `0 * * * *` (hourly). The
+  validation runs as a check named `.github/dependabot.yml` on every
+  PR that touches the file. (PR #86 commit `b5022c0`.)
 
 ## Debugging CI failures
 

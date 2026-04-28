@@ -47,15 +47,19 @@ RUN rm -f /etc/sudoers.d/devcontainer && \
     chmod 0440 /etc/sudoers.d/"${DEVCONTAINER_USERNAME}"
 
 
-# Pre-stage home directories for volume mount targets and tool paths
+# Pre-stage home directories for volume mount targets and tool paths.
+# v6: ~/.local/tmp added as the TMPDIR target — tools that respect
+# $TMPDIR get persistence for free via the single home volume mount.
 RUN mkdir -p \
     /home/${DEVCONTAINER_USERNAME}/.cache/uv \
     /home/${DEVCONTAINER_USERNAME}/.local/bin \
     /home/${DEVCONTAINER_USERNAME}/.local/state \
     /home/${DEVCONTAINER_USERNAME}/.local/share/mise \
+    /home/${DEVCONTAINER_USERNAME}/.local/tmp \
     /home/${DEVCONTAINER_USERNAME}/.cargo \
     /home/${DEVCONTAINER_USERNAME}/.rustup \
     /home/${DEVCONTAINER_USERNAME}/.config/gh \
+    /home/${DEVCONTAINER_USERNAME}/.config/mise \
     /home/${DEVCONTAINER_USERNAME}/.ssh && \
     chmod 700 /home/${DEVCONTAINER_USERNAME}/.ssh && \
     chown -R ${DEVCONTAINER_USERNAME}:${DEVCONTAINER_USERNAME} /home/${DEVCONTAINER_USERNAME}
@@ -64,9 +68,15 @@ ENV DEVCONTAINER_USERNAME=${DEVCONTAINER_USERNAME} \
     USER=${DEVCONTAINER_USERNAME} \
     LOGNAME=${DEVCONTAINER_USERNAME} \
     HOME=/home/${DEVCONTAINER_USERNAME} \
-    MISE_TRUSTED_CONFIG_PATHS=/home/${DEVCONTAINER_USERNAME}/.config/mise \
+    MISE_TRUSTED_CONFIG_PATHS="/" \
+    MISE_SYSTEM_CONFIG_DIR=/usr/local/share/mise \
+    MISE_SYSTEM_CONFIG_FILE=/usr/local/share/mise/config.toml \
+    MISE_CONFIG_DIR=/home/${DEVCONTAINER_USERNAME}/.config/mise \
+    MISE_GLOBAL_CONFIG_FILE=/home/${DEVCONTAINER_USERNAME}/.config/mise/config.toml \
+    TMPDIR=/home/${DEVCONTAINER_USERNAME}/.local/tmp \
     PATH="/home/${DEVCONTAINER_USERNAME}/.local/bin:/home/${DEVCONTAINER_USERNAME}/.local/share/mise/shims:${PATH}"
 
 WORKDIR /home/${DEVCONTAINER_USERNAME}
-
 USER ${DEVCONTAINER_USERNAME}
+
+WORKDIR /home/${DEVCONTAINER_USERNAME}

@@ -117,12 +117,12 @@ def _add_image_subcommands(
     smoke_parser.add_argument(
         "--image-ref", required=True, help="Image reference to test"
     )
-    smoke_parser.add_argument("--platform", default="linux/amd64", help="Platform")
+    smoke_parser.add_argument("--platform", default="linux/amd64/v2", help="Platform")
     size_parser = image_sub.add_parser("size-report", help="Report image size metrics")
     size_parser.add_argument(
         "--image-ref", required=True, help="Image reference to inspect"
     )
-    size_parser.add_argument("--platform", default="linux/amd64", help="Platform")
+    size_parser.add_argument("--platform", default="linux/amd64/v2", help="Platform")
     benchmark_parser = image_sub.add_parser(
         "benchmark",
         help="Benchmark image smoke/report timings",
@@ -130,7 +130,9 @@ def _add_image_subcommands(
     benchmark_parser.add_argument(
         "--image-ref", required=True, help="Image reference to benchmark"
     )
-    benchmark_parser.add_argument("--platform", default="linux/amd64", help="Platform")
+    benchmark_parser.add_argument(
+        "--platform", default="linux/amd64/v2", help="Platform"
+    )
     benchmark_parser.add_argument(
         "--output-path",
         help="Optional JSON output path for benchmark metrics",

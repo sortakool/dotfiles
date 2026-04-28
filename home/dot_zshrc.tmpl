@@ -1,18 +1,124 @@
-# .zshrc - Managed by chezmoi
+{{- $remote := or (env "CODESPACES" | not | not) (env "SSH_CONNECTION" | not | not) (env "KUBERNETES_SERVICE_HOST" | not | not) (env "container" | not | not) (env "REMOTE_CONTAINERS" | not | not) (stat "/.dockerenv" | not | not) -}}
+# enable zsh history
+HISTFILE="$HOME/.zsh_history"
+HISTSIZE=60000
+SAVEHIST=50000
 
-# Load Mise environment
-if [ -x "$(command -v mise)" ]; then
+setopt HIST_IGNORE_SPACE # do not save a command if it starts with a space
+setopt HIST_IGNORE_DUPS  # do not save duplicate commands
+
+# solve weird extra character issues when auto completing
+export LANG="en_US.UTF-8"
+
+# add user local completion folder to fpath
+fpath+=(~/.zsh/completion)
+
+if [[ -d $HOME/.local/bin ]] ; then 
+  export PATH=$HOME/.local/bin:$PATH
+fi 
+
+if [[ -d $HOME/.krew ]] ; then
+  export PATH=$HOME/.krew/bin:$PATH
+fi
+
+# edit PATH
+{{ if eq .chezmoi.osRelease.id "bazzite" -}}
+export PATH=$HOME/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:$PATH
+{{- end}}
+
+{{if not .remote -}}
+# Hand SSH_AUTH_SOCK to gpg-agent when configured for SSH. Skipped on
+# remote/container so Docker Desktop's magic socket
+# (/run/host-services/ssh-auth.sock), 1Password, and macOS Keychain
+# agents are not overridden. Also no-op when gpg-agent has
+# enable-ssh-support disabled (lets gpgconf errors surface on stderr).
+if command -v gpgconf >/dev/null && \
+   gpgconf --list-options gpg-agent | grep -q '^enable-ssh-support:.*:1$'; then
+  unset SSH_AGENT_PID
+  if [ "${gnupg_SSH_AUTH_SOCK_by:-0}" -ne $$ ]; then
+    export SSH_AUTH_SOCK="$(gpgconf --list-dirs agent-ssh-socket)"
+  fi
+fi
+{{- end}}
+
+# enable brew if found on linux
+if [ -f /home/linuxbrew/.linuxbrew/bin/brew ] ; then
+  eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+fi
+
+if command -v mise > /dev/null ; then
   eval "$(mise activate zsh)"
 fi
 
-# Load Starship prompt if installed
-if [ -x "$(command -v starship)" ]; then
+autoload -Uz compinit && compinit
+
+# (neo)vim
+if command -v nvim > /dev/null ; then
+  export EDITOR="nvim"
+  export VISUAL="nvim"
+elif command -v vim > /dev/null ; then
+  export EDITOR="vim"
+  export VISUAL="vim"
+fi
+
+if command -v lsd > /dev/null ; then
+  alias ls="lsd"
+  alias ll="ls -lgh"
+  alias la='ls -a'
+  alias lla='ls -lgha'
+  alias lt='ls --tree'
+fi
+
+# enable zsh vi-mode
+bindkey -v
+export KEYTIMEOUT=1 # make switching between modes faster
+
+# enable the starship prompt
+if command -v starship > /dev/null ; then
   eval "$(starship init zsh)"
 fi
 
-# aliases
-alias ll='eza -l --icons'
-alias la='eza -la --icons'
-alias g='git'
-alias lg='lazygit'
-alias c='chezmoi'
+# enable fzf autocompletion and key-bindings if found
+if command -v fzf > /dev/null ; then
+  source <(fzf --zsh)
+fi
+
+if command -v kubectl > /dev/null ; then
+  source <(kubectl completion zsh)
+  alias k="kubectl"
+fi
+
+if command -v flux > /dev/null ; then
+  source <(flux completion zsh)
+fi
+
+# if zoxide is installed, enable it
+if command -v zoxide > /dev/null ; then
+  eval "$(zoxide init zsh)"
+  alias cd="z"
+fi
+
+# some nice functions and aliases
+
+## use bat instead of cat 
+if command -v bat > /dev/null ; then
+  alias cat="bat"
+fi
+
+## bat on debian based systems is batcat. Fix that.
+if command -v batcat > /dev/null ; then
+  alias cat="batcat"
+fi
+
+if command -v dagger > /dev/null ; then 
+  export DAGGER_NO_NAG=1
+fi
+
+if [[ -d .zsh/zsh-autosuggestions ]] ; then
+  source .zsh/zsh-autosuggestions/zsh-autosuggestions.zsh
+fi
+
+# syntax highlighting needs to be at the end because of reasons
+if [[ -d .zsh/zsh-syntax-highlighting ]] ; then
+  source .zsh/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+fi

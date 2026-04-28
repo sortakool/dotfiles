@@ -18,8 +18,10 @@ updates:
 
     schedule:
       interval: "cron"
-      # This cron runs every hour (note: may be capped by GitHub)
-      cronjob: "0 * * * *"
+      # Daily midnight America/Chicago. Dependabot rejects cron expressions
+      # under a 24h minimum, so sub-daily intervals (e.g. "0 * * * *") fail
+      # validation against dependabot-api.githubapp.com.
+      cronjob: "0 0 * * *"
       timezone: "America/Chicago"
 
     open-pull-requests-limit: 5
@@ -40,8 +42,10 @@ updates:
     directory: "/python"      # Location of your pyproject.toml
     schedule:
       interval: "cron"
-      # This cron runs every hour (note: may be capped by GitHub)
-      cronjob: "0 * * * *"
+      # Daily midnight America/Chicago. Dependabot rejects cron expressions
+      # under a 24h minimum, so sub-daily intervals (e.g. "0 * * * *") fail
+      # validation against dependabot-api.githubapp.com.
+      cronjob: "0 0 * * *"
       timezone: "America/Chicago"
 
     open-pull-requests-limit: 5

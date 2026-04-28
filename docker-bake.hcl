@@ -17,15 +17,11 @@ variable "TAG" {
 }
 
 variable "PLATFORM" {
-  default = "linux/amd64"
+  default = "linux/amd64/v2"
 }
 
 variable "BASE_IMAGE" {
-  default = "ubuntu:25.10"
-}
-
-variable "MISE_VERSION" {
-  default = "v2026.4.5"
+  default = "ubuntu:26.04"
 }
 
 variable "DEVCONTAINER_USERNAME" {
@@ -52,7 +48,6 @@ target "_common" {
   platforms  = ["${PLATFORM}"]
   args = {
     DEVCONTAINER_USERNAME = DEVCONTAINER_USERNAME
-    MISE_VERSION          = MISE_VERSION
   }
   secret = [
     "id=github_token,env=GITHUB_TOKEN",

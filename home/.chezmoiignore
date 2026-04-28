@@ -13,12 +13,13 @@ Library/**
 .config/systemd/**
 {{ end }}
 
-{{ if .is_ephemeral }}
-# Skip heavy configs in ephemeral/container environments
+# Tool-managed directories — chezmoi never touches these.
+# Cargo, rustup, and gcloud CLI own their own directories and
+# chezmoi templating would fight them. Applies to BOTH Mac host
+# and devcontainer (v6 refactor — dropped is_ephemeral gate).
 .cargo/**
 .rustup/**
 .config/gcloud/**
-{{ end }}
 
 {{ if not .is_personal }}
 # Skip personal-only configs on non-personal machines

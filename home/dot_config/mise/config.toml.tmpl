@@ -1,6 +1,32 @@
+#:schema https://mise.jdx.dev/schema/mise.json
+
 # Devcontainer-only mise overlay (gated by .chezmoiignore on chezmoi.os == "linux").
 # Tool installs live in .devcontainer/mise-system.toml at image-build time.
 # This user-level overlay is an intentional placeholder for future per-user
 # extensions (env vars, task shims) that should NOT bake into the image.
 
-[tools]
+[settings]
+activate_aggressive = true
+auto_install = true
+experimental = true
+#verbose = true
+
+[settings.status]
+show_tools = true
+missing_tools = "always"
+show_env = true
+
+[tasks."update:all"]
+description = "update all tools and reshim"
+run = """
+set -euo pipefail
+mise activate
+sudo mise config ls
+sudo mise self-update -y
+sudo mise upgrade --bump -- --system -y
+sudo mise install --system -y
+sudo mise install -y
+sudo mise reshim -f -y
+sudo mise outdated -y
+sudo mise doctor -y
+"""

@@ -2,26 +2,30 @@ name: CI
 
 on:
   schedule:
-    - cron: '0 0 * * 0' # Weekly Sunday midnight
+    - cron: "0 0 * * *" # Daily midnight America/Chicago
+      timezone: "America/Chicago"
   push:
     branches: [main]
     paths:
-      - '.devcontainer/**'
-      - 'docker-bake.hcl'
-      - 'home/**'
-      - 'python/**'
-      - 'install.sh'
-      - '.github/workflows/ci.yml'
-      - 'hk.pkl'
-      - 'renovate.json'
+      - ".devcontainer/**"
+      - "docker-bake.hcl"
+      - "home/**"
+      - "python/**"
+      - "install.sh"
+      - ".github/workflows/ci.yml"
+      - "hk.pkl"
+      - "hk-image.pkl"
+      - "hk-common.pkl"
+      - "renovate.json"
+
   pull_request:
     branches: [main]
   workflow_dispatch:
     inputs:
       target:
-        description: 'Bake target (dev, cpp, all)'
+        description: "Bake target (dev, cpp, all)"
         required: false
-        default: 'dev'
+        default: "dev"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
