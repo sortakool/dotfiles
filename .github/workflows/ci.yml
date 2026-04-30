@@ -262,6 +262,15 @@ jobs:
         if: steps.probe.outputs.hit != 'true'
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
+      - name: Write GitHub token for build secret
+        if: steps.probe.outputs.hit != 'true'
+        # The Dockerfile's mise install reads /run/secrets/github_token
+        # to authenticate against api.github.com; without this, aqua /
+        # github / cargo backend fetches hit unauthenticated rate limits
+        # (HTTP 403). The build job has the same step — must mirror it
+        # here for the cache-miss path.
+        run: echo "${{ secrets.GITHUB_TOKEN }}" > /tmp/github_token
+
       - name: Build and push p2996-cache image
         if: steps.probe.outputs.hit != 'true'
         uses: docker/bake-action@a66e1c87e2eca0503c343edf1d208c716d54b8a8 # v7.1.0
@@ -273,6 +282,7 @@ jobs:
             docker-bake.hcl
           set: |
             p2996-cache.tags=${{ steps.hash.outputs.cache_ref }}
+            *.secrets=id=github_token,src=/tmp/github_token
 
   # ============================================================
   # Build Type 2: Dotfiles environment image (Docker → ghcr.io)
