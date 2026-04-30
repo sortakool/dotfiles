@@ -56,13 +56,18 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Run hk fix (auto-format, auto-fix lint)
-        run: hk fix --all
+        # `HK_FIX=1` flips hk run into fix-mode, where each step's
+        # `fix` command runs instead of the `check` command. Note: the
+        # top-level `hk fix` subcommand is misleading — it expects a
+        # named "fix" hook in hk.pkl (we have `pre-commit`, not `fix`).
+        run: hk run pre-commit --all --stash none
         env:
+          HK_FIX: "1"
           HK_PKL_BACKEND: pkl
 
       - name: Verify hk pre-commit passes after fix
-        # If `hk fix --all` produced a tree that still fails lint, do
-        # NOT commit — fail loud so the operator inspects the PR.
+        # If the fix produced a tree that still fails lint, do NOT
+        # commit — fail loud so the operator inspects the PR.
         run: hk run pre-commit --all --stash none
         env:
           HK_PKL_BACKEND: pkl
