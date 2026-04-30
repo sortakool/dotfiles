@@ -26,6 +26,10 @@ on:
         description: "Bake target (dev, cpp, all)"
         required: false
         default: "dev"
+      force_dev_tag:
+        description: "Tag the build as :dev / :latest (used by promote fallback for direct-to-main pushes without an associated PR)"
+        required: false
+        default: "false"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -149,10 +153,103 @@ jobs:
             --json
 
   # ============================================================
+  # P2996 cache prep: compute content-hash of clang-builder inputs and
+  # ensure ghcr.io/<owner>/<repo>:p2996-<hash16> exists. On hash hit
+  # (the typical case), this job exits in <30s with cache_ref set; the
+  # build job then skips the ~80–120 min clang compile entirely. On
+  # miss, this job builds the p2996-cache target and pushes it.
+  # ============================================================
+  p2996-prep:
+    needs: contract-preflight
+    if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      hash: ${{ steps.hash.outputs.hash }}
+      cache_ref: ${{ steps.hash.outputs.cache_ref }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
+        with:
+          enable-cache: false
+
+      - name: Compute P2996 cache hash
+        id: hash
+        run: |
+          set -euo pipefail
+          hash=$(uv run --project python dotfiles-setup p2996-hash)
+          cache_ref="${{ env.CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:p2996-${hash}"
+          echo "hash=${hash}" >> "$GITHUB_OUTPUT"
+          echo "cache_ref=${cache_ref}" >> "$GITHUB_OUTPUT"
+          {
+            echo "## P2996 cache lookup"
+            echo ""
+            echo "- Hash: \`${hash}\`"
+            echo "- Cache ref: \`${cache_ref}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ${{ env.CONTAINER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Probe cache
+        id: probe
+        run: |
+          set -euo pipefail
+          if docker manifest inspect "${{ steps.hash.outputs.cache_ref }}" >/dev/null 2>&1; then
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+            echo "Cache HIT — skipping clang-p2996 compile" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "hit=false" >> "$GITHUB_OUTPUT"
+            echo "Cache MISS — building p2996-cache target" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Free runner disk space
+        if: steps.probe.outputs.hit != 'true'
+        # See build job for the rationale; cold P2996 build needs the same
+        # ~30 GB headroom that the full base image build needs.
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: false
+          swap-storage: true
+
+      - name: Set up Docker Buildx
+        if: steps.probe.outputs.hit != 'true'
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Build and push p2996-cache image
+        if: steps.probe.outputs.hit != 'true'
+        uses: docker/bake-action@82490499d2e5613fcead7e128237ef0b0ea210f7 # v7.0.0
+        with:
+          source: .
+          targets: p2996-cache
+          push: true
+          files: |
+            docker-bake.hcl
+          set: |
+            p2996-cache.tags=${{ steps.hash.outputs.cache_ref }}
+
+  # ============================================================
   # Build Type 2: Dotfiles environment image (Docker → ghcr.io)
   # ============================================================
   build:
-    needs: contract-preflight
+    needs: [contract-preflight, p2996-prep]
+    if: github.event_name != 'push' || github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       image-tag: ${{ steps.meta.outputs.tags }}
@@ -206,8 +303,8 @@ jobs:
         with:
           images: ${{ env.CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
+            type=raw,value=dev,enable=${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.force_dev_tag == 'true') }}
+            type=raw,value=latest,enable=${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.force_dev_tag == 'true') }}
             type=sha,prefix=
             type=ref,event=pr
 
@@ -220,14 +317,14 @@ jobs:
         with:
           source: .
           targets: ${{ github.event.inputs.target || 'dev' }}
-          push: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
+          push: true
           files: |
             docker-bake.hcl
             ${{ steps.meta.outputs.bake-file-tags }}
             ${{ steps.meta.outputs.bake-file-labels }}
           set: |
             *.secrets=id=github_token,src=/tmp/github_token
-            ${{ (github.ref != 'refs/heads/main' && github.event_name != 'schedule') && '*.output=type=cacheonly' || '' }}
+            dev.args.P2996_SOURCE=${{ needs.p2996-prep.outputs.cache_ref }}
 
       - name: Build performance summary
         if: always()
@@ -264,11 +361,14 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ============================================================
-  # Smoke test: validate the published image
+  # Smoke test: validate the freshly-pushed image (PR or main).
+  # PRs validate the exact :sha-<sha> that promote will retag as
+  # :dev/:latest on merge — no rebuild gap between PR validation
+  # and main publication.
   # ============================================================
   smoke-test:
     needs: build
-    if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'
+    if: github.event_name != 'push' || github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -324,3 +424,107 @@ jobs:
           path: |
             artifacts/build/devcontainer-metrics.json
             /tmp/devcontainer-metrics.stdout.json
+
+  # ============================================================
+  # Promote: tag-only retag of the PR-built image as :dev / :latest.
+  # No rebuild — the PR's :pr-<NNN> manifest digest is reused. If the
+  # merge commit has no associated PR (e.g., direct push to main, force
+  # push), fall back to a workflow_dispatch with force_dev_tag=true.
+  # ============================================================
+  promote:
+    needs: lint
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find source PR for this commit
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Look up the PR(s) associated with this commit. Works uniformly
+          # for squash, merge-commit, and rebase merges. Query lives in a
+          # quoted heredoc so the GraphQL $-parameters are not bash vars.
+          cat > /tmp/associated_pr.gql <<'GQL'
+          query($owner:String!,$repo:String!,$sha:GitObjectID!){
+            repository(owner:$owner,name:$repo){
+              object(oid:$sha){
+                ... on Commit {
+                  associatedPullRequests(first:1) { nodes { number } }
+                }
+              }
+            }
+          }
+          GQL
+          pr_number=$(gh api graphql \
+            -F query=@/tmp/associated_pr.gql \
+            -F owner="${{ github.repository_owner }}" \
+            -F repo="${{ github.event.repository.name }}" \
+            -F sha="${{ github.sha }}" \
+            --jq '.data.repository.object.associatedPullRequests.nodes[0].number // empty')
+          if [ -z "$pr_number" ]; then
+            echo "No associated PR for ${{ github.sha }} — will fall back to rebuild" >&2
+            echo "fallback=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Found associated PR #${pr_number}" >&2
+            echo "fallback=false" >> "$GITHUB_OUTPUT"
+            echo "pr_number=${pr_number}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.pr.outputs.fallback != 'true'
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Log in to Container Registry
+        if: steps.pr.outputs.fallback != 'true'
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ${{ env.CONTAINER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Retag PR image as :dev and :latest
+        if: steps.pr.outputs.fallback != 'true'
+        id: retag
+        env:
+          IMAGE: ${{ env.CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+          source_ref="${IMAGE}:pr-${PR_NUMBER}"
+          docker buildx imagetools create \
+            --tag "${IMAGE}:dev" \
+            --tag "${IMAGE}:latest" \
+            "${source_ref}"
+          # Verify both new tags resolve to a manifest digest. With
+          # set -o pipefail the awk failure (e.g., empty input) propagates.
+          dev_digest=$(docker buildx imagetools inspect "${IMAGE}:dev" --format '{{.Manifest.Digest}}')
+          latest_digest=$(docker buildx imagetools inspect "${IMAGE}:latest" --format '{{.Manifest.Digest}}')
+          if [ "${dev_digest}" != "${latest_digest}" ]; then
+            echo "FAIL: :dev and :latest resolve to different digests after retag" >&2
+            echo "  :dev    -> ${dev_digest}"    >&2
+            echo "  :latest -> ${latest_digest}" >&2
+            exit 1
+          fi
+          {
+            echo "## Promote (tag-only)"
+            echo ""
+            echo "- Source: \`${source_ref}\`"
+            echo "- New tags: \`:dev\`, \`:latest\` (digest \`${dev_digest}\`)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Trigger fallback rebuild
+        if: steps.pr.outputs.fallback == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run ci.yml \
+            --ref main \
+            -f target=dev \
+            -f force_dev_tag=true
+          {
+            echo "## Promote (fallback rebuild)"
+            echo ""
+            echo "No PR associated with this commit; dispatched ci.yml with force_dev_tag=true."
+          } >> "$GITHUB_STEP_SUMMARY"

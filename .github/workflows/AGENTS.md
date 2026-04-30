@@ -12,10 +12,12 @@ post-failure reporting.
 
 | File | Purpose |
 |------|---------|
-| `ci.yml` | Main pipeline: lint → contract-preflight → build → smoke-test |
+| `ci.yml` | Main pipeline: lint → contract-preflight → p2996-prep → build → smoke-test (PR/schedule) OR lint → promote (push to main) |
 | `ci-failure-report.yml` | Post-failure diagnostics / issue filing |
 
 ## Pipeline stages
+
+PR / schedule / workflow_dispatch path:
 
 1. **lint** — mise install, hk pre-commit, agnix agent-doc validation
    (`agnix --target claude-code --strict .`), `mise doctor --json`
@@ -23,13 +25,31 @@ post-failure reporting.
    `mise.lock`.
 2. **contract-preflight** — Python 3.14 + uv; runs `dotfiles-setup
    verify run` over `python/verification/suites.toml`.
-3. **build** — `docker buildx bake` for the published base image;
-   includes diagnostics step (`docker buildx bake --print` + known
-   warnings table); publishes to
-   `ghcr.io/ray-manaloto/dotfiles-devcontainer` on `main`.
-4. **smoke-test** — validates clang, AI CLIs, sanitizers, backend
-   policies on the built image; no host mount (see
-   `feedback_docker_ci_workarounds`).
+3. **p2996-prep** — computes content-hash of P2996 inputs via
+   `dotfiles-setup p2996-hash`. Probes
+   `ghcr.io/<owner>/<repo>:p2996-<hash16>` with `docker manifest
+   inspect`. On hit, exits in <30s. On miss, builds the `p2996-cache`
+   bake target (the scratch-based `p2996-export` stage holding just
+   `/opt/clang-p2996`, ~500 MB) and pushes it to GHCR.
+4. **build** — `docker buildx bake dev` with
+   `dev.args.P2996_SOURCE=<cache_ref>` from p2996-prep. On cache hit
+   the Dockerfile's `clang-builder` stage is `FROM <cache_ref>` instead
+   of `FROM p2996-export`, skipping the ~80–120 min clang compile.
+   Always pushes (`:pr-NNN` or `:sha-<sha>` for PRs; `:dev`/`:latest`
+   for schedule and `force_dev_tag=true` workflow_dispatch).
+5. **smoke-test** — pulls `:sha-<github.sha>` (the freshly-built
+   image) and runs the same checks against PR images that previously
+   only ran on main builds. The image smoked on the PR is the exact
+   image that gets retagged as `:dev`/`:latest` on merge.
+
+Push-to-main path (after a PR merge):
+
+1. **lint** — same as PR path, validates the merge commit's tree.
+2. **promote** — looks up the merged PR via `gh api graphql
+   associatedPullRequests`. On hit, runs `docker buildx imagetools
+   create -t :dev -t :latest <:pr-NNN>` — a manifest-only retag,
+   ~30 sec, no rebuild. On miss (direct push, force-push), dispatches
+   `ci.yml` with `force_dev_tag=true` to fall back to a full build.
 
 ## Invariants
 
@@ -42,19 +62,25 @@ post-failure reporting.
   (`uid=1000` for vscode user) — never via `ARG` or env.
 - **`CONTAINER_REGISTRY`** env var, not `REGISTRY` (avoids HCL
   collision with the `REGISTRY` target in `docker-bake.hcl`).
-- **`cacheonly` conditional** on PR builds — see
-  `feedback_docker_ci_workarounds`.
+- **PR builds push** — every PR build pushes `:pr-NNN` and
+  `:sha-<github.sha>` to GHCR so smoke-test can validate the exact
+  image that promote will retag on merge. There is no
+  `cacheonly` mode anymore.
+- **Push-to-main does NOT rebuild.** `build`, `p2996-prep`, and
+  `smoke-test` are all gated `if: github.event_name != 'push' ||
+  github.ref != 'refs/heads/main'`. The merge commit is published
+  via `promote`'s manifest-retag of the PR's `:pr-NNN`.
+- **P2996 cache invalidation.** The cache key is computed from
+  `CLANG_P2996_REF`, `BASE_IMAGE`, `PLATFORM`, the Dockerfile, the
+  bake file, and `.devcontainer/mise-system-resolved.json`. Refresh
+  the resolved-snapshot via `mise run capture-mise-system-resolved`
+  inside the devcontainer when conda-forge drift on `"latest"` should
+  bust the cache.
 - **`uv run --project python`**, not `--directory` — `--directory`
   changes cwd and breaks relative test paths.
 - **`gh run watch --exit-status` is unreliable** — always verify
   workflow completion with `gh pr checks <n> --json` or
   `gh run list --json conclusion`.
-- **`smoke-test` is intentionally PR-skipped.** Its `if:` guard is
-  `github.ref == 'refs/heads/main' || github.event_name == 'schedule'`.
-  Smoke-test validates the published `:dev` image, which only exists
-  after a successful main push. On PRs, expect `smoke-test` to show
-  `SKIPPED` — that's not a failure. Treat the PR as green when
-  `lint`/`contract-preflight`/`build`/`CodeRabbit` all pass.
 
 ## Cron schedules (`schedule:`)
 

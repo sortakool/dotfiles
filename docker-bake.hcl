@@ -61,6 +61,10 @@ target "dev" {
   args = {
     BASE_IMAGE      = BASE_IMAGE
     CLANG_P2996_REF = CLANG_P2996_REF
+    # Default cold-build path. CI's p2996-prep job overrides this with
+    # ghcr.io/<owner>/<repo>:p2996-<hash16> on cache hit, skipping the
+    # ~80–120 min clang compile entirely. See p2996-cache target.
+    P2996_SOURCE = "p2996-export"
   }
   # Tags inherited from docker-metadata-action (CI overrides with SHA/latest/PR tags)
   cache-from = [
@@ -72,6 +76,27 @@ target "dev" {
   attest = [
     "type=provenance,mode=min",
     "type=sbom",
+  ]
+}
+
+# Content-addressed cache for the clang-p2996 build artifact.
+# Builds only the scratch-based p2996-export stage (~500 MB, just
+# /opt/clang-p2996/). CI tags it ghcr.io/<owner>/<repo>:p2996-<hash16>
+# where the hash captures CLANG_P2996_REF + Dockerfile + bake-vars +
+# .devcontainer/mise-system-resolved.json. On hash hit, dev target
+# uses this image as P2996_SOURCE and skips the cold compile.
+target "p2996-cache" {
+  inherits = ["_common"]
+  target   = "p2996-export"
+  args = {
+    BASE_IMAGE      = BASE_IMAGE
+    CLANG_P2996_REF = CLANG_P2996_REF
+  }
+  cache-from = [
+    "type=gha,scope=dotfiles-p2996-cache",
+  ]
+  cache-to = [
+    "type=gha,scope=dotfiles-p2996-cache,mode=max",
   ]
 }
 

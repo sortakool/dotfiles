@@ -20,6 +20,7 @@ Defines the devcontainer image and runtime lifecycle. Two layers:
 | `Dockerfile.host-user` | Thin overlay that adds the host UID/GID (low-priority Phase 2 work) |
 | `devcontainer.json` | Devcontainer spec (containers.dev) — lifecycle hooks, features, volumes, dynamic naming |
 | `mise-system.toml` | Dedicated Docker system-wide mise config; installed to `/usr/local/share/mise/config.toml`; includes postinstall hook for Claude Code CLI |
+| `mise-system-resolved.json` + `P2996-CACHE.md` | P2996 content-addressed cache for clang-builder (~80-120 min compile skipped on hash hit); refresh snapshot via `mise run capture-mise-system-resolved` |
 
 ## Devcontainer Lifecycle
 

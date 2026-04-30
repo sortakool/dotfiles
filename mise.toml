@@ -549,3 +549,11 @@ run = "agnix ."
 [tasks.lock]
 description = "Regenerate mise.lock"
 run = "mise lock"
+
+[tasks.p2996-hash]
+description = "Print the content-hash of P2996 cache inputs (matches the CI :p2996-<hash> tag)"
+run = "uv run --project python dotfiles-setup p2996-hash"
+
+[tasks.capture-mise-system-resolved]
+description = "Refresh .devcontainer/mise-system-resolved.json — run inside the devcontainer when conda-forge tool drift should bust the P2996 cache"
+run = "uv run --project python dotfiles-setup mise-snapshot"

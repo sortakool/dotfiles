@@ -146,7 +146,18 @@ WORKDIR /workspaces
 # Runs in parallel with devcontainer-base via BuildKit DAG.
 # Only the install prefix (/opt/clang-p2996) is COPY'd into the final
 # stage — the ~20GB build tree is discarded.
-FROM devcontainer-base AS clang-builder
+#
+# Three-stage pattern:
+#   1. clang-builder-cold: heavy compile from source (~80–120 min cold)
+#   2. p2996-export: scratch-based export of just /opt/clang-p2996
+#      (~500 MB — small enough for cheap GHCR push/pull as cache image)
+#   3. clang-builder: indirection layer; FROM ${P2996_SOURCE} resolves
+#      to either the local p2996-export (cold path) or to a pre-built
+#      cache image like ghcr.io/<owner>/<repo>:p2996-<hash16>.
+#
+# The dev target passes P2996_SOURCE=p2996-export by default; CI's
+# p2996-prep job overrides it with the cache image ref on hash hit.
+FROM devcontainer-base AS clang-builder-cold
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG CLANG_P2996_REPO=https://github.com/bloomberg/clang-p2996.git
@@ -195,7 +206,8 @@ RUN --mount=type=cache,target=/root/.cache/ccache,sharing=locked \
       -DCLANG_DEFAULT_CXX_STDLIB=libc++ && \
     ninja install
 
-# Smoke test: verify clang-p2996 can parse reflection headers
+# Smoke test: verify clang-p2996 can parse reflection headers.
+# Runs only on the cold compile path; cached pulls inherit this validation.
 RUN printf '#include <meta>\nint main(){return 0;}\n' >/tmp/refl.cpp && \
     /opt/clang-p2996/bin/clang++ \
       -std=c++2c \
@@ -206,6 +218,19 @@ RUN printf '#include <meta>\nint main(){return 0;}\n' >/tmp/refl.cpp && \
       /tmp/refl.cpp \
       -fsyntax-only && \
     rm -f /tmp/refl.cpp
+
+# ── p2996-export: tiny scratch-based image holding just the install prefix.
+# This is what gets pushed to GHCR as :p2996-<hash16> for cross-build reuse.
+FROM scratch AS p2996-export
+COPY --from=clang-builder-cold /opt/clang-p2996 /opt/clang-p2996
+
+# ── clang-builder: thin indirection that switches between cold-build
+# (FROM p2996-export, which transitively builds clang-builder-cold)
+# and cache-pull (FROM ghcr.io/.../:p2996-<hash16>). Whichever the bake
+# arg P2996_SOURCE resolves to, the resulting stage exposes
+# /opt/clang-p2996 for the final COPY below.
+ARG P2996_SOURCE=p2996-export
+FROM ${P2996_SOURCE} AS clang-builder
 
 # ── final: combine base + reflection compilers ───────────────────────
 # Stage name "devcontainer" preserves docker-bake.hcl target and

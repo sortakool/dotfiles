@@ -296,6 +296,33 @@ paths = ["docker-bake.hcl"]
 tokens = ["CLANG_P2996_REF"]
 
 [[suite]]
+name = "build.p2996-cache-target"
+description = "docker-bake.hcl must define p2996-cache target backed by p2996-export stage; dev target must accept P2996_SOURCE arg for cache short-circuit"
+category = "build"
+check_type = "static"
+handler = "require_tokens"
+paths = ["docker-bake.hcl"]
+tokens = [
+  "target \"p2996-cache\"",
+  "p2996-export",
+  "P2996_SOURCE",
+]
+
+[[suite]]
+name = "build.p2996-cache-dockerfile-stages"
+description = "Dockerfile must split clang-builder into clang-builder-cold (cold compile) + p2996-export (scratch export) + clang-builder (FROM ${P2996_SOURCE} indirection) so the same Dockerfile serves both cold and cache-hit paths"
+category = "build"
+check_type = "static"
+handler = "require_tokens"
+paths = [".devcontainer/Dockerfile"]
+tokens = [
+  "AS clang-builder-cold",
+  "AS p2996-export",
+  "ARG P2996_SOURCE",
+  "FROM ${P2996_SOURCE}",
+]
+
+[[suite]]
 name = "build.doppler-secrets-wired"
 description = "S1 SECRETS: Doppler secrets injected via --env-file in runArgs. initializeCommand downloads secrets to staging area; runArgs passes the env file to docker run. DO NOT DROP — see AGENTS.md Secrets Injection section."
 category = "build"
@@ -385,22 +412,42 @@ paths = [".github/workflows/ci.yml"]
 tokens = ["packages: write"]
 
 [[suite]]
-name = "ci.pr-builds-do-not-push"
-description = "Only main-branch and scheduled builds may publish GHCR images"
+name = "ci.push-to-main-skips-build"
+description = "Push-to-main must skip the heavy rebuild path. The build job (and p2996-prep, smoke-test which depend on it) must be gated 'if: github.event_name != \"push\" || github.ref != \"refs/heads/main\"'. Promote job retags the PR's image instead."
 category = "ci"
 check_type = "static"
 handler = "require_tokens"
 paths = [".github/workflows/ci.yml"]
-tokens = ["push: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}"]
+tokens = ["if: github.event_name != 'push' || github.ref != 'refs/heads/main'"]
 
 [[suite]]
-name = "ci.smoke-test-skips-pr"
-description = "Registry-backed smoke tests must only run when CI published an image"
+name = "ci.promote-job-exists"
+description = "Push-to-main must trigger the promote job (manifest-only retag of the PR image as :dev/:latest, no rebuild). Direct-push fallback dispatches workflow with force_dev_tag=true."
 category = "ci"
 check_type = "static"
 handler = "require_tokens"
 paths = [".github/workflows/ci.yml"]
-tokens = ["if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'"]
+tokens = [
+  "promote:",
+  "docker buildx imagetools create",
+  "associatedPullRequests",
+  "force_dev_tag",
+]
+
+[[suite]]
+name = "ci.p2996-prep-job-exists"
+description = "p2996-prep job must compute the content-hash via dotfiles-setup p2996-hash and probe ghcr.io for ':p2996-<hash>' before triggering the build. Cache hit short-circuits the ~80–120 min clang compile."
+category = "ci"
+check_type = "static"
+handler = "require_tokens"
+paths = [".github/workflows/ci.yml"]
+tokens = [
+  "p2996-prep:",
+  "dotfiles-setup p2996-hash",
+  "docker manifest inspect",
+  "p2996-cache",
+  "P2996_SOURCE",
+]
 
 # =============================================================================
 # Identity Constraints (~6) — User/group handling
