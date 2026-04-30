@@ -19,7 +19,10 @@ from dotfiles_setup.ghcr import validate_ghcr_prereqs
 from dotfiles_setup.image import ImageCommand
 from dotfiles_setup.image import main as image_main
 from dotfiles_setup.mise_snapshot import capture, write_snapshot
-from dotfiles_setup.p2996_hash import compute_repo_hash
+from dotfiles_setup.p2996_hash import (
+    compute_repo_base_hash,
+    compute_repo_p2996_hash,
+)
 from dotfiles_setup.verify import main as verify_main
 
 logger = logging.getLogger(__name__)
@@ -194,6 +197,10 @@ def setup_parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "p2996-hash",
         help="Print the content-addressed hash of P2996 cache inputs",
+    )
+    subparsers.add_parser(
+        "base-hash",
+        help="Print the content-addressed hash of devcontainer-base inputs",
     )
     subparsers.add_parser(
         "mise-snapshot",
@@ -375,7 +382,10 @@ def _build_command_handlers(
         sys.stdout.write("0.1.0\n")
 
     def _p2996_hash() -> None:
-        sys.stdout.write(compute_repo_hash(project_root) + "\n")
+        sys.stdout.write(compute_repo_p2996_hash(project_root) + "\n")
+
+    def _base_hash() -> None:
+        sys.stdout.write(compute_repo_base_hash(project_root) + "\n")
 
     def _mise_snapshot() -> None:
         resolved = capture()
@@ -397,6 +407,7 @@ def _build_command_handlers(
         "ghcr-check": lambda: handle_ghcr_check(args, project_root),
         "sync-versions": lambda: handle_sync_versions(project_root),
         "p2996-hash": _p2996_hash,
+        "base-hash": _base_hash,
         "mise-snapshot": _mise_snapshot,
     }
 

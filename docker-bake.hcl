@@ -54,18 +54,19 @@ target "_common" {
   ]
 }
 
-# Default dev environment on ubuntu base
+# Default dev environment on ubuntu base.
+# CI's base-prep + p2996-prep jobs override DEVCONTAINER_BASE_REF and
+# P2996_SOURCE with published cache image refs so the dev build is a
+# pull + thin layer instead of rebuilding base + clang from scratch.
 target "dev" {
   inherits = ["_common", "docker-metadata-action"]
   target   = "devcontainer"
   args = {
     BASE_IMAGE      = BASE_IMAGE
     CLANG_P2996_REF = CLANG_P2996_REF
-    # Default cold-build path. CI's p2996-prep job overrides this with
-    # ghcr.io/<owner>/<repo>:p2996-<hash16> on cache hit, skipping the
-    # multi-hour clang compile entirely. See p2996-cache target and
-    # .devcontainer/P2996-CACHE.md for the cache mechanism.
-    P2996_SOURCE = "p2996-export"
+    # Defaults are local stage names — cold path. CI overrides these.
+    DEVCONTAINER_BASE_REF = "devcontainer-base"
+    P2996_SOURCE          = "p2996-export"
   }
   # Tags inherited from docker-metadata-action (CI overrides with SHA/latest/PR tags)
   cache-from = [
@@ -80,18 +81,39 @@ target "dev" {
   ]
 }
 
+# Content-addressed cache for the devcontainer-base stage (apt + mise
+# install + cargo crates — the heavy ~30 min layer). CI tags it
+# ghcr.io/<owner>/<repo>:base-<hash16> where the hash captures
+# BASE_IMAGE + Dockerfile base-section + mise-system-resolved.json.
+# Both p2996-cache and dev pull this image so neither rebuilds the
+# mise install when only p2996 inputs change.
+target "base" {
+  inherits = ["_common"]
+  target   = "devcontainer-base"
+  args = {
+    BASE_IMAGE = BASE_IMAGE
+  }
+  cache-from = [
+    "type=gha,scope=dotfiles-base",
+  ]
+  cache-to = [
+    "type=gha,scope=dotfiles-base,mode=max",
+  ]
+}
+
 # Content-addressed cache for the clang-p2996 build artifact.
 # Builds only the scratch-based p2996-export stage (~500 MB, just
-# /opt/clang-p2996/). CI tags it ghcr.io/<owner>/<repo>:p2996-<hash16>
-# where the hash captures CLANG_P2996_REF + Dockerfile + bake-vars +
-# .devcontainer/mise-system-resolved.json. On hash hit, dev target
-# uses this image as P2996_SOURCE and skips the cold compile.
+# /opt/clang-p2996/). CI passes DEVCONTAINER_BASE_REF=
+# ghcr.io/.../:base-<base-hash16> so the mise install layer is pulled
+# (not rebuilt) before the clang compile starts. Tag pattern:
+# ghcr.io/<owner>/<repo>:p2996-<p2996-hash16>.
 target "p2996-cache" {
   inherits = ["_common"]
   target   = "p2996-export"
   args = {
-    BASE_IMAGE      = BASE_IMAGE
-    CLANG_P2996_REF = CLANG_P2996_REF
+    BASE_IMAGE            = BASE_IMAGE
+    CLANG_P2996_REF       = CLANG_P2996_REF
+    DEVCONTAINER_BASE_REF = "devcontainer-base"
   }
   cache-from = [
     "type=gha,scope=dotfiles-p2996-cache",

@@ -1,14 +1,30 @@
 # syntax=docker/dockerfile:1.7
 # check=error=true
 
+# ────────────────────────────────────────────────────────────────────
+# File-scope ARGs (must be declared before any FROM so they can
+# interpolate into FROM lines downstream — ARGs inside a stage are
+# stage-local).
+# ────────────────────────────────────────────────────────────────────
+
+# Base ubuntu image for the `devcontainer-base` stage.
 ARG BASE_IMAGE=ubuntu:26.04
-# P2996_SOURCE must be declared at file scope (before any FROM) so it
-# can interpolate into the `FROM ${P2996_SOURCE} AS clang-builder`
-# indirection downstream. ARGs declared inside a stage are stage-local
-# and don't carry to FROM lines — that's why this CAN'T move next to
-# the indirection block where it would read more naturally.
+
+# Indirection point for the cold-built clang-p2996 install prefix.
+# Default `p2996-export` builds locally; CI passes a published
+# `ghcr.io/<owner>/<repo>:p2996-<hash16>` ref to skip the compile.
 ARG P2996_SOURCE=p2996-export
 
+# Indirection point for the (heavy, ~30 min) devcontainer-base stage.
+# Default `devcontainer-base` builds the stage in-tree; CI passes a
+# published `ghcr.io/<owner>/<repo>:base-<hash16>` ref so the
+# p2996-cache and dev targets pull a pre-built base instead of
+# rebuilding the apt + mise install + cargo crates layers from scratch.
+# This is the main lever that lets `mise install --system` cost get
+# amortized across PRs — change p2996 inputs, the base hash stays put.
+ARG DEVCONTAINER_BASE_REF=devcontainer-base
+
+# ──── BASE_HASH_BEGIN ──── (sentinel for python/.../p2996_hash.py)
 FROM ${BASE_IMAGE} AS devcontainer-base
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -148,6 +164,10 @@ RUN echo "eval \"\$(/usr/local/bin/mise activate bash)\"" > /etc/profile.d/mise.
 
 WORKDIR /workspaces
 
+# ──── BASE_HASH_END ──── (sentinel for python/.../p2996_hash.py)
+
+# ──── P2996_HASH_BEGIN ──── (sentinel for python/.../p2996_hash.py)
+
 # ── clang-p2996 builder (Bloomberg fork, built from source) ──────────
 # Runs in parallel with devcontainer-base via BuildKit DAG.
 # Only the install prefix (/opt/clang-p2996) is COPY'd into the final
@@ -155,7 +175,11 @@ WORKDIR /workspaces
 #
 # Three-stage pattern:
 #   1. clang-builder-cold: heavy compile from source (multi-hour cold;
-#      see .devcontainer/P2996-CACHE.md for the current baseline)
+#      see .devcontainer/P2996-CACHE.md for the current baseline).
+#      Inherits FROM ${DEVCONTAINER_BASE_REF}: defaults to local stage
+#      `devcontainer-base` (rebuilt in-tree); CI's base-prep job
+#      overrides with `ghcr.io/<owner>/<repo>:base-<hash16>` so the
+#      mise install layer is pulled, not rebuilt.
 #   2. p2996-export: scratch-based export of just /opt/clang-p2996
 #      (~500 MB — small enough for cheap GHCR push/pull as cache image)
 #   3. clang-builder: indirection layer; FROM ${P2996_SOURCE} resolves
@@ -164,7 +188,7 @@ WORKDIR /workspaces
 #
 # The dev target passes P2996_SOURCE=p2996-export by default; CI's
 # p2996-prep job overrides it with the cache image ref on hash hit.
-FROM devcontainer-base AS clang-builder-cold
+FROM ${DEVCONTAINER_BASE_REF} AS clang-builder-cold
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG CLANG_P2996_REPO=https://github.com/bloomberg/clang-p2996.git
@@ -233,6 +257,8 @@ RUN printf '#include <meta>\nint main(){return 0;}\n' >/tmp/refl.cpp && \
 FROM scratch AS p2996-export
 COPY --from=clang-builder-cold /opt/clang-p2996 /opt/clang-p2996
 
+# ──── P2996_HASH_END ──── (sentinel for python/.../p2996_hash.py)
+
 # ── clang-builder: thin indirection that switches between cold-build
 # (FROM p2996-export, which transitively builds clang-builder-cold)
 # and cache-pull (FROM ghcr.io/.../:p2996-<hash16>). Whichever the bake
@@ -244,7 +270,10 @@ FROM ${P2996_SOURCE} AS clang-builder
 # ── final: combine base + reflection compilers ───────────────────────
 # Stage name "devcontainer" preserves docker-bake.hcl target and
 # Dockerfile.host-user BASE_IMAGE compatibility — no downstream changes.
-FROM devcontainer-base AS devcontainer
+# DEVCONTAINER_BASE_REF defaults to the local `devcontainer-base` stage
+# but CI overrides it with `ghcr.io/.../:base-<hash16>` so the dev image
+# is built as a thin pull + COPY, not a rebuild from scratch.
+FROM ${DEVCONTAINER_BASE_REF} AS devcontainer
 
 # GCC-16 with P2996 reflection (precompiled .deb from jwakely trunk snapshot,
 # post-reflection-merge commit 4b0e94b 2026-01-15).

@@ -309,6 +309,33 @@ tokens = [
 ]
 
 [[suite]]
+name = "build.base-cache-target"
+description = "docker-bake.hcl must define base target backed by devcontainer-base stage; both dev and p2996-cache targets must accept DEVCONTAINER_BASE_REF arg so they pull the cached base instead of rebuilding the heavy mise install layer"
+category = "build"
+check_type = "static"
+handler = "require_tokens"
+paths = ["docker-bake.hcl"]
+tokens = [
+  "target \"base\"",
+  "devcontainer-base",
+  "DEVCONTAINER_BASE_REF",
+]
+
+[[suite]]
+name = "build.dockerfile-section-markers"
+description = "Dockerfile must contain BASE_HASH_BEGIN/END and P2996_HASH_BEGIN/END sentinel comments delimiting which stages feed which content hash; without these the hash function falls back to whole-file hashing and editing any line invalidates everything"
+category = "build"
+check_type = "static"
+handler = "require_tokens"
+paths = [".devcontainer/Dockerfile"]
+tokens = [
+  "BASE_HASH_BEGIN",
+  "BASE_HASH_END",
+  "P2996_HASH_BEGIN",
+  "P2996_HASH_END",
+]
+
+[[suite]]
 name = "build.p2996-cache-dockerfile-stages"
 description = "Dockerfile must split clang-builder into clang-builder-cold (cold compile) + p2996-export (scratch export) + clang-builder (FROM ${P2996_SOURCE} indirection) so the same Dockerfile serves both cold and cache-hit paths"
 category = "build"

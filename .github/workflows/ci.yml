@@ -172,15 +172,119 @@ jobs:
             --json
 
   # ============================================================
+  # Base cache prep: compute content-hash of devcontainer-base inputs
+  # (apt + mise install + cargo crates layer) and ensure
+  # ghcr.io/<owner>/<repo>:base-<hash16> exists. On hit, exits in <30s.
+  # On miss, builds the `base` target and pushes it. Both p2996-prep
+  # and build pull this image instead of rebuilding the heavy ~30 min
+  # base layer.
+  # ============================================================
+  base-prep:
+    needs: contract-preflight
+    if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      hash: ${{ steps.hash.outputs.hash }}
+      cache_ref: ${{ steps.hash.outputs.cache_ref }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install mise (python + uv)
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+        with:
+          install_args: "python uv"
+
+      - name: Compute base cache hash
+        id: hash
+        run: |
+          set -euo pipefail
+          hash=$(uv run --project python dotfiles-setup base-hash)
+          cache_ref="${{ env.CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:base-${hash}"
+          {
+            echo "hash=${hash}"
+            echo "cache_ref=${cache_ref}"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "## Base cache lookup"
+            echo ""
+            echo "- Hash: \`${hash}\`"
+            echo "- Cache ref: \`${cache_ref}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ${{ env.CONTAINER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Probe cache
+        id: probe
+        run: |
+          set -euo pipefail
+          if out=$(docker manifest inspect "${{ steps.hash.outputs.cache_ref }}" 2>&1); then
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+            echo "Cache HIT — skipping base build" >> "$GITHUB_STEP_SUMMARY"
+          else
+            rc=$?
+            if printf '%s\n' "$out" | grep -qiE 'manifest unknown|not found|no such manifest'; then
+              echo "hit=false" >> "$GITHUB_OUTPUT"
+              echo "Cache MISS — building base target" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "FAIL: docker manifest inspect failed with non-miss error (rc=$rc):" >&2
+              printf '%s\n' "$out" >&2
+              exit "$rc"
+            fi
+          fi
+
+      - name: Free runner disk space
+        if: steps.probe.outputs.hit != 'true'
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: false
+          swap-storage: true
+
+      - name: Set up Docker Buildx
+        if: steps.probe.outputs.hit != 'true'
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Write GitHub token for build secret
+        if: steps.probe.outputs.hit != 'true'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" > /tmp/github_token
+
+      - name: Build and push base image
+        if: steps.probe.outputs.hit != 'true'
+        uses: docker/bake-action@a66e1c87e2eca0503c343edf1d208c716d54b8a8 # v7.1.0
+        with:
+          source: .
+          targets: base
+          push: true
+          files: |
+            docker-bake.hcl
+          set: |
+            base.tags=${{ steps.hash.outputs.cache_ref }}
+            *.secrets=id=github_token,src=/tmp/github_token
+
+  # ============================================================
   # P2996 cache prep: compute content-hash of clang-builder inputs and
   # ensure ghcr.io/<owner>/<repo>:p2996-<hash16> exists. On hash hit
   # (the typical case), this job exits in <30s with cache_ref set; the
   # build job then skips the multi-hour clang compile entirely. On
-  # miss, this job builds the p2996-cache target and pushes it. See
-  # .devcontainer/P2996-CACHE.md for the cache mechanism + baselines.
+  # miss, this job builds the p2996-cache target on top of the
+  # base-prep image (so mise install layer is pulled, not rebuilt).
+  # See .devcontainer/P2996-CACHE.md for the cache mechanism.
   # ============================================================
   p2996-prep:
-    needs: contract-preflight
+    needs: [contract-preflight, base-prep]
     if: github.event_name != 'push' || github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -204,13 +308,16 @@ jobs:
           set -euo pipefail
           hash=$(uv run --project python dotfiles-setup p2996-hash)
           cache_ref="${{ env.CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:p2996-${hash}"
-          echo "hash=${hash}" >> "$GITHUB_OUTPUT"
-          echo "cache_ref=${cache_ref}" >> "$GITHUB_OUTPUT"
+          {
+            echo "hash=${hash}"
+            echo "cache_ref=${cache_ref}"
+          } >> "$GITHUB_OUTPUT"
           {
             echo "## P2996 cache lookup"
             echo ""
             echo "- Hash: \`${hash}\`"
             echo "- Cache ref: \`${cache_ref}\`"
+            echo "- Base ref: \`${{ needs.base-prep.outputs.cache_ref }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Log in to Container Registry
@@ -224,9 +331,7 @@ jobs:
         id: probe
         # Discriminate "manifest not found" (legitimate cache miss) from
         # auth/network/registry failures. Capturing stderr instead of
-        # `2>/dev/null` honors `build.no-stderr-suppression`: bury a real
-        # auth bug under "miss" → trigger a multi-hour cold compile for
-        # what was actually a transient registry outage.
+        # `2>/dev/null` honors `build.no-stderr-suppression`.
         run: |
           set -euo pipefail
           if out=$(docker manifest inspect "${{ steps.hash.outputs.cache_ref }}" 2>&1); then
@@ -236,7 +341,7 @@ jobs:
             rc=$?
             if printf '%s\n' "$out" | grep -qiE 'manifest unknown|not found|no such manifest'; then
               echo "hit=false" >> "$GITHUB_OUTPUT"
-              echo "Cache MISS — building p2996-cache target" >> "$GITHUB_STEP_SUMMARY"
+              echo "Cache MISS — building p2996-cache on top of base-prep image" >> "$GITHUB_STEP_SUMMARY"
             else
               echo "FAIL: docker manifest inspect failed with non-miss error (rc=$rc):" >&2
               printf '%s\n' "$out" >&2
@@ -246,8 +351,6 @@ jobs:
 
       - name: Free runner disk space
         if: steps.probe.outputs.hit != 'true'
-        # See build job for the rationale; cold P2996 build needs the same
-        # ~30 GB headroom that the full base image build needs.
         uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
         with:
           tool-cache: true
@@ -264,11 +367,6 @@ jobs:
 
       - name: Write GitHub token for build secret
         if: steps.probe.outputs.hit != 'true'
-        # The Dockerfile's mise install reads /run/secrets/github_token
-        # to authenticate against api.github.com; without this, aqua /
-        # github / cargo backend fetches hit unauthenticated rate limits
-        # (HTTP 403). The build job has the same step — must mirror it
-        # here for the cache-miss path.
         run: echo "${{ secrets.GITHUB_TOKEN }}" > /tmp/github_token
 
       - name: Build and push p2996-cache image
@@ -282,13 +380,14 @@ jobs:
             docker-bake.hcl
           set: |
             p2996-cache.tags=${{ steps.hash.outputs.cache_ref }}
+            p2996-cache.args.DEVCONTAINER_BASE_REF=${{ needs.base-prep.outputs.cache_ref }}
             *.secrets=id=github_token,src=/tmp/github_token
 
   # ============================================================
   # Build Type 2: Dotfiles environment image (Docker → ghcr.io)
   # ============================================================
   build:
-    needs: [contract-preflight, p2996-prep]
+    needs: [contract-preflight, base-prep, p2996-prep]
     if: github.event_name != 'push' || github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
@@ -364,6 +463,7 @@ jobs:
             ${{ steps.meta.outputs.bake-file-labels }}
           set: |
             *.secrets=id=github_token,src=/tmp/github_token
+            dev.args.DEVCONTAINER_BASE_REF=${{ needs.base-prep.outputs.cache_ref }}
             dev.args.P2996_SOURCE=${{ needs.p2996-prep.outputs.cache_ref }}
 
       # docker/bake-action v6.8.0+ emits a per-job build summary with inputs,
