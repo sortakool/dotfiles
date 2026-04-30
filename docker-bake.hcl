@@ -87,18 +87,21 @@ target "dev" {
 # BASE_IMAGE + Dockerfile base-section + mise-system-resolved.json.
 # Both p2996-cache and dev pull this image so neither rebuilds the
 # mise install when only p2996 inputs change.
+#
+# NOTE: deliberately NO `type=gha` cache-from/cache-to. The registry
+# tag IS the durable cache: CI's `Probe cache` step short-circuits
+# this target via `docker manifest inspect :base-<hash>` before the
+# bake even runs. A `mode=max` gha export of this image's layers
+# exceeded the 1-hour Azure SAS token TTL on cold-cache runs (one
+# layer alone took ~3600s) and broke base-prep. Rely on the registry
+# manifest probe instead — that's the cache for inter-job/inter-PR
+# reuse, with no SAS token in the path.
 target "base" {
   inherits = ["_common"]
   target   = "devcontainer-base"
   args = {
     BASE_IMAGE = BASE_IMAGE
   }
-  cache-from = [
-    "type=gha,scope=dotfiles-base",
-  ]
-  cache-to = [
-    "type=gha,scope=dotfiles-base,mode=max",
-  ]
 }
 
 # Content-addressed cache for the clang-p2996 build artifact.
@@ -107,6 +110,10 @@ target "base" {
 # ghcr.io/.../:base-<base-hash16> so the mise install layer is pulled
 # (not rebuilt) before the clang compile starts. Tag pattern:
 # ghcr.io/<owner>/<repo>:p2996-<p2996-hash16>.
+#
+# Same reasoning as `base` for omitting `type=gha` cache: registry
+# tag + Probe cache covers the inter-job path; gha cache export only
+# adds wall time and the 1-hour SAS expiry failure mode.
 target "p2996-cache" {
   inherits = ["_common"]
   target   = "p2996-export"
@@ -115,12 +122,6 @@ target "p2996-cache" {
     CLANG_P2996_REF       = CLANG_P2996_REF
     DEVCONTAINER_BASE_REF = "devcontainer-base"
   }
-  cache-from = [
-    "type=gha,scope=dotfiles-p2996-cache",
-  ]
-  cache-to = [
-    "type=gha,scope=dotfiles-p2996-cache,mode=max",
-  ]
 }
 
 # Local-load variant (outputs to docker instead of registry)
