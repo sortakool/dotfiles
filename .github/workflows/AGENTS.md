@@ -153,5 +153,28 @@ Push-to-main path (after a PR merge):
   `feedback_gh_run_watch`. But always cross-verify with
   `gh pr checks <n> --json` because `--exit-status` has reported exit 0
   before runs were actually complete.
+- **`gh run list` returns multiple workflows.** A branch with both
+  `ci.yml` and `autofix.yml` has a `CI` run AND an `autofix.ci` run
+  per push; `gh run list --limit 1` may surface the wrong one. Filter
+  with `--workflow CI` (or `--workflow autofix.ci`) to disambiguate.
+- **Manual autofix-fix recipe** — if `autofix-ci/action` can't push
+  back (e.g. app uninstalled, `500 autofix.ci app is not installed`),
+  the diff is in the run's `autofix.ci.zip` artifact (substitute
+  uppercase RUN_ID and FILE placeholders):
+  ```bash
+  gh run download RUN_ID -D /tmp/autofix
+  jq -r '.changes.additions[] | select(.path=="FILE") | .contents' \
+    /tmp/autofix/autofix.ci/autofix.json | base64 -d > /tmp/FILE
+  cp /tmp/FILE FILE
+  ```
+  Apply locally, commit, push. Validated on PR #94 commit `cb186ac`
+  (mise.lock linux-x64 blake3 checksum drift).
+- **Re-run a failed job to verify a fix** — `gh run rerun RUN_ID --failed`
+  refires only the failed jobs against the same commit. Useful for
+  verifying that a config change (e.g. installing a GitHub app)
+  actually fixes the failure mode without forcing a fresh push. Used
+  to verify the autofix.ci app install in session 2026-05-01 (run
+  `25201532504` failed on first run, succeeded on rerun against the
+  same commit `ee079c5`).
 
 <!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
