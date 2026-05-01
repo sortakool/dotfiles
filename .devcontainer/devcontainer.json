@@ -88,17 +88,78 @@
     "source=dotfiles-${localWorkspaceFolderBasename}-${localEnv:USER}-${localEnv:DEVCONTAINER_WORKSPACE_HASH}-home,target=/home/${localEnv:USER},type=volume",
   ],
   "containerEnv": {
+    // ─ Platform hints ────────────────────────────────────────────────
+    // Runtime visibility for user shells (e.g., when a user invokes
+    // conda directly without going through mise). Also set in
+    // .devcontainer/mise-system.toml [env] which applies during
+    // build-time `mise install --system -y` (when containerEnv has not
+    // yet been applied to the build process). Duplication is intentional
+    // — the two windows do not overlap.
     "MISE_ARCH": "x86_64",
     "MISE_OS": "linux",
     "CONDA_SUBDIR": "linux-64",
+
+    // ─ Config trust + discovery ──────────────────────────────────────
+    // Trust ALL paths without prompting ("/" matches everything).
+    // Required for non-interactive mise activation in user shells,
+    // IDEs, and CI-equivalent jobs inside the container — no
+    // `mise trust` prompt blocks. This OVERRIDES the narrower
+    // build-time MISE_TRUSTED_CONFIG_PATHS=/usr/local/share/mise:/workspaces/dotfiles
+    // set in Dockerfile ENV (line 62). Verified canonical mechanism per
+    // mise docs (configuration.md MISE_TRUSTED_CONFIG_PATHS section).
     "MISE_TRUSTED_CONFIG_PATHS": "/",
-    "MISE_OVERRIDE_CONFIG_FILENAMES": "config.toml",
-    "MISE_STRICT": "1",
+
+    // Skip the host-shaped workspace mise.toml inside the container.
+    // Its 46 user-tools are already provided by the system tree
+    // (.devcontainer/mise-system.toml, baked into :dev). Without this
+    // exclusion, mise would discover /workspaces/<basename>/mise.toml
+    // via cwd-walking and — because auto_install=true is set in
+    // user-overlay home/dot_config/mise/config.toml.tmpl — attempt to
+    // install all 46 tools again into the user overlay, emitting
+    // "WARN: not installed" for each. MISE_IGNORED_CONFIG_PATHS is the
+    // path-axis opt-out (vs the older filename-axis MISE_OVERRIDE_CONFIG_FILENAMES,
+    // which had the side-effect of blocking ALL `mise.toml` files
+    // anywhere in the container). Verified jdx/mise@v2026.4.28 against
+    // upstream HEAD: src/env.rs MISE_IGNORED_CONFIG_PATHS definition,
+    // settings.toml [ignored_config_paths] section, src/config/mod.rs.
+    "MISE_IGNORED_CONFIG_PATHS": "/workspaces/${localWorkspaceFolderBasename}/mise.toml",
+
+    // Explicit system-config location. Per src/config/mod.rs
+    // `system_config_files()`, MISE_SYSTEM_CONFIG_FILE short-circuits
+    // all other system-config discovery, so this is the single source
+    // of truth for "which file is the system config." Re-set here
+    // alongside Dockerfile ENV so user-mise at runtime sees it
+    // explicitly (defense-in-depth: even if Docker ENV inheritance
+    // were skipped, containerEnv covers it).
     "MISE_SYSTEM_CONFIG_DIR": "/usr/local/share/mise",
     "MISE_SYSTEM_CONFIG_FILE": "/usr/local/share/mise/config.toml",
+
+    // Per-user mise config — path templated to host user's home. This
+    // OVERRIDES the build-time MISE_CONFIG_DIR=/usr/local/share/mise
+    // set in Dockerfile ENV (build-time uses the system path so
+    // `mise install --system -y` finds the system config; runtime uses
+    // per-user path so each user has their own overlay at
+    // ~/.config/mise/config.toml). The two values cover different
+    // windows; the override is intentional.
     "MISE_GLOBAL_CONFIG_FILE": "/home/${localEnv:USER}/.config/mise/config.toml",
     "MISE_CONFIG_DIR": "/home/${localEnv:USER}/.config/mise",
+
+    // ─ Runtime markers ───────────────────────────────────────────────
+    // Container-environment marker for chezmoi templates and other
+    // tooling that needs to discriminate "inside the devcontainer (not
+    // the Mac host)." chezmoi.os == "linux" is the canonical built-in
+    // check, but DEVCONTAINER=true is the explicit signal for the
+    // mise-overlay gate in home/.chezmoi.toml.tmpl. See
+    // feedback_devcontainer_only_mise_overlay.md (auto-memory).
     "DEVCONTAINER": "true",
+
+    // Docker Desktop's native magic socket for SSH agent forwarding
+    // (R2 outbound: `ssh -T git@github.com` inside the container reaches
+    // the host's launchd SSH agent — no host-side proxy needed). The
+    // socket is bind-mounted via `mounts` above; this env var points
+    // tools at it. Docker-Desktop-only — Colima has no equivalent
+    // (`abiosoft/colima#1330`, #942; deferred follow-up #78). See
+    // .omc/research/research-20260409c-dockerdesktop-ssh/report.md.
     "SSH_AUTH_SOCK": "/run/host-services/ssh-auth.sock",
   },
   "features": {
