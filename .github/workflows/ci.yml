@@ -549,6 +549,19 @@ jobs:
         # regressions. SARIF still uploads to GitHub code scanning so
         # alerts surface in the Security tab regardless.
         # Tracked: https://github.com/ray-manaloto/dotfiles/issues/92
+        #
+        # `scanners: vuln` narrows scope to CVE detection only —
+        # secret + misconfig scans are out of scope for this step
+        # (separate concerns, separate tooling) and Trivy's own log
+        # advises disabling secret scanning on large images. Without
+        # this scope narrowing the run on PR #93 hit the default 5min
+        # timeout exporting the multi-GB image through the Docker
+        # socket and failed with "context deadline exceeded" before
+        # producing a SARIF.
+        #
+        # `timeout: 15m` is a safety margin on top of the scope
+        # narrowing — even a vuln-only scan of a heavy image takes
+        # several minutes once the vuln-DB download is included.
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           image-ref: ${{ env.CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.smoke-tag.outputs.tag }}
@@ -556,6 +569,8 @@ jobs:
           output: trivy.sarif
           severity: CRITICAL,HIGH
           exit-code: "0"
+          scanners: vuln
+          timeout: 15m
 
       - name: Upload Trivy SARIF to GitHub code scanning
         # `hashFiles` guard: if Trivy was skipped or bailed without
