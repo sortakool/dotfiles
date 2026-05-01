@@ -25,20 +25,27 @@ PR / schedule / workflow_dispatch path:
    `mise.lock`.
 2. **contract-preflight** — Python 3.14 + uv; runs `dotfiles-setup
    verify run` over `python/verification/suites.toml`.
-3. **p2996-prep** — computes content-hash of P2996 inputs via
+3. **base-prep** — computes content-hash of base inputs via
+   `dotfiles-setup base-hash`. Probes
+   `ghcr.io/<owner>/<repo>:base-<hash16>` with `docker manifest
+   inspect`. On hit, exits in <30s. On miss, builds the `base` bake
+   target (devcontainer-base stage = apt + mise install + cargo) and
+   pushes it. p2996-prep and build both pull this image so neither
+   rebuilds the heavy mise install when only p2996 inputs change.
+4. **p2996-prep** — computes content-hash of P2996 inputs via
    `dotfiles-setup p2996-hash`. Probes
    `ghcr.io/<owner>/<repo>:p2996-<hash16>` with `docker manifest
    inspect`. On hit, exits in <30s. On miss, builds the `p2996-cache`
    bake target (the scratch-based `p2996-export` stage holding just
    `/opt/clang-p2996`, ~500 MB) and pushes it to GHCR.
-4. **build** — `docker buildx bake dev` with
+5. **build** — `docker buildx bake dev` with
    `dev.args.P2996_SOURCE=<cache_ref>` from p2996-prep. On cache hit
    the Dockerfile's `clang-builder` stage is `FROM <cache_ref>` instead
    of `FROM p2996-export`, skipping the multi-hour clang compile (see
    `.devcontainer/P2996-CACHE.md` for the current baseline).
    Always pushes (`:pr-NNN` or `:sha-<sha>` for PRs; `:dev`/`:latest`
    for schedule and `force_dev_tag=true` workflow_dispatch).
-5. **smoke-test** — pulls `:sha-<github.sha>` (the freshly-built
+6. **smoke-test** — pulls `:sha-<github.sha>` (the freshly-built
    image) and runs the same checks against PR images that previously
    only ran on main builds. The image smoked on the PR is the exact
    image that gets retagged as `:dev`/`:latest` on merge.
@@ -89,6 +96,23 @@ Push-to-main path (after a PR merge):
 - **`gh run watch --exit-status` is unreliable** — verify workflow
   completion with `gh pr checks <n> --json` or
   `gh run view <id> --json conclusion`.
+- **No `type=gha` cache on `base` / `p2996-cache` bake targets.**
+  Registry tag + `Probe cache` (`docker manifest inspect`) IS the
+  durable cache. `mode=max` gha export of these heavy layers exceeds
+  the 1-hour Azure SAS token TTL on cold runs and fails with
+  `403 AuthenticationFailed` after wasting ~1h of the runner. Documented
+  in `docker-bake.hcl`. The `dev` target keeps gha cache (small overlay,
+  no probe gate, well under 1-hour SAS limit).
+- **Trivy is `scanners: vuln` + `timeout: 15m`.** Default scanners
+  (`vuln,secret,misconfig`) timeout at 5min exporting our multi-GB
+  image through the Docker socket. Scope is intentionally CVE-only
+  (warn-only mode, see issue #92); secret + misconfig are out of
+  scope here.
+- **`wagoodman/dive` action is broken upstream.** v0.13.1's
+  auto-built Dockerfile has `ARG DOCKER_CLI_VERSION=${DOCKER_CLI_VERSION}`
+  with no default, fetches `docker-.tgz` and 404s. Use the binary
+  release tarball directly in a `run:` step; do NOT switch back to
+  `uses: wagoodman/dive@<sha>`.
 
 ## Cron schedules (`schedule:`)
 
@@ -129,5 +153,28 @@ Push-to-main path (after a PR merge):
   `feedback_gh_run_watch`. But always cross-verify with
   `gh pr checks <n> --json` because `--exit-status` has reported exit 0
   before runs were actually complete.
+- **`gh run list` returns multiple workflows.** A branch with both
+  `ci.yml` and `autofix.yml` has a `CI` run AND an `autofix.ci` run
+  per push; `gh run list --limit 1` may surface the wrong one. Filter
+  with `--workflow CI` (or `--workflow autofix.ci`) to disambiguate.
+- **Manual autofix-fix recipe** — if `autofix-ci/action` can't push
+  back (e.g. app uninstalled, `500 autofix.ci app is not installed`),
+  the diff is in the run's `autofix.ci.zip` artifact (substitute
+  uppercase RUN_ID and FILE placeholders):
+  ```bash
+  gh run download RUN_ID -D /tmp/autofix
+  jq -r '.changes.additions[] | select(.path=="FILE") | .contents' \
+    /tmp/autofix/autofix.ci/autofix.json | base64 -d > /tmp/FILE
+  cp /tmp/FILE FILE
+  ```
+  Apply locally, commit, push. Validated on PR #94 commit `cb186ac`
+  (mise.lock linux-x64 blake3 checksum drift).
+- **Re-run a failed job to verify a fix** — `gh run rerun RUN_ID --failed`
+  refires only the failed jobs against the same commit. Useful for
+  verifying that a config change (e.g. installing a GitHub app)
+  actually fixes the failure mode without forcing a fresh push. Used
+  to verify the autofix.ci app install in session 2026-05-01 (run
+  `25201532504` failed on first run, succeeded on rerun against the
+  same commit `ee079c5`).
 
 <!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->

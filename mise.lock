@@ -82,6 +82,7 @@ url = "https://awscli.amazonaws.com/awscli-exe-linux-aarch64-2.34.38.zip"
 url = "https://awscli.amazonaws.com/awscli-exe-linux-aarch64-2.34.38.zip"
 
 [tools.aws-cli."platforms.linux-x64"]
+checksum = "blake3:c52af4f90e41e95b0606616acb54cbbddee7758d891f795cf3433b189e60b4a7"
 url = "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-2.34.38.zip"
 
 [tools.aws-cli."platforms.linux-x64-musl"]
@@ -210,6 +211,7 @@ url = "https://download.docker.com/linux/static/stable/aarch64/docker-29.4.1.tgz
 url = "https://download.docker.com/linux/static/stable/aarch64/docker-29.4.1.tgz"
 
 [tools.docker-cli."platforms.linux-x64"]
+checksum = "blake3:f5ccbcbfe962ddaa6209c58d4bd4d5a29b1e51298cb9687d76319ef7ad50303f"
 url = "https://download.docker.com/linux/static/stable/x86_64/docker-29.4.1.tgz"
 
 [tools.docker-cli."platforms.linux-x64-musl"]
@@ -907,6 +909,7 @@ url = "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-linux-aar
 url = "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-linux-aarch64.gz"
 
 [tools.taplo."platforms.linux-x64"]
+checksum = "blake3:4871fab0e60275a1eb46e7190726e144f56c9a9527f59b0d1da5a042baead8e2"
 url = "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-linux-x86_64.gz"
 
 [tools.taplo."platforms.linux-x64-musl"]
