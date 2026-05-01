@@ -523,10 +523,25 @@ jobs:
         # Dive --ci enforces .dive-ci thresholds (lowestEfficiency,
         # highestWastedBytes). Pass/fail gate; replaces the dead-letter
         # top_layers JSON dump in `dotfiles-setup image benchmark`.
-        uses: wagoodman/dive@fe98c8a2eb08c443a36e3cc7568078909e298433 # v0.13.1
-        with:
-          image: ${{ env.CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.smoke-tag.outputs.tag }}
-          config-file: .dive-ci
+        #
+        # Direct binary install (NOT `uses: wagoodman/dive@<sha>`):
+        # the upstream "action" is a bare Dockerfile (no action.yml)
+        # auto-detected by GHA. That Dockerfile has the bug
+        #   ARG DOCKER_CLI_VERSION=${DOCKER_CLI_VERSION}
+        # which under BuildKit resolves to empty (no env-var inheritance
+        # for ARG defaults), so the action build fetches docker-.tgz
+        # and fails with 404 before our scan ever runs. The release
+        # tarball has no such bug — invoke the binary directly.
+        env:
+          DIVE_VERSION: 0.13.1
+          IMAGE_REF: ${{ env.CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.smoke-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          curl -fsSLo /tmp/dive.tar.gz \
+            "https://github.com/wagoodman/dive/releases/download/v${DIVE_VERSION}/dive_${DIVE_VERSION}_linux_amd64.tar.gz"
+          tar -xzf /tmp/dive.tar.gz -C /tmp dive
+          sudo install -m 0755 /tmp/dive /usr/local/bin/dive
+          dive --ci --ci-config .dive-ci "${IMAGE_REF}"
 
       - name: Scan image for CVEs (Trivy, warn-only)
         # Day-1 mode: exit-code: '0' (warn-only). Once the baseline is
@@ -543,7 +558,13 @@ jobs:
           exit-code: "0"
 
       - name: Upload Trivy SARIF to GitHub code scanning
-        if: always()
+        # `hashFiles` guard: if Trivy was skipped or bailed without
+        # writing trivy.sarif (e.g. an earlier step failed), don't
+        # ask codeql-action to upload a missing file — that turns a
+        # benign "Trivy didn't run" into a hard "smoke-test failed".
+        # Bare `if: always()` was the previous shape and produced
+        # exactly that cascade in run 25193971770.
+        if: always() && hashFiles('trivy.sarif') != ''
         uses: github/codeql-action/upload-sarif@65216971a11ded447a6b76263d5a144519e5eee1 # codeql-bundle-v2.25.2
         with:
           sarif_file: trivy.sarif
