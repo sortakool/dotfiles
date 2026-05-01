@@ -89,7 +89,18 @@ claude-code = "latest"
 "conda:ccache" = "latest"
 "conda:cppcheck" = "latest"
 "conda:include-what-you-use" = "latest"
-"conda:gdb" = "latest"
+# `.gdb-post-link.sh` ships in conda-forge gdb's `bin/` as standard conda-build
+# packaging convention (recipe `post-link.sh` → `${PREFIX}/bin/.<pkg>-post-link.sh`).
+# Its body is fully guarded by `if [[ $(uname) == "Darwin" ]]` (macOS gdb
+# codesigning helper), so it is a no-op on Linux. mise's shim creation indexes
+# every executable file in `bin/`, including this hidden file. mise doctor's
+# missing-shims check then asymmetrically excludes dotfiles from the "actual
+# shims" set (`src/shims.rs:467`) but enumerates them from `.mise-bins/`,
+# producing a phantom "Missing shims: .gdb-post-link.sh" warning during
+# `mise run verify-local`'s persistence gate. Removing the executable bit
+# makes mise treat the file as a non-shimmable resource — no deletion of an
+# upstream-owned file. See `.claude/rules/persistence-gate-retry.md`.
+"conda:gdb" = { version = "latest", postinstall = "find \"$MISE_TOOL_INSTALL_PATH/bin\" -maxdepth 1 -name '.*' -type f -exec chmod -x {} +" }
 "conda:lldb" = "latest"
 "conda:lcov" = "latest"
 "conda:doxygen" = "latest"
